@@ -295,6 +295,52 @@ try {
       const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
       return frames.some(f => leaves(f.root).some(c => c.nodes.some(n => Number(n) === id)));
     }, newlyAdded, { timeout: 3000 });
+
+    // Header colors: frame color covers the frame bar and all cell bars; per-cell override; undo/redo; persistence; reset.
+    const defaultHeader = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor);
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
+    await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === 'rgb(112, 216, 190)');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color), 'rgb(16, 20, 24)', 'frame label switches to dark contrast text');
+    const inherited = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].map(el => getComputedStyle(el).backgroundColor));
+    assert.ok(inherited.length >= 2 && inherited.every(color => color === 'rgb(112, 216, 190)'), 'all cell headers inherit the frame color');
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
+    await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color), 'rgb(244, 246, 247)', 'overridden cell label uses light contrast text');
+    const siblings = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].slice(1).map(el => getComputedStyle(el).backgroundColor));
+    assert.ok(siblings.every(color => color === 'rgb(112, 216, 190)'), 'siblings keep the frame color');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor), 'rgb(112, 216, 190)', 'frame bar unchanged by cell override');
+    await page.screenshot({ path: `test-results/colors-${vue ? 'nodes-2' : 'classic'}.png` });
+
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(112, 216, 190)');
+    await page.keyboard.press('Control+Shift+z');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
+
+    const colored = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
+    await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, colored);
+    await settle();
+    const persisted = await page.evaluate(() => {
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
+      return { frame: frames[0].color, cell: leaves(frames[0].root)[0].color };
+    });
+    assert.deepEqual(persisted, { frame: '#70d8be', cell: '#112233' }, 'colors survive a workflow save/load round trip');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(112, 216, 190)');
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
+    await page.waitForFunction(defaultBg => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === defaultBg, defaultHeader);
+
     console.log(`${vue ? 'Nodes 2.0' : 'Classic'} interaction, history, persistence, geometry and prompt checks passed`);
   }
   if (process.env.EXPECT_INSECURE_ORIGIN === '1') {
