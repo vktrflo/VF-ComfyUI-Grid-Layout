@@ -350,3 +350,15 @@ git commit -m "Verify fill cell height in the browser suite"
 
 1. **`tests/controller.test.mjs` adapter-shape assertion updated** — the plan expected "no unit-test changes" for Task 2; extending `measure()` with `minHeight`/`collapsed` broke the existing `deepEqual` fixture. The expected object now pins the full new metric shape (`minHeight: 80, collapsed: false`). Justified: the metric extension is spec'd and the assertion remains a strict shape contract.
 2. **Fill browser scenario deselects nodes before opening cell menus** — ComfyUI's Selection Toolbox appears beside the node left selected by the suite's drag and intercepted the first `+` click (30 s actionability timeout; observed once). An `openRightMenu()` helper now calls `canvas.deselectAllNodes()` before each menu-open click; pinned by the scenario passing in both renderers afterwards.
+
+## Revision 2: container-level fill (executed inline, 2026-10-06)
+
+User-directed revision: the fill toggle moves from the cell "+" menu to the frame "•••" menu and applies to every cell; per-cell entries are removed. Spec: `2026-10-06-fill-cell-height-design.md` (revised). The natural-height model changes from "bottom node contributes its minimum" to "bottom node contributes its intrinsic (pre-stretch) height", tracked by the adapter — with every cell filled, minimum-based naturals would collapse frames to minimums and stop enlarged nodes from anchoring their rows.
+
+Implementation steps (as executed):
+
+1. `web/core/layout.js` — reverted the `minimum()` fill-substitution (metrics `height` now carries the intrinsic value); `place()` stretches only when `frame.fill === true` and marks the bottom placement `fill: true`; frame-level `validateFrame` whitelist (`value.fill === true`); leaf-level whitelist and the `splitCell`/`gridCell` carry lines removed.
+2. `web/core/adapter.js` — new `bases` / `appliedHeights` WeakMaps; `measure()` reports intrinsic `height` (`max(base, minimum)`); `apply()` records `appliedHeights` for `fill` placements; new `releaseFill(node)` (revert to base when the stretch is still ours; leave foreign changes; fall back to the minimum without a record).
+3. `web/core/overlay.js` — cell-menu fill entries removed; frame menu gains the Fill/Fit pair; release runs `releaseFill` over every leaf's bottom node in one edit.
+4. `tests/fill.test.mjs` — rewritten for frame-level flags (same flush numbers) with a lone-cell anchor test and adapter base/release tests.
+5. `tests/browser.mjs` — fill scenario drives the frame ••• menu (`openFrameMenu` helper), asserts the tall anchor column is untouched, release returns to the pre-fill height, and `frames[0].fill` persists through save/load.
