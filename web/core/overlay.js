@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, leaves, KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, normalizeFontSize, leaves, KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -46,10 +46,22 @@ export function contrastColor(hex) {
   const background = luminance(hex);
   return contrast(background, luminance(HEADER_TEXT_DARK)) >= contrast(background, luminance(HEADER_TEXT_LIGHT)) ? HEADER_TEXT_DARK : HEADER_TEXT_LIGHT;
 }
-function applyHeaderColor(el, color) {
-  el.classList.add('clt-custom-bg');
-  el.style.background = color;
-  el.style.color = contrastColor(color);
+function applyHeaderStyle(el, { color, textColor, fontSize } = {}) {
+  if (color) {
+    el.classList.add('clt-custom-bg');
+    el.style.background = color;
+  }
+  if (textColor) el.style.color = textColor;
+  else if (color) el.style.color = contrastColor(color);
+  if (fontSize) el.style.fontSize = `${fontSize}px`;
+}
+function applyHeaderConfig(target, values) {
+  const color = normalizeColor(values.color);
+  if (color) target.color = color; else delete target.color;
+  const textColor = values.auto === true ? undefined : normalizeColor(values.textColor);
+  if (textColor) target.textColor = textColor; else delete target.textColor;
+  const fontSize = values.fontSize == null ? undefined : normalizeFontSize(values.fontSize);
+  if (fontSize === undefined) delete target.fontSize; else target.fontSize = fontSize;
 }
 function element(tag, className, text) {
   const el = document.createElement(tag);
@@ -137,11 +149,22 @@ export class LayoutOverlay {
     const inputs = {};
     for (const field of fields) {
       const label = element('label', '', field.label), input = document.createElement('input');
-      input.name = field.name; input.type = field.type ?? 'text'; input.value = field.value;
-      input.setAttribute('aria-label', field.label); input.required = true;
-      if (input.type === 'number') { input.min = '1'; input.max = '16'; input.step = '1'; } else input.maxLength = 120;
+      input.name = field.name; input.type = field.type ?? 'text';
+      input.setAttribute('aria-label', field.label);
+      input.required = field.optional !== true && input.type !== 'checkbox';
+      if (input.type === 'number') {
+        input.min = String(field.min ?? 1); input.max = String(field.max ?? 16); input.step = String(field.step ?? 1);
+        if (field.value != null) input.value = String(field.value);
+      } else if (input.type === 'checkbox') {
+        input.checked = field.value === true;
+      } else {
+        input.value = field.value;
+        input.maxLength = 120;
+      }
+      if (field.onChange) input.addEventListener('change', () => field.onChange(input, inputs));
       label.append(input); form.append(label); inputs[field.name] = input;
     }
+    for (const field of fields) field.onChange?.(inputs[field.name], inputs);
     const footer = element('footer', '');
     const cancel = element('button', '', fields.length ? 'Cancel' : 'Close'); cancel.type = 'button'; cancel.onclick = () => dialog.close();
     footer.append(cancel);
@@ -149,7 +172,11 @@ export class LayoutOverlay {
     form.append(footer); dialog.append(form); document.body.append(dialog);
     form.addEventListener('submit', e => {
       e.preventDefault();
-      const values = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.type === 'number' ? Number(input.value) : input.value]));
+      const values = Object.fromEntries(Object.entries(inputs).map(([key, input]) => {
+        if (input.type === 'number') return [key, input.value === '' ? null : Number(input.value)];
+        if (input.type === 'checkbox') return [key, input.checked];
+        return [key, input.value];
+      }));
       dialog.close(); this.safe(() => submit(values));
     });
     dialog.addEventListener('close', () => dialog.remove(), { once: true });
@@ -357,8 +384,11 @@ export class LayoutOverlay {
       const el = element('section', 'clt-frame'); el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
       rectStyle(el, [...frame.pos, ...frame.size]);
       const header = element('div', 'clt-frame-header');
-      const frameColor = normalizeColor(frame.color);
-      if (frameColor) applyHeaderColor(header, frameColor);
+      applyHeaderStyle(header, {
+        color: normalizeColor(frame.color),
+        textColor: normalizeColor(frame.textColor),
+        fontSize: normalizeFontSize(frame.fontSize),
+      });
       const badge = element('span', 'clt-emoji', '🌀');
       badge.setAttribute('aria-hidden', 'true');
       header.append(badge);
@@ -384,8 +414,11 @@ export class LayoutOverlay {
         const cellEl = element('div', `clt-cell${this.hover === cell.id ? ' clt-target' : ''}`);
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
         const cellHeader = element('div', 'clt-cell-header');
-        const cellColor = normalizeColor(cell.color) ?? normalizeColor(frame.color);
-        if (cellColor) applyHeaderColor(cellHeader, cellColor);
+        applyHeaderStyle(cellHeader, {
+          color: normalizeColor(cell.color) ?? normalizeColor(frame.color),
+          textColor: normalizeColor(cell.textColor) ?? normalizeColor(frame.textColor),
+          fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
+        });
         cellHeader.append(this.title(cell.label, frame.id, cell.id));
         cellHeader.append(button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '+'));
         cellEl.append(cellHeader);
