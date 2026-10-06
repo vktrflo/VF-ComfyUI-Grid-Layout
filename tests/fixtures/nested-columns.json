@@ -1,0 +1,179 @@
+{
+  "frame": {
+    "id": "798b4475-3449-4b5a-93e2-40682e3b2455",
+    "label": "Layout",
+    "pos": [
+      -707.9194444444447,
+      789.6710069444445
+    ],
+    "size": [
+      1702.4091641798661,
+      784
+    ],
+    "root": {
+      "id": "4d82edb4-cb30-4fc0-8e2b-b2833c6dfc4a",
+      "label": "Cell",
+      "axis": "x",
+      "ratios": [
+        0.5,
+        0.5
+      ],
+      "children": [
+        {
+          "id": "f59b9561-b419-425b-9b07-b546a5c89033",
+          "label": "Cell",
+          "axis": "x",
+          "ratios": [
+            0.28494726539942006,
+            0.7150527346005799
+          ],
+          "children": [
+            {
+              "id": "607b3e94-592f-41e9-831b-cdf3c1827260",
+              "label": "Cell",
+              "nodes": [
+                "66",
+                "62",
+                "63"
+              ]
+            },
+            {
+              "id": "18120ed5-13b1-4091-9251-eb8cefae9866",
+              "label": "Cell",
+              "axis": "x",
+              "ratios": [
+                0.5,
+                0.5
+              ],
+              "children": [
+                {
+                  "id": "999bdc1e-472b-4152-ae6b-b79010530e7a",
+                  "label": "Cell",
+                  "nodes": [
+                    "67",
+                    "71"
+                  ]
+                },
+                {
+                  "id": "b9766641-2bd6-4658-9d96-3710a9a6e598",
+                  "label": "Cell",
+                  "nodes": [
+                    "69",
+                    "70",
+                    "68",
+                    "65"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "87c664a3-ff03-4bee-9361-df2b58143c93",
+          "label": "Cell",
+          "axis": "x",
+          "ratios": [
+            0.5135901980458923,
+            0.48640980195410766
+          ],
+          "children": [
+            {
+              "id": "095079dd-53e2-41ed-97e6-afbf2d66b537",
+              "label": "Cell",
+              "nodes": [
+                "9"
+              ]
+            },
+            {
+              "id": "e318a527-4d66-4ed9-8ed4-7e66cfe2f01c",
+              "label": "Cell",
+              "nodes": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "metrics": [
+    [
+      "9",
+      {
+        "minWidth": 160,
+        "height": 555.9999999999999,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "62",
+      {
+        "minWidth": 160,
+        "height": 106,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "63",
+      {
+        "minWidth": 160,
+        "height": 61.31256675720215,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "65",
+      {
+        "minWidth": 160,
+        "height": 46,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "66",
+      {
+        "minWidth": 160,
+        "height": 82.32801055908203,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "67",
+      {
+        "minWidth": 160,
+        "height": 160,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "68",
+      {
+        "minWidth": 160,
+        "height": 106,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "69",
+      {
+        "minWidth": 160,
+        "height": 104,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "70",
+      {
+        "minWidth": 160,
+        "height": 262,
+        "titleHeight": 30
+      }
+    ],
+    [
+      "71",
+      {
+        "minWidth": 160,
+        "height": 140,
+        "titleHeight": 30
+      }
+    ]
+  ]
+}
