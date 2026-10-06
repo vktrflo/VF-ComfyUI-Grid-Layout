@@ -283,6 +283,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
   const color = normalizeColor(value.color);
   if (color) result.color = color;
   if (value.fill === true) result.fill = true;
+  if (value.lock === true) result.lock = true;
   return result;
 }
 
