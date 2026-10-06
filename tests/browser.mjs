@@ -299,6 +299,7 @@ try {
     // Header colors: frame color covers the frame bar and all cell bars; per-cell override; undo/redo; persistence; reset.
     const defaultHeader = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor);
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
     await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
     await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
@@ -308,6 +309,11 @@ try {
     assert.ok(inherited.length >= 2 && inherited.every(color => color === 'rgb(112, 216, 190)'), 'all cell headers inherit the frame color');
 
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry hidden before an own color is set');
+    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[type="color"]').inputValue(), '#70d8be', 'cell dialog prefills the inherited frame color');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
     await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
     await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
@@ -316,6 +322,10 @@ try {
     const siblings = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].slice(1).map(el => getComputedStyle(el).backgroundColor));
     assert.ok(siblings.every(color => color === 'rgb(112, 216, 190)'), 'siblings keep the frame color');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor), 'rgb(112, 216, 190)', 'frame bar unchanged by cell override');
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[type="color"]').inputValue(), '#70d8be', 'frame dialog prefills the current frame color');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.screenshot({ path: `test-results/colors-${vue ? 'nodes-2' : 'classic'}.png` });
 
     await page.keyboard.press('Control+z');
@@ -340,6 +350,12 @@ try {
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
     await page.waitForFunction(defaultBg => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === defaultBg, defaultHeader);
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry gone after reset');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry gone after reset');
+    await page.keyboard.press('Escape');
 
     console.log(`${vue ? 'Nodes 2.0' : 'Classic'} interaction, history, persistence, geometry and prompt checks passed`);
   }
