@@ -7,7 +7,7 @@ test('normalizeColor normalizes valid forms and drops junk without throwing', ()
   assert.equal(engine.normalizeColor('a1b2c3'), '#a1b2c3');
   assert.equal(engine.normalizeColor('#abc'), '#aabbcc');
   assert.equal(engine.normalizeColor('ABC'), '#aabbcc');
-  for (const bad of [undefined, null, 42, 'red', '#12', '#1234567', '#gggggg', '', 'rgb(0,0,0)']) {
+  for (const bad of [undefined, null, 42, 'red', '#12', '#1234567', '#gggggg', '', 'rgb(0,0,0)', ' #abc', '#abc ']) {
     assert.equal(engine.normalizeColor(bad), undefined, `expected ${String(bad)} to be rejected`);
   }
 });
@@ -55,4 +55,23 @@ test('splitting or gridding a colored cell moves the color to the first leaf', (
   engine.gridCell(grid, grid.root.id, 2, 2);
   assert.equal('color' in grid.root, false);
   assert.equal(engine.leaves(grid.root)[0].color, '#abcdef');
+  assert.ok(engine.leaves(grid.root).slice(1).every(leaf => !('color' in leaf)));
+});
+
+test('validateFrame drops a stray color on a split node', () => {
+  const frame = engine.createFrame();
+  engine.splitCell(frame, frame.root.id, 'x');
+  frame.root.color = '#ffffff';
+  assert.equal('color' in engine.validateFrame(frame).root, false);
+});
+
+test('deleting a cell keeps survivor colors and drops the deleted color', () => {
+  const frame = engine.createFrame();
+  engine.splitCell(frame, frame.root.id, 'x');
+  const [keeper, doomed] = frame.root.children;
+  keeper.color = '#aabbcc';
+  doomed.color = '#dead00';
+  engine.deleteCell(frame, doomed.id);
+  assert.equal(frame.root, keeper);
+  assert.equal(frame.root.color, '#aabbcc');
 });
