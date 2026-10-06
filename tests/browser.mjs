@@ -359,6 +359,117 @@ try {
     assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry gone after reset');
     await page.keyboard.press('Escape');
 
+    // Fill cell height: the bottom node stretches flush with the cell's content floor.
+    await page.evaluate(async () => {
+      const app = window.comfyAPI.app.app;
+      await app.loadGraphData({ version: 0.4, nodes: [], links: [], groups: [], extra: {} });
+      const image = window.LiteGraph.createNode('EmptyImage'); image.pos = [100, 160]; app.graph.add(image);
+      image.widgets.find(w => w.name === 'width').value = 64; image.widgets.find(w => w.name === 'height').value = 64;
+      const save = window.LiteGraph.createNode('SaveImage'); save.pos = [100, 420]; app.graph.add(save);
+      save.widgets.find(w => w.name === 'filename_prefix').value = 'layout-fill';
+      image.connect(0, save, 0);
+      app.canvas.ds.scale = 0.8; app.canvas.ds.offset = [0, 0];
+      window.testNodes = [image.id, save.id];
+    });
+    await page.waitForTimeout(400);
+    const fillCreation = await worldPoint([550, 80]);
+    await page.mouse.click(fillCreation.x, fillCreation.y, { button: 'right' });
+    await page.getByText('🌀 Add Layout Frame', { exact: true }).click();
+    await page.locator('.clt-frame').waitFor();
+    await nodeDragTo(0, [850, 185]);
+    assert.deepEqual(await membership(), [[1]], 'fill scenario attaches the tall-column node');
+    await page.evaluate(() => { const n = window.comfyAPI.app.app.graph.getNodeById(window.testNodes[0]); n.setSize([n.size[0], 420]); });
+    await settle();
+    await page.waitForTimeout(250);
+    await page.getByRole('button', { name: 'Cell options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Split into left / right', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 2);
+    await settle();
+    const fillRight = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const c = new LayoutController(window.comfyAPI.app.app, {});
+      const r = c.geometry()[0].cells[1].rect;
+      return [r[0] + r[2] / 2, r[1] + r[3] / 2];
+    });
+    await nodeDragTo(1, fillRight);
+    assert.deepEqual(await membership(), [[1], [2]], 'fill scenario columns hold one node each');
+    await settle();
+    const fillBefore = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { PAD } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry()[0];
+      const saved = String(window.testNodes[1]);
+      const entry = layout.cells.find(({ cell }) => cell.nodes.some(n => String(n) === saved));
+      const placement = layout.placements.find(p => String(p.nodeId) === saved);
+      const node = app.graph.getNodeById(window.testNodes[1]);
+      return { size: node.size[1], min: c.adapter.measure(node).minHeight, target: (entry.rect[1] + entry.rect[3] - PAD) - placement.y };
+    });
+    assert.ok(fillBefore.size < fillBefore.target - 40, 'scenario: the short column has spare height to fill');
+    // The drag left the node selected, which summons ComfyUI's Selection Toolbox over the cell header.
+    const openRightMenu = async () => {
+      await page.evaluate(() => window.comfyAPI.app.app.canvas.deselectAllNodes());
+      await page.getByRole('button', { name: 'Cell options', exact: true }).nth(1).click();
+    };
+    await openRightMenu();
+    assert.equal(await page.getByRole('menuitem', { name: 'Fit to content height', exact: true }).count(), 0, 'fit entry hidden before filling');
+    await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
+    const waitForFlush = () => page.waitForFunction(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { PAD } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry()[0];
+      const saved = String(window.testNodes[1]);
+      const entry = layout.cells.find(({ cell }) => cell.nodes.some(n => String(n) === saved));
+      if (!entry) return false;
+      const placement = layout.placements.find(p => String(p.nodeId) === saved);
+      if (!placement) return false;
+      const node = app.graph.getNodeById(window.testNodes[1]);
+      return Math.abs((placement.y + placement.height) - (entry.rect[1] + entry.rect[3] - PAD)) < 1.5 && Math.abs(node.size[1] - placement.height) < 1.5;
+    }, undefined, { timeout: 5000 });
+    await waitForFlush();
+    const fillAfter = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry()[0];
+      const saved = String(window.testNodes[1]);
+      const entry = layout.cells.find(({ cell }) => cell.nodes.some(n => String(n) === saved));
+      const node = app.graph.getNodeById(window.testNodes[1]);
+      return { height: node.size[1], flag: entry.cell.fill === true };
+    });
+    assert.equal(fillAfter.flag, true, 'fill flag is set on the cell');
+    assert.ok(Math.abs(fillAfter.height - fillBefore.target) < 1.5, 'stretched node matches the computed fill height');
+    await openRightMenu();
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 0, 'fill entry hidden while filling');
+    assert.equal(await page.getByRole('menuitem', { name: 'Fit to content height', exact: true }).count(), 1);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(size => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - size) < 1.5, fillBefore.size);
+    await page.keyboard.press('Control+Shift+z');
+    await waitForFlush();
+    await openRightMenu();
+    await page.getByRole('menuitem', { name: 'Fit to content height', exact: true }).click();
+    await page.waitForFunction(min => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - min) < 1.5, fillBefore.min);
+    await openRightMenu();
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 1, 'fill entry returns after release');
+    await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
+    await waitForFlush();
+    const filledSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
+    await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, filledSave);
+    await settle();
+    const fillPersisted = await page.evaluate(() => {
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
+      return leaves(frames[0].root).map(c => c.fill === true);
+    });
+    assert.deepEqual(fillPersisted, [false, true], 'fill flag persists through a workflow save/load round trip');
+    await waitForFlush();
+    await page.screenshot({ path: `test-results/fill-${vue ? 'nodes-2' : 'classic'}.png` });
+    console.log(`Fill cell height checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
+
     console.log(`${vue ? 'Nodes 2.0' : 'Classic'} interaction, history, persistence, geometry and prompt checks passed`);
   }
   if (process.env.EXPECT_INSECURE_ORIGIN === '1') {
