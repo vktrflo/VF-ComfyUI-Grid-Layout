@@ -21,6 +21,15 @@ function id() {
   return `layout-${Date.now().toString(36)}-${++fallbackId}-${Math.random().toString(36).slice(2)}`;
 }
 const clone = value => JSON.parse(JSON.stringify(value));
+
+export function normalizeColor(value) {
+  if (typeof value !== 'string') return undefined;
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
+  if (!match) return undefined;
+  const hex = match[1].length === 3 ? [...match[1]].map(c => c + c).join('') : match[1];
+  return `#${hex.toLowerCase()}`;
+}
+
 export const createCell = (label = 'Cell') => ({ id: id(), label, nodes: [] });
 export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Layout', pos: [...pos], size: [620, 500], root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
@@ -49,6 +58,7 @@ export function splitCell(frame, cellId, axis) {
   const first = createCell(cell.label), second = createCell('Cell');
   first.nodes = cell.nodes;
   delete cell.nodes;
+  if (cell.color) { first.color = cell.color; delete cell.color; }
   Object.assign(cell, { axis, ratios: [0.5, 0.5], children: [first, second] });
 }
 
@@ -69,7 +79,9 @@ export function gridCell(frame, cellId, rows, columns) {
   delete cell.nodes;
   if (rows === 1) Object.assign(cell, makeRow(), { id: cellId });
   else Object.assign(cell, { axis: 'y', ratios: Array(rows).fill(1 / rows), children: Array.from({ length: rows }, makeRow) });
-  leaves(cell)[0].nodes = nodes;
+  const first = leaves(cell)[0];
+  first.nodes = nodes;
+  if (cell.color) { first.color = cell.color; delete cell.color; }
 }
 
 export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity) {
@@ -251,13 +263,18 @@ export function validateFrame(value, freshIds = false, empty = false) {
     } else {
       if (!Array.isArray(cell.nodes)) throw new Error('Invalid cell membership.');
       result.nodes = empty ? [] : [...new Set(cell.nodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
+      const color = normalizeColor(cell.color);
+      if (color) result.color = color;
     }
     return result;
   }
   if (typeof value.id !== 'string') throw new Error('Invalid layout ID.');
   const root = read(value.root, 0);
   if (leaves(root).length > 256) throw new Error('A layout supports up to 256 cells.');
-  return { id: freshIds ? id() : value.id, label: String(value.label ?? 'Layout').slice(0, 120), pos: [...value.pos], size: [...value.size], root };
+  const result = { id: freshIds ? id() : value.id, label: String(value.label ?? 'Layout').slice(0, 120), pos: [...value.pos], size: [...value.size], root };
+  const color = normalizeColor(value.color);
+  if (color) result.color = color;
+  return result;
 }
 
 export function exportTemplate(frame) {
