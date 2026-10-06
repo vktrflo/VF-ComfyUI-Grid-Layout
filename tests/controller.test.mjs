@@ -67,7 +67,7 @@ test('adapter accounts for zoom/pan and classic title geometry', () => {
   assert.equal(typeof NodeAdapter, 'function');
   const adapter = new NodeAdapter(app, { classicTitle: 30 });
   assert.deepEqual(adapter.point({ clientX: 150, clientY: 180 }), [40, 40]);
-  assert.deepEqual(adapter.measure(node), { minWidth: 220, height: 100, titleHeight: 30 });
+  assert.deepEqual(adapter.measure(node), { minWidth: 220, height: 100, minHeight: 80, collapsed: false, titleHeight: 30 });
 });
 
 test('adapter uses ComfyUI tuple-based coordinate conversion', () => {

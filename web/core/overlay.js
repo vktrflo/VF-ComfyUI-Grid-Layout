@@ -194,6 +194,19 @@ export class LayoutOverlay {
     const frame = this.controller.frames.find(f => f.id === frameId);
     const cell = frame && findCell(frame.root, cellId);
     if (cell && normalizeColor(cell.color)) actions.push(['Reset header color', () => edit((targetFrame, targetCell) => { delete targetCell.color; })]);
+    if (cell?.fill === true) {
+      actions.push(['Fit to content height', () => edit((targetFrame, targetCell) => {
+        delete targetCell.fill;
+        const nodeId = targetCell.nodes[targetCell.nodes.length - 1];
+        const node = nodeId != null ? this.controller.graph.getNodeById(nodeId) : null;
+        if (node) {
+          const metric = this.controller.adapter.measure(node);
+          this.controller.adapter.apply(node, { x: node.pos[0], y: node.pos[1], width: node.size[0], height: metric.minHeight });
+        }
+      })]);
+    } else {
+      actions.push(['Fill cell height', () => edit((targetFrame, targetCell) => { targetCell.fill = true; })]);
+    }
     this.showMenu(event, actions);
   }
   frameMenu(event, frame) {

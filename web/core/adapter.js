@@ -25,6 +25,8 @@ export class NodeAdapter {
     return {
       minWidth: this.widths.get(node),
       height: collapsed ? 0 : Math.max(node.size[1] || 0, minimum[1] || 0),
+      minHeight: collapsed ? 0 : minimum[1] || node.size[1] || 0,
+      collapsed: Boolean(collapsed),
       // Both renderers retain LiteGraph's body-origin position convention.
       titleHeight: this.classicTitle,
     };
