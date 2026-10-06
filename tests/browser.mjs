@@ -467,6 +467,10 @@ try {
     const fillPersisted = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].fill === true);
     assert.equal(fillPersisted, true, 'frame fill persists through a workflow save/load round trip');
     await waitForFlush();
+    // Force a canvas repaint; screenshotting right after a layout change can
+    // otherwise capture a stale bitmap in headless runs.
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `test-results/fill-${vue ? 'nodes-2' : 'classic'}.png` });
     console.log(`Fill cell height checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
 
@@ -485,6 +489,8 @@ try {
     await settle();
     const lockedAfter = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos]);
     assert.deepEqual(lockedAfter, lockedPos, 'a locked frame ignores header drags');
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
     await page.screenshot({ path: `test-results/lock-${vue ? 'nodes-2' : 'classic'}.png` });
     await openFrameMenu();
     await page.getByRole('menuitem', { name: 'Unlock frame', exact: true }).click();

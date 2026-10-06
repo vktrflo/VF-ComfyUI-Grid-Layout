@@ -4,8 +4,13 @@ export class NodeAdapter {
     this.classicTitle = classicTitle;
     this.widths = new WeakMap();
     this.imposedWidths = new WeakMap();
-    this.bases = new WeakMap();
-    this.appliedHeights = new WeakMap();
+    this.bases = new Map();
+    this.appliedHeights = new Map();
+  }
+  // Fill tracking is keyed by node id, not object identity: undo/redo can
+  // swap node instances, and the tracked heights must survive that.
+  trackKey(node) {
+    return node.id != null ? `id:${node.id}` : node;
   }
   point(event) {
     if (this.app.clientPosToCanvasPos) {
@@ -27,9 +32,10 @@ export class NodeAdapter {
     // Track the intrinsic (pre-stretch) height: a fill stretch we applied is not
     // content, so the layout never reads its own stretch back as node size.
     const size = node.size[1] || 0;
-    const applied = this.appliedHeights.get(node);
-    if (applied === undefined || Math.abs(size - applied) > 0.5) this.bases.set(node, size);
-    const base = this.bases.get(node) ?? size;
+    const key = this.trackKey(node);
+    const applied = this.appliedHeights.get(key);
+    if (applied === undefined || Math.abs(size - applied) > 0.5) this.bases.set(key, size);
+    const base = this.bases.get(key) ?? size;
     return {
       minWidth: this.widths.get(node),
       height: collapsed ? 0 : Math.max(base, minimum[1] || 0),
@@ -41,6 +47,11 @@ export class NodeAdapter {
   }
   apply(node, placement) {
     node.pos = [placement.x, placement.y];
+    // Record the stretch before resizing: setSize can synchronously trigger
+    // a re-entrant measure (resize callbacks, re-render). Without the marker
+    // already in place, that measure would mistake our stretch for content
+    // and adopt it as the node's intrinsic height.
+    if (placement.fill) this.appliedHeights.set(this.trackKey(node), placement.height);
     // ComfyUI's setters update the shared layout store used by Nodes 2.0.
     // setSize also invokes custom nodes' resize callbacks in classic mode.
     if (!node.flags?.collapsed && (Math.abs(node.size[0] - placement.width) > 0.1 || Math.abs(node.size[1] - placement.height) > 0.1)) {
@@ -49,18 +60,18 @@ export class NodeAdapter {
       if (node.setSize) node.setSize(size);
       else { node.size = size; node.onResize?.(size); }
     }
-    if (placement.fill) this.appliedHeights.set(node, placement.height);
     node.setDirtyCanvas?.(true, true);
   }
   releaseFill(node) {
-    const applied = this.appliedHeights.get(node);
-    if (applied !== undefined) this.appliedHeights.delete(node);
+    const key = this.trackKey(node);
+    const applied = this.appliedHeights.get(key);
+    if (applied !== undefined) this.appliedHeights.delete(key);
     const current = node.size[1] || 0;
     // A size that changed since our stretch is foreign (the user's or the
     // node's own); leave it alone. Without a tracked stretch (e.g. after a
     // workflow reload), fall back to the node's natural minimum.
     if (applied !== undefined && Math.abs(current - applied) > 0.5) return;
-    const base = this.bases.get(node);
+    const base = this.bases.get(key);
     const minimum = node.computeSize?.() ?? [node.size[0], current];
     const height = applied !== undefined && base !== undefined ? base : minimum[1] || current;
     if (node.flags?.collapsed || Math.abs(current - height) <= 0.5) return;

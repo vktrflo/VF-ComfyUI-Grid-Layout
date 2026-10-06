@@ -134,7 +134,9 @@ test('repeated layouts are idempotent, including after re-measurement', () => {
   assert.equal(third.placements.find(p => p.nodeId === 'short').height, stretched, 'no feedback growth');
 });
 
+let fakeId = 0;
 const fakeNode = (width, height, minHeight) => ({
+  id: `fake-${++fakeId}`,
   pos: [0, 0], size: [width, height], flags: {},
   computeSize: () => [width, minHeight],
 });
@@ -170,4 +172,18 @@ test('releaseFill restores the base, respects foreign changes, and falls back to
   adapter.measure(reloaded);
   adapter.releaseFill(reloaded);
   assert.equal(reloaded.size[1], 80, 'no tracked stretch -> falls back to the natural minimum');
+});
+
+test('tracking survives node instance swaps (undo/redo restores fresh objects)', () => {
+  const adapter = new NodeAdapter({});
+  const first = fakeNode(200, 100, 80);
+  adapter.measure(first);
+  adapter.apply(first, { x: 0, y: 0, width: 200, height: 300, fill: true });
+  // Undo/redo re-creates the node object with the same id, carrying the
+  // stretched size baked into the restored state.
+  const second = fakeNode(200, 300, 80);
+  second.id = first.id;
+  assert.equal(adapter.measure(second).height, 100, 'the intrinsic base survives the swap');
+  adapter.releaseFill(second);
+  assert.equal(second.size[1], 100, 'release still reverts to the pre-stretch height');
 });
