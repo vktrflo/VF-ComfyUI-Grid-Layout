@@ -284,13 +284,17 @@ git commit -m "Render and edit customizable header colors"
 
 **Step 2: Run the suite:**
 - Ensure Playwright: `npm install --no-save playwright` in the repo (chromium binaries are already in the Playwright browser store under `%LOCALAPPDATA%\ms-playwright`; only run `npx playwright install chromium` if the module reports a missing browser).
-- Start the dedicated browser-test server — the SMALL_DESKTOP install (ComfyUI 0.39.0 / frontend 1.53.10, the exact verified pair; port 8197 is currently free), CPU mode, isolated base directory:
+- Start the dedicated browser-test server — the SMALL_DESKTOP install (ComfyUI 0.39.0 / frontend 1.53.10, the exact verified pair), CPU mode, isolating only input/output/temp/user in `.test-comfy/`:
 
 ```bash
-cd /e/comfyui_instances/SMALL_DESKTOP && python start_comfyui.py --port 8197 --listen 127.0.0.1 --no-launch --cpu -- --base-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy
+cd /e/comfyui_instances/SMALL_DESKTOP/ComfyUI && env -u PYTHONPATH -u PYTHONHOME ./.venv/Scripts/python.exe main.py --listen 127.0.0.1 --port 8197 --cpu \
+  --input-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/input \
+  --output-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/output \
+  --temp-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/temp \
+  --user-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/user
 ```
 
-  Run it as a background process; the launcher frees the port if occupied. Health-check `http://127.0.0.1:8197/system_stats` before the suite (CPU startup with the full custom-node set takes a while).
+  Two dead ends discovered while pinning this: the `start_comfyui.py` launcher forwards its `--` separator to main.py (argparse failure), and `--base-directory` requires `<base>/custom_nodes` to exist (FileNotFoundError otherwise) — hence the four explicit directory overrides. Run it as a background process; health-check `http://127.0.0.1:8197/system_stats` before the suite (CPU startup with the full custom-node set takes ~1–2 min).
 - Run `COMFYUI_URL='http://127.0.0.1:8197' npm run test:browser`; expected: both "Classic" and "Nodes 2.0" success logs, no browser errors, screenshots in `test-results/`.
 
 **Step 3: Commit**

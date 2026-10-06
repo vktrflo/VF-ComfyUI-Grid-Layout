@@ -37,7 +37,8 @@ Rejected alternatives:
 
 ## Rendering
 
-- `contrastColor(hex)` (new export in `web/core/overlay.js`): perceived luminance `(0.299r + 0.587g + 0.114b) / 255`; luminance > 0.6 → text `#101418`, else `#f4f6f7`.
+- `contrastColor(hex)` (new export in `web/core/overlay.js`): selects whichever of the two label colors (`#101418`, `#f4f6f7`) has the **higher WCAG contrast ratio** against the background, using sRGB relative luminance (per-channel 0.03928 / 12.92 branch + `((v + 0.055) / 1.055) ** 2.4`, weights 0.2126 / 0.7152 / 0.0722) and the standard `(L+0.05)/(D+0.05)` ratio.
+  **Amended 2026-10-06 after code review**: the originally specified single BT601 luma threshold (`(0.299r + 0.587g + 0.114b) / 255 > 0.6`) misclassified saturated colors — e.g. `#00ff00` selected the light label at 1.27:1 contrast where the dark label gives 13.5:1; over a 16-level RGB cube it chose the worse label for 984 colors. Direct comparison of the two candidates is never worse for any input (worst case ≈ 4.1:1 vs ≈ 3.0:1 for the best single threshold).
 - In `LayoutOverlay.render()`:
   - frame header: `normalizeColor(frame.color)`;
   - cell header: `normalizeColor(cell.color) ?? normalizeColor(frame.color)`;
@@ -67,7 +68,7 @@ Unit — new `tests/color.test.mjs` (run: `npm test`):
 - `validateFrame`: frame + nested-cell colors round-trip; invalid values dropped without throwing; absent stays absent.
 - `exportTemplate` / `importTemplate`: colors preserved (frame + cells) across a JSON round trip; fresh IDs unaffected.
 - `splitCell` / `gridCell`: color migrates to the first leaf.
-- `contrastColor`: `#ffffff` → `#101418`; `#000000` → `#f4f6f7`; `#70d8be` → `#101418`; `#20282c` → `#f4f6f7`.
+- `contrastColor`: `#ffffff` → `#101418`; `#000000` → `#f4f6f7`; `#70d8be` → `#101418`; `#20282c` → `#f4f6f7`; plus saturated-color regression pins for the amended rule — `#00ff00` → `#101418`, `#999999` → `#101418`, `#ff6600` → `#101418`.
 
 Browser — extend `tests/browser.mjs` (runs in both classic and Nodes 2.0):
 
