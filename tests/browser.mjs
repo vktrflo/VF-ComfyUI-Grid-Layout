@@ -300,15 +300,16 @@ try {
 
     // Header colors: frame color covers the frame bar and all cell bars; per-cell override; undo/redo; persistence; reset.
     const defaultHeader = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor);
+    const defaultLabel = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color);
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    const swatch = await page.locator('.clt-dialog input[type="color"]').evaluate(el => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    const swatch = await page.locator('.clt-dialog input[name="color"]').evaluate(el => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
     assert.ok(swatch.w >= 140 && swatch.h >= 36, 'color swatch is a large rectangle');
     const titleFont = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).fontFamily);
     assert.ok(titleFont.includes('Inter') && !titleFont.includes('Consolas'), 'frame title uses the ComfyUI font stack');
     await page.screenshot({ path: `test-results/dialog-${vue ? 'nodes-2' : 'classic'}.png` });
-    await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
+    await page.locator('.clt-dialog input[name="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
     await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === 'rgb(112, 216, 190)');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color), 'rgb(16, 20, 24)', 'frame label switches to dark contrast text');
@@ -316,13 +317,13 @@ try {
     assert.ok(inherited.length >= 2 && inherited.every(color => color === 'rgb(112, 216, 190)'), 'all cell headers inherit the frame color');
 
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry hidden before an own color is set');
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    assert.equal(await page.locator('.clt-dialog input[type="color"]').inputValue(), '#70d8be', 'cell dialog prefills the inherited frame color');
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'cell reset entry hidden before an own color is set');
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'cell dialog prefills the inherited frame color');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    await page.locator('.clt-dialog input[name="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
     await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color), 'rgb(244, 246, 247)', 'overridden cell label uses light contrast text');
@@ -330,8 +331,8 @@ try {
     assert.ok(siblings.every(color => color === 'rgb(112, 216, 190)'), 'siblings keep the frame color');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor), 'rgb(112, 216, 190)', 'frame bar unchanged by cell override');
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    assert.equal(await page.locator('.clt-dialog input[type="color"]').inputValue(), '#70d8be', 'frame dialog prefills the current frame color');
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'frame dialog prefills the current frame color');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.screenshot({ path: `test-results/colors-${vue ? 'nodes-2' : 'classic'}.png` });
 
@@ -352,16 +353,110 @@ try {
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
 
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(112, 216, 190)');
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(defaultBg => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === defaultBg, defaultHeader);
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry gone after reset');
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'frame reset entry gone after reset');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry gone after reset');
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'cell reset entry gone after reset');
+    await page.keyboard.press('Escape');
+
+    // Header configuration: background + text color + font size, inherited by cells, per-cell overrides, reset.
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#20282c', 'panel prefills the default background');
+    assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), true, 'text color defaults to auto');
+    assert.equal(await page.locator('.clt-dialog input[name="textColor"]').inputValue(), '#f4f6f7', 'auto swatch shows the computed contrast color');
+    assert.equal(await page.locator('.clt-dialog input[name="fontSize"]').inputValue(), '', 'size stays blank when unset');
+    await page.locator('.clt-dialog input[name="color"]').evaluate(el => { el.value = '#70d8be'; });
+    await page.locator('.clt-dialog input[name="auto"]').uncheck();
+    assert.equal(await page.locator('.clt-dialog input[name="textColor"]').isEnabled(), true, 'unchecking auto enables the text swatch');
+    await page.locator('.clt-dialog input[name="textColor"]').evaluate(el => { el.value = '#112233'; });
+    await page.locator('.clt-dialog input[name="fontSize"]').fill('18');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === 'rgb(112, 216, 190)');
+    const headerConfig = await page.evaluate(() => {
+      const frame = document.querySelector('.clt-frame-header');
+      return {
+        frame: {
+          background: getComputedStyle(frame).backgroundColor,
+          size: getComputedStyle(frame).fontSize,
+          text: getComputedStyle(frame.querySelector('.clt-label')).color,
+        },
+        cells: [...document.querySelectorAll('.clt-cell-header')].map(el => ({
+          background: getComputedStyle(el).backgroundColor,
+          size: getComputedStyle(el).fontSize,
+          text: getComputedStyle(el.querySelector('.clt-label')).color,
+        })),
+      };
+    });
+    assert.deepEqual(headerConfig.frame, { background: 'rgb(112, 216, 190)', size: '18px', text: 'rgb(17, 34, 51)' }, 'frame header applies all three fields');
+    assert.ok(headerConfig.cells.length >= 2 && headerConfig.cells.every(c => c.background === 'rgb(112, 216, 190)' && c.size === '18px' && c.text === 'rgb(17, 34, 51)'), 'cell headers inherit background, text color, and font size');
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `test-results/header-config-${vue ? 'nodes-2' : 'classic'}.png` });
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'cell panel prefills the inherited background');
+    assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), true, 'cell text color has no own pin yet');
+    assert.equal(await page.locator('.clt-dialog input[name="textColor"]').inputValue(), '#112233', 'cell panel shows the inherited text color');
+    await page.locator('.clt-dialog input[name="fontSize"]').fill('11');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '11px');
+    const overridden = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].map(el => getComputedStyle(el).fontSize));
+    assert.ok(overridden[0] === '11px' && overridden.slice(1).every(s => s === '18px'), 'cell overrides only the size');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color), 'rgb(17, 34, 51)', 'text color stays inherited');
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    await page.locator('.clt-dialog input[name="auto"]').uncheck();
+    await page.locator('.clt-dialog input[name="textColor"]').evaluate(el => { el.value = '#ffffff'; });
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(255, 255, 255)');
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Header configuration…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), false, 'cell text color is pinned');
+    await page.locator('.clt-dialog input[name="auto"]').check();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(17, 34, 51)');
+
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(255, 255, 255)');
+    await page.keyboard.press('Control+Shift+z');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(17, 34, 51)');
+
+    const configSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
+    await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, configSave);
+    await settle();
+    const configPersisted = await page.evaluate(() => {
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
+      const cell = leaves(frames[0].root)[0];
+      return { frame: { textColor: frames[0].textColor, fontSize: frames[0].fontSize }, cellFontSize: cell.fontSize, hasCellText: 'textColor' in cell };
+    });
+    assert.equal(configPersisted.frame.textColor, '#112233', 'frame text color persists');
+    assert.equal(configPersisted.frame.fontSize, 18, 'frame font size persists');
+    assert.equal(configPersisted.cellFontSize, 11, 'cell font size persists');
+    assert.equal(configPersisted.hasCellText, false, 'cleared cell text pin stays absent');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '11px');
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '18px');
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
+    await page.waitForFunction(({ background, label }) => {
+      const frame = document.querySelector('.clt-frame-header');
+      const style = getComputedStyle(frame);
+      return style.backgroundColor === background && style.fontSize === '13px' && getComputedStyle(frame.querySelector('.clt-label')).color === label;
+    }, { background: defaultHeader, label: defaultLabel });
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'reset entry gone after clearing the configuration');
     await page.keyboard.press('Escape');
 
     // Fill cell height: the bottom node stretches flush with the cell's content floor.
