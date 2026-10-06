@@ -215,7 +215,7 @@ try {
     await page.getByRole('menuitem', { name: 'Create grid…' }).click();
     await page.getByLabel('Rows', { exact: true }).fill('2');
     await page.getByLabel('Columns', { exact: true }).fill('2');
-    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 5);
     await page.getByRole('button', { name: 'Cell options', exact: true }).last().click();
     await page.getByRole('menuitem', { name: 'Split into top / bottom' }).click();
@@ -303,8 +303,13 @@ try {
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
     assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
     await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
+    const swatch = await page.locator('.clt-dialog input[type="color"]').evaluate(el => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+    assert.ok(swatch.w >= 140 && swatch.h >= 36, 'color swatch is a large rectangle');
+    const titleFont = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).fontFamily);
+    assert.ok(titleFont.includes('Inter') && !titleFont.includes('Consolas'), 'frame title uses the ComfyUI font stack');
+    await page.screenshot({ path: `test-results/dialog-${vue ? 'nodes-2' : 'classic'}.png` });
     await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
-    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === 'rgb(112, 216, 190)');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color), 'rgb(16, 20, 24)', 'frame label switches to dark contrast text');
     const inherited = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].map(el => getComputedStyle(el).backgroundColor));
@@ -318,7 +323,7 @@ try {
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
     await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
     await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
-    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color), 'rgb(244, 246, 247)', 'overridden cell label uses light contrast text');
     const siblings = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].slice(1).map(el => getComputedStyle(el).backgroundColor));

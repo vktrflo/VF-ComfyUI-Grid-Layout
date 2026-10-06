@@ -1,7 +1,7 @@
 import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, KEY } from './layout.js';
 
 const STYLE = `
-.clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font:13px Consolas,monospace;color:var(--fg-color,#e4e4e7)}
+.clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
 .clt-plane{position:absolute;inset:0;transform-origin:0 0;pointer-events:none}
 .clt-frame,.clt-cell{position:absolute;box-sizing:border-box;pointer-events:none;border:1px solid #5d7e89;border-radius:5px}
 .clt-frame{border:2px solid #7197a5}
@@ -23,10 +23,10 @@ const STYLE = `
 .clt-resize-x{position:absolute;pointer-events:auto;touch-action:none;z-index:2}
 .clt-resize-x{right:-2px;top:36px;bottom:0;width:10px;cursor:ew-resize}
 .clt-resize-x:hover{background:#70d8be55}
-.clt-menu{position:fixed;z-index:10000;min-width:180px;padding:5px;background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:5px;box-shadow:0 4px 16px #0006;font:13px Consolas,monospace}
+.clt-menu{position:fixed;z-index:10000;min-width:180px;padding:5px;background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:5px;box-shadow:0 4px 16px #0006;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px}
 .clt-menu button{display:block;width:100%;text-align:left;padding:8px;border:0;background:none;color:inherit;cursor:pointer}.clt-menu button:hover{background:#345361}
-.clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:280px;font:14px Consolas,monospace}.clt-dialog::backdrop{background:#0007}
-.clt-dialog h3{margin:0 0 16px}.clt-dialog label{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:12px 0}.clt-dialog input{background:var(--comfy-input-bg,#111b20);color:inherit;padding:6px;border:1px solid #5d7e89;border-radius:3px;max-width:200px}.clt-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
+.clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:280px;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:14px}.clt-dialog::backdrop{background:#0007}
+.clt-dialog h3{margin:0 0 16px}.clt-dialog label{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:12px 0}.clt-dialog input{background:var(--comfy-input-bg,#111b20);color:inherit;padding:6px;border:1px solid #5d7e89;border-radius:3px;max-width:200px}.clt-dialog input[type=color]{width:160px;height:42px;padding:2px;border:1px solid #7197a5;border-radius:6px;cursor:pointer}.clt-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -145,7 +145,7 @@ export class LayoutOverlay {
     const footer = element('footer', '');
     const cancel = element('button', '', fields.length ? 'Cancel' : 'Close'); cancel.type = 'button'; cancel.onclick = () => dialog.close();
     footer.append(cancel);
-    if (fields.length) { const save = element('button', '', 'Apply'); save.type = 'submit'; footer.append(save); }
+    if (fields.length) { const save = element('button', '', 'OK'); save.type = 'submit'; footer.append(save); }
     form.append(footer); dialog.append(form); document.body.append(dialog);
     form.addEventListener('submit', e => {
       e.preventDefault();

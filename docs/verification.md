@@ -52,6 +52,11 @@ Browser-suite note: run the dedicated instance with `--disable-all-custom-nodes`
 - Added 🌀 to the frame header title bar (decorative `aria-hidden` element, separate from the editable label) and prefixed both canvas context-menu entries: `🌀 Add Layout Frame`, `🌀 Import Layout Template…`.
 - Checks (same dedicated 0.39.0 test server): `npm test` 39/0; browser suite green in both renderers with new assertions for the header emoji element and the raw-label rename prefill.
 
+## Dialog polish update (2026-10-06)
+
+- The header-color dialog's swatch is now a large rectangle (160x42, accent border, pointer cursor); the confirm button reads **OK** (Cancel unchanged) across the extension's dialogs; frame, cell, menu, and dialog text now uses the ComfyUI frontend font stack (`var(--font-inter, ...)`) instead of Consolas.
+- Checks (same dedicated 0.39.0 test server): `npm test` 46/0; browser suite green in both renderers — new assertions pin the swatch size (at least 140x36) and the Inter font family on frame titles, with release screenshots `test-results/dialog-classic.png` and `test-results/dialog-nodes-2.png`.
+
 ## Fill cell height update (v0.3.0)
 
 Version 0.3.0 adds per-cell height filling: **Fill cell height** in the cell "+" menu stretches the cell's bottom node flush with the cell's content floor — recomputed every layout from the node's natural minimum, so it tracks siblings elastically; **Fit to content height** releases it and snaps the node back to its measured minimum. Stored as `cell.fill` in the existing v1 metadata; travels through workflow saves and exported templates.
