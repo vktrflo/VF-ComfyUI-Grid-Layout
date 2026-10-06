@@ -458,7 +458,7 @@ try {
     await page.getByRole('menuitem', { name: 'Fit to content height', exact: true }).click();
     await page.waitForFunction(size => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - size) < 1.5, fillBefore.size);
     await openFrameMenu();
-    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 0, 'fill entry hidden while filling');
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 1, 'fill entry returns after release');
     await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
     await waitForFlush();
     const filledSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
