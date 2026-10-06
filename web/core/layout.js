@@ -30,6 +30,12 @@ export function normalizeColor(value) {
   return `#${hex.toLowerCase()}`;
 }
 
+export function normalizeFontSize(value) {
+  const size = Number(value);
+  if (!Number.isFinite(size)) return undefined;
+  return Math.min(24, Math.max(8, Math.round(size)));
+}
+
 export const createCell = (label = 'Cell') => ({ id: id(), label, nodes: [] });
 export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Layout', pos: [...pos], size: [620, 500], root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
@@ -49,6 +55,12 @@ function cellDepth(cell, cellId, depth = 0) {
   }
 }
 
+function carryHeaderConfig(target, source) {
+  for (const key of ['color', 'textColor', 'fontSize']) {
+    if (source[key] !== undefined) { target[key] = source[key]; delete source[key]; }
+  }
+}
+
 export function splitCell(frame, cellId, axis) {
   if (!['x', 'y'].includes(axis)) throw new Error('Choose a horizontal or vertical split.');
   const cell = findCell(frame.root, cellId);
@@ -58,7 +70,7 @@ export function splitCell(frame, cellId, axis) {
   const first = createCell(cell.label), second = createCell('Cell');
   first.nodes = cell.nodes;
   delete cell.nodes;
-  if (cell.color) { first.color = cell.color; delete cell.color; }
+  carryHeaderConfig(first, cell);
   Object.assign(cell, { axis, ratios: [0.5, 0.5], children: [first, second] });
 }
 
@@ -81,7 +93,7 @@ export function gridCell(frame, cellId, rows, columns) {
   else Object.assign(cell, { axis: 'y', ratios: Array(rows).fill(1 / rows), children: Array.from({ length: rows }, makeRow) });
   const first = leaves(cell)[0];
   first.nodes = nodes;
-  if (cell.color) { first.color = cell.color; delete cell.color; }
+  carryHeaderConfig(first, cell);
 }
 
 export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity) {
@@ -273,6 +285,10 @@ export function validateFrame(value, freshIds = false, empty = false) {
       result.nodes = empty ? [] : [...new Set(cell.nodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
       const color = normalizeColor(cell.color);
       if (color) result.color = color;
+      const textColor = normalizeColor(cell.textColor);
+      if (textColor) result.textColor = textColor;
+      const fontSize = normalizeFontSize(cell.fontSize);
+      if (fontSize !== undefined) result.fontSize = fontSize;
     }
     return result;
   }
@@ -284,6 +300,10 @@ export function validateFrame(value, freshIds = false, empty = false) {
   if (color) result.color = color;
   if (value.fill === true) result.fill = true;
   if (value.lock === true) result.lock = true;
+  const textColor = normalizeColor(value.textColor);
+  if (textColor) result.textColor = textColor;
+  const fontSize = normalizeFontSize(value.fontSize);
+  if (fontSize !== undefined) result.fontSize = fontSize;
   return result;
 }
 
