@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font:13px Consolas,monospace;color:var(--fg-color,#e4e4e7)}
@@ -7,10 +7,11 @@ const STYLE = `
 .clt-frame{border:2px solid #7197a5}
 .clt-frame-header{position:absolute;left:0;right:0;top:0;height:34px;background:var(--comfy-menu-bg,#20282c);display:flex;align-items:center;gap:8px;padding:0 8px;pointer-events:auto;cursor:move;border-radius:3px 3px 0 0;user-select:none}
 .clt-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:inherit;background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
+.clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
 .clt-button:hover,.clt-button:focus-visible{background:#345361;border-color:#7197a5;outline:none}
+.clt-custom-bg .clt-button:hover,.clt-custom-bg .clt-button:focus-visible{background:rgba(128,128,128,.3);border-color:transparent}
 .clt-hint{position:absolute;top:48px;left:12px;right:12px;color:#8ea1a9;font-size:12px;text-align:center;pointer-events:none}
 .clt-cell.clt-target{border:2px solid #70d8be;box-shadow:inset 0 0 0 2px #70d8be33}
 .clt-divider{position:absolute;pointer-events:auto;touch-action:none}
@@ -27,6 +28,18 @@ const STYLE = `
 .clt-dialog h3{margin:0 0 16px}.clt-dialog label{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:12px 0}.clt-dialog input{background:var(--comfy-input-bg,#111b20);color:inherit;padding:6px;border:1px solid #5d7e89;border-radius:3px;max-width:200px}.clt-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
 `;
 
+const HEADER_TEXT_DARK = '#101418';
+const HEADER_TEXT_LIGHT = '#f4f6f7';
+export function contrastColor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const luminance = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return luminance > 0.6 ? HEADER_TEXT_DARK : HEADER_TEXT_LIGHT;
+}
+function applyHeaderColor(el, color) {
+  el.classList.add('clt-custom-bg');
+  el.style.background = color;
+  el.style.color = contrastColor(color);
+}
 function element(tag, className, text) {
   const el = document.createElement(tag);
   el.className = className;
@@ -151,28 +164,47 @@ export class LayoutOverlay {
       if (!cell) throw new Error('This cell is no longer available.');
       action(frame, cell);
     });
-    this.showMenu(event, [
+    const actions = [
       ['Delete cell (keep nodes)', () => edit(frame => deleteCell(frame, cellId))],
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x'))],
       ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y'))],
       ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns)))],
       ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
-    ]);
+      ['Header color…', () => {
+        const frame = this.controller.frames.find(f => f.id === frameId);
+        const cell = frame && findCell(frame.root, cellId);
+        const current = (cell && (normalizeColor(cell.color) ?? normalizeColor(frame.color))) ?? '#20282c';
+        this.dialog('Header color', [{ name: 'color', label: 'Header color', type: 'color', value: current }], ({ color }) => edit((targetFrame, targetCell) => {
+          const next = normalizeColor(color);
+          if (next) targetCell.color = next; else delete targetCell.color;
+        }));
+      }],
+    ];
+    const frame = this.controller.frames.find(f => f.id === frameId);
+    const cell = frame && findCell(frame.root, cellId);
+    if (cell && normalizeColor(cell.color)) actions.push(['Reset header color', () => edit((targetFrame, targetCell) => { delete targetCell.color; })]);
+    this.showMenu(event, actions);
   }
   frameMenu(event, frame) {
     frame = this.controller.frames.find(f => f.id === frame.id);
     if (!frame) return;
-    this.showMenu(event, [
+    const actions = [
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
       ['Rename layout…', () => this.dialog('Rename layout', [{ name: 'label', label: 'Layout name', value: frame.label }], ({ label }) => this.controller.edit(() => { frame.label = label; }))],
-      ['Export empty template', () => {
+      ['Header color…', () => this.dialog('Header color', [{ name: 'color', label: 'Header color', type: 'color', value: normalizeColor(frame.color) ?? '#20282c' }], ({ color }) => this.controller.edit(() => {
+        const next = normalizeColor(color);
+        if (next) frame.color = next; else delete frame.color;
+      }))],
+    ];
+    if (normalizeColor(frame.color)) actions.push(['Reset header color', () => this.controller.edit(() => { delete frame.color; })]);
+    actions.push(['Export empty template', () => {
         const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
         link.download = `${frame.label.replace(/[^a-z0-9_-]/gi, '-') || 'layout'}.layout.json`; link.click();
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-      }],
-      ['Remove layout (keep nodes)', () => this.controller.remove(frame.id)],
-    ]);
+      }]);
+    actions.push(['Remove layout (keep nodes)', () => this.controller.remove(frame.id)]);
+    this.showMenu(event, actions);
   }
   importAt(pos) {
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json';
@@ -296,6 +328,8 @@ export class LayoutOverlay {
       const el = element('section', 'clt-frame'); el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
       rectStyle(el, [...frame.pos, ...frame.size]);
       const header = element('div', 'clt-frame-header');
+      const frameColor = normalizeColor(frame.color);
+      if (frameColor) applyHeaderColor(header, frameColor);
       header.append(this.title(frame.label, frame.id));
       header.append(button('Layout options', e => this.frameMenu(e, frame), '•••'));
       header.onpointerdown = e => this.startDrag(e, 'move', { frame, pos: [...frame.pos] });
@@ -312,6 +346,8 @@ export class LayoutOverlay {
         const cellEl = element('div', `clt-cell${this.hover === cell.id ? ' clt-target' : ''}`);
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
         const cellHeader = element('div', 'clt-cell-header');
+        const cellColor = normalizeColor(cell.color) ?? normalizeColor(frame.color);
+        if (cellColor) applyHeaderColor(cellHeader, cellColor);
         cellHeader.append(this.title(cell.label, frame.id, cell.id));
         cellHeader.append(button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '+'));
         cellEl.append(cellHeader);

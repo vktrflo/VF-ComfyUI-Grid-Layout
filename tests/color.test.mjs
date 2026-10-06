@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as engine from '../web/core/layout.js';
+import { contrastColor } from '../web/core/overlay.js';
 
 test('normalizeColor normalizes valid forms and drops junk without throwing', () => {
   assert.equal(engine.normalizeColor('#A1B2C3'), '#a1b2c3');
@@ -74,4 +75,11 @@ test('deleting a cell keeps survivor colors and drops the deleted color', () => 
   engine.deleteCell(frame, doomed.id);
   assert.equal(frame.root, keeper);
   assert.equal(frame.root.color, '#aabbcc');
+});
+
+test('contrastColor picks readable label text for header colors', () => {
+  assert.equal(contrastColor('#ffffff'), '#101418');
+  assert.equal(contrastColor('#000000'), '#f4f6f7');
+  assert.equal(contrastColor('#70d8be'), '#101418');
+  assert.equal(contrastColor('#20282c'), '#f4f6f7');
 });
