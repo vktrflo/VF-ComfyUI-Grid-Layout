@@ -83,3 +83,9 @@ test('contrastColor picks readable label text for header colors', () => {
   assert.equal(contrastColor('#70d8be'), '#101418');
   assert.equal(contrastColor('#20282c'), '#f4f6f7');
 });
+
+test('contrastColor picks the higher-contrast label for saturated colors', () => {
+  assert.equal(contrastColor('#00ff00'), '#101418');
+  assert.equal(contrastColor('#999999'), '#101418');
+  assert.equal(contrastColor('#ff6600'), '#101418');
+});

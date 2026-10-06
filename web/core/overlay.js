@@ -30,10 +30,20 @@ const STYLE = `
 
 const HEADER_TEXT_DARK = '#101418';
 const HEADER_TEXT_LIGHT = '#f4f6f7';
-export function contrastColor(hex) {
+function luminance(hex) {
   const n = parseInt(hex.slice(1), 16);
-  const luminance = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  return luminance > 0.6 ? HEADER_TEXT_DARK : HEADER_TEXT_LIGHT;
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(value => {
+    const channel = value / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(first, second) {
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+export function contrastColor(hex) {
+  const background = luminance(hex);
+  return contrast(background, luminance(HEADER_TEXT_DARK)) >= contrast(background, luminance(HEADER_TEXT_LIGHT)) ? HEADER_TEXT_DARK : HEADER_TEXT_LIGHT;
 }
 function applyHeaderColor(el, color) {
   el.classList.add('clt-custom-bg');
