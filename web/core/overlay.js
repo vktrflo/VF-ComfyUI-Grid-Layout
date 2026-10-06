@@ -182,6 +182,14 @@ export class LayoutOverlay {
     dialog.addEventListener('close', () => dialog.remove(), { once: true });
     dialog.showModal();
   }
+  headerConfigDialog(defaults, submit) {
+    this.dialog('Header configuration', [
+      { name: 'color', label: 'Background color', type: 'color', value: defaults.color },
+      { name: 'auto', label: 'Auto (contrast)', type: 'checkbox', value: defaults.auto, onChange: (input, inputs) => { inputs.textColor.disabled = input.checked; } },
+      { name: 'textColor', label: 'Text color', type: 'color', value: defaults.textColor },
+      { name: 'fontSize', label: 'Font size (px, empty = inherit)', type: 'number', value: defaults.fontSize, optional: true, min: 8, max: 24 },
+    ], submit);
+  }
   closeMenu() { this.menu?.remove(); this.menu = null; }
   showMenu(event, actions) {
     this.closeMenu();
@@ -208,19 +216,26 @@ export class LayoutOverlay {
       ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y'))],
       ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns)))],
       ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
-      ['Header color…', () => {
+      ['Header configuration…', () => {
         const frame = this.controller.frames.find(f => f.id === frameId);
         const cell = frame && findCell(frame.root, cellId);
-        const current = (cell && (normalizeColor(cell.color) ?? normalizeColor(frame.color))) ?? '#20282c';
-        this.dialog('Header color', [{ name: 'color', label: 'Header color', type: 'color', value: current }], ({ color }) => edit((targetFrame, targetCell) => {
-          const next = normalizeColor(color);
-          if (next) targetCell.color = next; else delete targetCell.color;
-        }));
+        if (!cell) return;
+        const color = normalizeColor(cell.color) ?? normalizeColor(frame.color) ?? '#20282c';
+        this.headerConfigDialog({
+          color,
+          textColor: normalizeColor(cell.textColor) ?? normalizeColor(frame.textColor) ?? contrastColor(color),
+          auto: !normalizeColor(cell.textColor),
+          fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
+        }, values => edit((targetFrame, targetCell) => applyHeaderConfig(targetCell, values)));
       }],
     ];
     const frame = this.controller.frames.find(f => f.id === frameId);
     const cell = frame && findCell(frame.root, cellId);
-    if (cell && normalizeColor(cell.color)) actions.push(['Reset header color', () => edit((targetFrame, targetCell) => { delete targetCell.color; })]);
+    if (cell && (normalizeColor(cell.color) || normalizeColor(cell.textColor) || normalizeFontSize(cell.fontSize) !== undefined)) {
+      actions.push(['Reset header configuration', () => edit((targetFrame, targetCell) => {
+        delete targetCell.color; delete targetCell.textColor; delete targetCell.fontSize;
+      })]);
+    }
     this.showMenu(event, actions);
   }
   frameMenu(event, frame) {
@@ -229,12 +244,21 @@ export class LayoutOverlay {
     const actions = [
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
       ['Rename layout…', () => this.dialog('Rename layout', [{ name: 'label', label: 'Layout name', value: frame.label }], ({ label }) => this.controller.edit(() => { frame.label = label; }))],
-      ['Header color…', () => this.dialog('Header color', [{ name: 'color', label: 'Header color', type: 'color', value: normalizeColor(frame.color) ?? '#20282c' }], ({ color }) => this.controller.edit(() => {
-        const next = normalizeColor(color);
-        if (next) frame.color = next; else delete frame.color;
-      }))],
+      ['Header configuration…', () => {
+        const color = normalizeColor(frame.color) ?? '#20282c';
+        this.headerConfigDialog({
+          color,
+          textColor: normalizeColor(frame.textColor) ?? contrastColor(color),
+          auto: !normalizeColor(frame.textColor),
+          fontSize: normalizeFontSize(frame.fontSize),
+        }, values => this.controller.edit(() => applyHeaderConfig(frame, values)));
+      }],
     ];
-    if (normalizeColor(frame.color)) actions.push(['Reset header color', () => this.controller.edit(() => { delete frame.color; })]);
+    if (normalizeColor(frame.color) || normalizeColor(frame.textColor) || normalizeFontSize(frame.fontSize) !== undefined) {
+      actions.push(['Reset header configuration', () => this.controller.edit(() => {
+        delete frame.color; delete frame.textColor; delete frame.fontSize;
+      })]);
+    }
     if (frame.fill === true) {
       actions.push(['Fit to content height', () => this.controller.edit(() => {
         delete frame.fill;
