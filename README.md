@@ -12,7 +12,7 @@ This is a **frontend extension** installed as a custom-node package. It adds can
 
 No extra Python packages, frontend build, or model downloads are required.
 
-When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars.
+When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars. Version 0.3.0 adds fill-cell-height: a cell's bottom node can stretch to fill the cell.
 
 ## Examples: workflow versus template
 
@@ -30,6 +30,7 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 - Click **•••** on the frame → **Add bottom row** to append an empty full-width cell. Existing cells keep their heights and attached nodes; the frame extends downward. Split the new row into columns if needed.
 - The same **•••** menu can rename, export an empty template, or remove the frame while retaining nodes and connections.
 - Click **•••** → **Header color…** to color the frame header bar and all its cell header bars; use a cell's **+** menu to override or reset that one cell. Colors are saved with the workflow and included in exported templates.
+- Click a cell's **+** menu → **Fill cell height** to stretch the cell's bottom node flush with the cell's content floor (useful when a neighboring column runs taller); **Fit to content height** releases it and snaps the node back to its natural height. A filled cell owns its node heights — manual height drags are overridden while filling is on.
 - Right-click the canvas → **🌀 Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
 - Use ComfyUI's normal **Ctrl+Z / Ctrl+Shift+Z** shortcuts for undo/redo.
 

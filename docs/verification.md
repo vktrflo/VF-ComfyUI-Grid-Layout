@@ -51,3 +51,13 @@ Browser-suite note: run the dedicated instance with `--disable-all-custom-nodes`
 - Renamed the project to `VF-ComfyUI-Layout-Templates`: repository folder, npm/pyproject package names, installable ZIP name and inner folder, extension registration name (`VF.ComfyUI.LayoutTemplates`), browser-test asset prefix, and documentation references. The workflow metadata key `comfyui_layout_templates` is intentionally unchanged so existing saved workflows and templates keep loading.
 - Added 🌀 to the frame header title bar (decorative `aria-hidden` element, separate from the editable label) and prefixed both canvas context-menu entries: `🌀 Add Layout Frame`, `🌀 Import Layout Template…`.
 - Checks (same dedicated 0.39.0 test server): `npm test` 39/0; browser suite green in both renderers with new assertions for the header emoji element and the raw-label rename prefill.
+
+## Fill cell height update (v0.3.0)
+
+Version 0.3.0 adds per-cell height filling: **Fill cell height** in the cell "+" menu stretches the cell's bottom node flush with the cell's content floor — recomputed every layout from the node's natural minimum, so it tracks siblings elastically; **Fit to content height** releases it and snaps the node back to its measured minimum. Stored as `cell.fill` in the existing v1 metadata; travels through workflow saves and exported templates.
+
+Automated checks (2026-10-06; same dedicated 0.39.0 / frontend 1.53.10 test server on port 8197 with custom nodes disabled):
+
+- Unit: 46 tests pass (`npm test`) — 7 new fill tests cover validation keep/drop, split/grid migration, template round-trip, flush-to-floor geometry (single node, and bottom-node-only among several), no-slack and collapsed/empty no-ops, and idempotence including after re-measurement of the stretched height.
+- Browser: both classic and Nodes 2.0 suites pass, including the fill scenario — a taller left column leaves the right cell with spare height; enabling fill stretches the right node flush to the cell floor (placement geometry and applied node size verified), menu labels switch between "Fill cell height" and "Fit to content height", undo/redo round-trips, release snaps the node back to its measured minimum, and the flag plus stretch survive a workflow save/load round trip. Screenshots: `test-results/fill-classic.png`, `test-results/fill-nodes-2.png`.
+- Implementation notes: one existing adapter-shape assertion in `tests/controller.test.mjs` was updated for the new `minHeight`/`collapsed` metric fields (amended during execution; the plan expected no unit-test changes). The fill browser scenario deselects nodes before opening cell menus — ComfyUI's Selection Toolbox appears alongside dragged nodes and intercepted the first menu click (observed once, fixed in the suite).
