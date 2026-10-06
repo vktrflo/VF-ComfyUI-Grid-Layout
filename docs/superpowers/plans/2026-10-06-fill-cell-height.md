@@ -362,3 +362,4 @@ Implementation steps (as executed):
 3. `web/core/overlay.js` — cell-menu fill entries removed; frame menu gains the Fill/Fit pair; release runs `releaseFill` over every leaf's bottom node in one edit.
 4. `tests/fill.test.mjs` — rewritten for frame-level flags (same flush numbers) with a lone-cell anchor test and adapter base/release tests.
 5. `tests/browser.mjs` — fill scenario drives the frame ••• menu (`openFrameMenu` helper), asserts the tall anchor column is untouched, release returns to the pre-fill height, and `frames[0].fill` persists through save/load.
+6. Post-review hardening (found by an instrumented browser probe, 2026-10-06): fill tracking keys by node id so ComfyUI's undo/redo node-instance swaps keep the intrinsic base; `apply()` records the applied stretch before `setSize` because resize callbacks can re-enter `measure`; the suite forces a canvas repaint before scenario screenshots (stale headless bitmaps).

@@ -59,8 +59,9 @@ Rejected alternatives:
 
 Behavior:
 
+- Tracking is keyed by **node id**, not object identity: ComfyUI's undo/redo can replace node instances (the restored object carries the stretched size), and the tracked heights must survive that.
 - `measure()` reports `height: max(base, computeSize minimum)` — so while a fill stretch is in place, the metric still describes the node's intrinsic height (no feedback: the layout never reads its own stretch back as content).
-- `apply()` records `appliedHeights` when the placement is marked `fill`.
+- `apply()` records `appliedHeights` **before** resizing — `setSize` can synchronously trigger a re-entrant measure, which would otherwise mistake the fresh stretch for content — when the placement is marked `fill`.
 - `releaseFill(node)`: reverts the node's height to its tracked base **only if its current height is still our applied stretch**; if the node changed since (user resize, node logic), it is left alone. When no applied stretch is known (e.g. after a workflow reload), the node is set to its natural minimum (computeSize height). Collapsed nodes are skipped.
 - Known limitation (documented): after a workflow reload, a persisted stretched height is indistinguishable from user content, so it becomes the new base — release then falls back to the natural minimum instead of the exact pre-fill height.
 
