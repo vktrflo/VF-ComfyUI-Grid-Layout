@@ -33,3 +33,15 @@ Thirty unit tests pass, including a geometry fixture extracted from the user's f
 Automatic-height update: 31 unit tests and both classic/Nodes 2.0 browser suites pass. Frame height shrinks and grows with content; stacked rows use their content heights rather than saved vertical ratios. Bottom/corner handles and row-height divider handles are absent. Diagonal width-handle drag preserves automatic height.
 
 Inline title editing: Browser scenarios pass in both renderers for frame/cell double-click, Enter save, blur save, Escape cancellation, and title undo/redo. All 31 unit tests also pass.
+
+## Header colors update (v0.2.0)
+
+Version 0.2.0 adds customizable header-bar colors: a per-frame color covering the frame header bar and all its cell header bars, with optional per-cell overrides, chosen from either menu with a native color picker. Label text switches between dark and light by measured WCAG contrast, and reset entries restore inheritance or the default theme look. Colors persist in workflow metadata and exported templates.
+
+Automated checks (2026-10-06; Windows, Node.js 26.7.0; dedicated ComfyUI 0.39.0 / frontend 1.53.10 test server on port 8197 with custom nodes disabled):
+
+- Unit: 39 tests pass (`npm test`), covering engine color normalization, validation keep/drop, template round-trips, split/grid migration, stray-color and deletion invariants, and contrast selection (direct WCAG comparison with saturated-color regression pins).
+- Browser: both classic and Nodes 2.0 suites pass, including the header-color scenario — frame color inherited by every cell header (dark label text), per-cell override with sibling/frame isolation (light label text), undo/redo, workflow save/load round-trip, conditional reset entries before/after setting, dialog prefills, and screenshots (`test-results/colors-classic.png`, `test-results/colors-nodes-2.png`).
+- Reviews: spec-compliance and code-quality reviews passed for all three implementation tasks; one review-driven improvement (replacing the single luma threshold with direct WCAG contrast comparison) was amended into the design spec and re-reviewed before release.
+
+Browser-suite note: run the dedicated instance with `--disable-all-custom-nodes`. On the test install, loading the full custom-node set (~600 frontend extensions) prevented the suite's canvas-menu step from surfacing the extension's menu entries; the minimal environment passes both renderers.

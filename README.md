@@ -12,7 +12,7 @@ This is a **frontend extension** installed as a custom-node package. It adds can
 
 No extra Python packages, frontend build, or model downloads are required.
 
-When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`).
+When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars.
 
 ## Examples: workflow versus template
 
@@ -29,6 +29,7 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 - Drag the layout header to move its nodes together. Frame and row heights automatically fit their content and shrink when content is removed. Empty cells retain a small drop area.
 - Click **•••** on the frame → **Add bottom row** to append an empty full-width cell. Existing cells keep their heights and attached nodes; the frame extends downward. Split the new row into columns if needed.
 - The same **•••** menu can rename, export an empty template, or remove the frame while retaining nodes and connections.
+- Click **•••** → **Header color…** to color the frame header bar and all its cell header bars; use a cell's **+** menu to override or reset that one cell. Colors are saved with the workflow and included in exported templates.
 - Right-click the canvas → **Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
 - Use ComfyUI's normal **Ctrl+Z / Ctrl+Shift+Z** shortcuts for undo/redo.
 
@@ -68,7 +69,7 @@ $env:COMFYUI_URL = 'http://127.0.0.1:8188'
 npm run test:browser
 ```
 
-If Playwright is already available elsewhere, set `PLAYWRIGHT_MODULE` to its module directory. Browser tests intercept the extension assets in an isolated browser context; they do not install the package or change an open browser session. They create test workflows and queue two model-free `EmptyImage → SaveImage` runs, writing `layout-test` images into that server's output folder. Use a dedicated test instance.
+If Playwright is already available elsewhere, set `PLAYWRIGHT_MODULE` to its module directory. Browser tests intercept the extension assets in an isolated browser context; they do not install the package or change an open browser session. They create test workflows and queue two model-free `EmptyImage → SaveImage` runs, writing `layout-test` images into that server's output folder. Use a dedicated test instance. Launch that dedicated instance with custom nodes disabled (for example, `--disable-all-custom-nodes`): with the full custom-node set loaded, the suite's canvas-menu step does not surface the extension's menu entries.
 
 Run `python tools/package.py` to create the installable ZIP in `dist/`. See `docs/verification.md` for the verification record and manual checks.
 
