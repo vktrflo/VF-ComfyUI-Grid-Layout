@@ -12,7 +12,7 @@ This is a **frontend extension** installed as a custom-node package. It adds can
 
 No extra Python packages, frontend build, or model downloads are required.
 
-When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars. Version 0.3.0 adds fill-cell-height: a cell's bottom node can stretch to fill the cell.
+When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars. Version 0.3.0 adds frame-level fill-cell-height (a frame's bottom nodes can stretch to fill their cells), a frame lock, and a header configuration panel (background, text color, font size).
 
 ## Examples: workflow versus template
 
@@ -29,7 +29,7 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 - Drag the layout header to move its nodes together. Frame and row heights automatically fit their content and shrink when content is removed. Empty cells retain a small drop area.
 - Click **•••** on the frame → **Add bottom row** to append an empty full-width cell. Existing cells keep their heights and attached nodes; the frame extends downward. Split the new row into columns if needed.
 - The same **•••** menu can rename, export an empty template, or remove the frame while retaining nodes and connections.
-- Click **•••** → **Header color…** to color the frame header bar and all its cell header bars; use a cell's **+** menu to override or reset that one cell. Colors are saved with the workflow and included in exported templates.
+- Click **•••** → **Header configuration…** to set the frame header's background color, text color (leave **Auto (contrast)** checked to keep the automatic dark/light pick), and font size for the frame title bar and all its cell header bars; use a cell's **+** menu to override any of the three for that one cell, and the reset entry to clear them. The configuration is saved with the workflow and included in exported templates.
 - Click **•••** on a frame → **Fill cell height** to stretch every cell's bottom node flush with its cell (short cells fill up to taller neighbors); **Fit to content height** returns the nodes to their pre-fill heights. A filled frame owns its node heights — manual height drags are overridden while filling is on.
 - Click **•••** on a frame → **Lock frame** to freeze its position and size — a 🔒 appears in its header; **Unlock frame** re-enables dragging. Locked frames ignore header, edge, and divider drags; menu commands still work.
 - Right-click the canvas → **🌀 Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
