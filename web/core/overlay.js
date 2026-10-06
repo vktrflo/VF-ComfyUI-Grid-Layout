@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, leaves, KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -194,19 +194,6 @@ export class LayoutOverlay {
     const frame = this.controller.frames.find(f => f.id === frameId);
     const cell = frame && findCell(frame.root, cellId);
     if (cell && normalizeColor(cell.color)) actions.push(['Reset header color', () => edit((targetFrame, targetCell) => { delete targetCell.color; })]);
-    if (cell?.fill === true) {
-      actions.push(['Fit to content height', () => edit((targetFrame, targetCell) => {
-        delete targetCell.fill;
-        const nodeId = targetCell.nodes[targetCell.nodes.length - 1];
-        const node = nodeId != null ? this.controller.graph.getNodeById(nodeId) : null;
-        if (node) {
-          const metric = this.controller.adapter.measure(node);
-          this.controller.adapter.apply(node, { x: node.pos[0], y: node.pos[1], width: node.size[0], height: metric.minHeight });
-        }
-      })]);
-    } else {
-      actions.push(['Fill cell height', () => edit((targetFrame, targetCell) => { targetCell.fill = true; })]);
-    }
     this.showMenu(event, actions);
   }
   frameMenu(event, frame) {
@@ -221,6 +208,18 @@ export class LayoutOverlay {
       }))],
     ];
     if (normalizeColor(frame.color)) actions.push(['Reset header color', () => this.controller.edit(() => { delete frame.color; })]);
+    if (frame.fill === true) {
+      actions.push(['Fit to content height', () => this.controller.edit(() => {
+        delete frame.fill;
+        for (const cell of leaves(frame.root)) {
+          const nodeId = cell.nodes[cell.nodes.length - 1];
+          const node = nodeId != null ? this.controller.graph.getNodeById(nodeId) : null;
+          if (node) this.controller.adapter.releaseFill(node);
+        }
+      })]);
+    } else {
+      actions.push(['Fill cell height', () => this.controller.edit(() => { frame.fill = true; })]);
+    }
     actions.push(['Export empty template', () => {
         const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob);

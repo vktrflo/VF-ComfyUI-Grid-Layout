@@ -59,7 +59,6 @@ export function splitCell(frame, cellId, axis) {
   first.nodes = cell.nodes;
   delete cell.nodes;
   if (cell.color) { first.color = cell.color; delete cell.color; }
-  if (cell.fill === true) { first.fill = true; delete cell.fill; }
   Object.assign(cell, { axis, ratios: [0.5, 0.5], children: [first, second] });
 }
 
@@ -83,7 +82,6 @@ export function gridCell(frame, cellId, rows, columns) {
   const first = leaves(cell)[0];
   first.nodes = nodes;
   if (cell.color) { first.color = cell.color; delete cell.color; }
-  if (cell.fill === true) { first.fill = true; delete cell.fill; }
 }
 
 export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity) {
@@ -191,9 +189,8 @@ export function layoutFrame(frame, metrics) {
     if (!cell.children) {
       cell.nodes = cell.nodes.filter(n => metrics.has(n));
       const nodes = cell.nodes.map(n => metrics.get(n));
-      const content = nodes.reduce((sum, n, index) => sum + n.titleHeight + (cell.fill === true && index === nodes.length - 1 ? n.minHeight : n.height), 0);
       size = [Math.max(160, ...nodes.map(n => n.minWidth)) + PAD * 2,
-        CELL_TITLE + PAD * 2 + Math.max(64, content + Math.max(0, nodes.length - 1) * GAP)];
+        CELL_TITLE + PAD * 2 + Math.max(64, nodes.reduce((h, n) => h + n.height + n.titleHeight, 0) + Math.max(0, nodes.length - 1) * GAP)];
     } else {
       const children = cell.children.map(minimum), weights = ratios(cell);
       const dim = cell.axis === 'x' ? 0 : 1, cross = 1 - dim;
@@ -219,13 +216,15 @@ export function layoutFrame(frame, metrics) {
       let y = rect[1] + CELL_TITLE + PAD;
       const last = cell.nodes.length - 1;
       const floor = rect[1] + rect[3] - PAD;
+      const filling = frame.fill === true;
       cell.nodes.forEach((nodeId, index) => {
         const metric = metrics.get(nodeId);
         let height = metric.height;
-        if (cell.fill === true && index === last && !metric.collapsed) {
-          height = Math.max(metric.minHeight, floor - y - metric.titleHeight);
-        }
-        placements.push({ nodeId, x: rect[0] + PAD, y: y + metric.titleHeight, width: rect[2] - PAD * 2, height });
+        const owned = filling && index === last && !metric.collapsed;
+        if (owned) height = Math.max(metric.minHeight, floor - y - metric.titleHeight);
+        const placement = { nodeId, x: rect[0] + PAD, y: y + metric.titleHeight, width: rect[2] - PAD * 2, height };
+        if (owned) placement.fill = true;
+        placements.push(placement);
         y += metric.titleHeight + height + GAP;
       });
       return;
@@ -274,7 +273,6 @@ export function validateFrame(value, freshIds = false, empty = false) {
       result.nodes = empty ? [] : [...new Set(cell.nodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
       const color = normalizeColor(cell.color);
       if (color) result.color = color;
-      if (cell.fill === true) result.fill = true;
     }
     return result;
   }
@@ -284,6 +282,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
   const result = { id: freshIds ? id() : value.id, label: String(value.label ?? 'Layout').slice(0, 120), pos: [...value.pos], size: [...value.size], root };
   const color = normalizeColor(value.color);
   if (color) result.color = color;
+  if (value.fill === true) result.fill = true;
   return result;
 }
 
