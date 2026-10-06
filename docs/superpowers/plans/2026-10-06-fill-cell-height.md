@@ -345,3 +345,8 @@ git commit -m "Verify fill cell height in the browser suite"
 - `npm test` — all unit tests green (39 existing + 7 new).
 - `COMFYUI_URL=… npm run test:browser` — both renderer passes green, `test-results/fill-*.png` written.
 - `git log --oneline` — one commit per task.
+
+## Execution deviations (inline run, 2026-10-06)
+
+1. **`tests/controller.test.mjs` adapter-shape assertion updated** — the plan expected "no unit-test changes" for Task 2; extending `measure()` with `minHeight`/`collapsed` broke the existing `deepEqual` fixture. The expected object now pins the full new metric shape (`minHeight: 80, collapsed: false`). Justified: the metric extension is spec'd and the assertion remains a strict shape contract.
+2. **Fill browser scenario deselects nodes before opening cell menus** — ComfyUI's Selection Toolbox appears beside the node left selected by the suite's drag and intercepted the first `+` click (30 s actionability timeout; observed once). An `openRightMenu()` helper now calls `canvas.deselectAllNodes()` before each menu-open click; pinned by the scenario passing in both renderers afterwards.
