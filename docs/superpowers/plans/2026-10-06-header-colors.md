@@ -284,17 +284,17 @@ git commit -m "Render and edit customizable header colors"
 
 **Step 2: Run the suite:**
 - Ensure Playwright: `npm install --no-save playwright` in the repo (chromium binaries are already in the Playwright browser store under `%LOCALAPPDATA%\ms-playwright`; only run `npx playwright install chromium` if the module reports a missing browser).
-- Start the dedicated browser-test server — the SMALL_DESKTOP install (ComfyUI 0.39.0 / frontend 1.53.10, the exact verified pair), CPU mode, isolating only input/output/temp/user in `.test-comfy/`:
+- Start the dedicated browser-test server — the SMALL_DESKTOP install (ComfyUI 0.39.0 / frontend 1.53.10, the exact verified pair), CPU mode, core extensions only, isolating input/output/temp/user in `.test-comfy/`:
 
 ```bash
-cd /e/comfyui_instances/SMALL_DESKTOP/ComfyUI && env -u PYTHONPATH -u PYTHONHOME ./.venv/Scripts/python.exe main.py --listen 127.0.0.1 --port 8197 --cpu \
+cd /e/comfyui_instances/SMALL_DESKTOP/ComfyUI && env -u PYTHONPATH -u PYTHONHOME ./.venv/Scripts/python.exe main.py --listen 127.0.0.1 --port 8197 --cpu --disable-all-custom-nodes \
   --input-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/input \
   --output-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/output \
   --temp-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/temp \
   --user-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/user
 ```
 
-  Two dead ends discovered while pinning this: the `start_comfyui.py` launcher forwards its `--` separator to main.py (argparse failure), and `--base-directory` requires `<base>/custom_nodes` to exist (FileNotFoundError otherwise) — hence the four explicit directory overrides. Run it as a background process; health-check `http://127.0.0.1:8197/system_stats` before the suite (CPU startup with the full custom-node set takes ~1–2 min).
+  `--disable-all-custom-nodes` is required: with the install's full custom-node set (~600 frontend extensions) the suite's canvas-menu interaction does not surface "Add Layout Frame" (verified both ways on 2026-10-06); the minimal environment (49 core extensions) passes both renderers. Two other dead ends: the `start_comfyui.py` launcher forwards its `--` separator to main.py (argparse failure), and `--base-directory` requires `<base>/custom_nodes` to exist (FileNotFoundError otherwise) — hence the four explicit directory overrides. Run it as a background process; health-check `http://127.0.0.1:8197/system_stats` before the suite.
 - Run `COMFYUI_URL='http://127.0.0.1:8197' npm run test:browser`; expected: both "Classic" and "Nodes 2.0" success logs, no browser errors, screenshots in `test-results/`.
 
 **Step 3: Commit**
