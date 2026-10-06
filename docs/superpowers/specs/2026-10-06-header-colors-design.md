@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-06
 **Status:** Approved (design reviewed and approved by the user)
-**Target:** ComfyUI-Layout-Templates v0.2.0
+**Target:** VF-ComfyUI-Layout-Templates v0.2.0
 
 ## Context
 
@@ -85,5 +85,5 @@ All 31 existing unit tests stay green.
 
 - Version `0.1.2` → `0.2.0` in `package.json` and `pyproject.toml`.
 - README: usage bullet + version note.
-- `dist/ComfyUI-Layout-Templates.zip` regenerated via `python tools/package.py`.
+- `dist/VF-ComfyUI-Layout-Templates.zip` regenerated via `python tools/package.py`.
 - `docs/verification.md`: record the actual unit + browser results after the run — no claims beyond what ran.

@@ -1,4 +1,4 @@
-# ComfyUI Layout Templates
+# VF-ComfyUI-Layout-Templates
 
 Reusable layout frames for the ComfyUI workflow canvas. Drop normal nodes into a cell to attach them, match their widths, and arrange them in a vertical stack. Split cells into adjustable columns, rows, or grids.
 
@@ -6,8 +6,8 @@ This is a **frontend extension** installed as a custom-node package. It adds can
 
 ## Install
 
-1. Extract `ComfyUI-Layout-Templates.zip` into your ComfyUI `custom_nodes` folder, or copy this project there.
-2. Check that `custom_nodes/ComfyUI-Layout-Templates/__init__.py` and `web/layout_templates.js` exist directly inside the package folder.
+1. Extract `VF-ComfyUI-Layout-Templates.zip` into your ComfyUI `custom_nodes` folder, or copy this project there.
+2. Check that `custom_nodes/VF-ComfyUI-Layout-Templates/__init__.py` and `web/layout_templates.js` exist directly inside the package folder.
 3. Restart ComfyUI and refresh your browser with **Ctrl+F5**.
 
 No extra Python packages, frontend build, or model downloads are required.

@@ -12,7 +12,7 @@
 
 **Repo facts the implementer needs:**
 
-- Repo root `E:\projects\ComfyUI-Layout-Templates` (git-bash: `/e/projects/ComfyUI-Layout-Templates`). Run all commands from there.
+- Repo root `E:\projects\VF-ComfyUI-Layout-Templates` (git-bash: `/e/projects/VF-ComfyUI-Layout-Templates`). Run all commands from there.
 - Unit tests: `npm test` — must be 31 green before any change; grows as tasks add tests.
 - After editing any JS file run `node --check <file>` — the `patch` tool can silently over-delete; verify after every patch and prefer small, uniquely-anchored patches.
 - Inter-module imports are relative (`./layout.js`); tests import modules directly (`../web/core/layout.js`).
@@ -288,10 +288,10 @@ git commit -m "Render and edit customizable header colors"
 
 ```bash
 cd /e/comfyui_instances/SMALL_DESKTOP/ComfyUI && env -u PYTHONPATH -u PYTHONHOME ./.venv/Scripts/python.exe main.py --listen 127.0.0.1 --port 8197 --cpu --disable-all-custom-nodes \
-  --input-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/input \
-  --output-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/output \
-  --temp-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/temp \
-  --user-directory E:/projects/ComfyUI-Layout-Templates/.test-comfy/user
+  --input-directory E:/projects/VF-ComfyUI-Layout-Templates/.test-comfy/input \
+  --output-directory E:/projects/VF-ComfyUI-Layout-Templates/.test-comfy/output \
+  --temp-directory E:/projects/VF-ComfyUI-Layout-Templates/.test-comfy/temp \
+  --user-directory E:/projects/VF-ComfyUI-Layout-Templates/.test-comfy/user
 ```
 
   `--disable-all-custom-nodes` is required: with the install's full custom-node set (~600 frontend extensions) the suite's canvas-menu interaction does not surface "Add Layout Frame" (verified both ways on 2026-10-06); the minimal environment (49 core extensions) passes both renderers. Two other dead ends: the `start_comfyui.py` launcher forwards its `--` separator to main.py (argparse failure), and `--base-directory` requires `<base>/custom_nodes` to exist (FileNotFoundError otherwise) — hence the four explicit directory overrides. Run it as a background process; health-check `http://127.0.0.1:8197/system_stats` before the suite.
@@ -310,11 +310,11 @@ git commit -m "Verify header colors in the browser suite"
 
 **Objective:** Feature documented; version bumped; installable zip regenerated; verification record updated with actual results.
 
-**Files:** `README.md`, `package.json`, `pyproject.toml`, `dist/ComfyUI-Layout-Templates.zip`, `docs/verification.md`
+**Files:** `README.md`, `package.json`, `pyproject.toml`, `dist/VF-ComfyUI-Layout-Templates.zip`, `docs/verification.md`
 
 1. README — add a "Use" bullet: click ••• → "Header color…" to color a frame header and its cells; override or reset per cell from the + menu; colors save with the workflow and are included in exported templates. Add the version note line for 0.2.0 next to the existing 0.1.1 note.
 2. Bump `0.1.2` → `0.2.0` in `package.json` and `pyproject.toml`.
-3. `python tools/package.py` — regenerates `dist/ComfyUI-Layout-Templates.zip`.
+3. `python tools/package.py` — regenerates `dist/VF-ComfyUI-Layout-Templates.zip`.
 4. `docs/verification.md` — append a header-colors section with the ACTUAL unit count and browser results from Task 3 (no claims beyond what ran).
 5. Commit: `git add -A && git commit -m "Document header colors and release 0.2.0"`.
 

@@ -5,7 +5,7 @@ import { LayoutOverlay } from './core/overlay.js';
 let active;
 
 app.registerExtension({
-  name: 'ComfyUI.LayoutTemplates',
+  name: 'VF.ComfyUI.LayoutTemplates',
   async setup() {
     const LiteGraph = globalThis.LiteGraph ?? globalThis.comfyAPI?.litegraph?.LiteGraph;
     const controller = new LayoutController(app, { classicTitle: LiteGraph?.NODE_TITLE_HEIGHT ?? 30 });

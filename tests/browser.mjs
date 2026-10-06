@@ -14,7 +14,7 @@ catch {
 }
 const base = process.env.COMFYUI_URL ?? 'http://127.0.0.1:8188';
 const exampleWorkflow = JSON.parse(await readFile(new URL('../examples/two-column.workflow.json', import.meta.url), 'utf8'));
-const prefix = '/extensions/comfyui-layout-templates/';
+const prefix = '/extensions/VF-ComfyUI-Layout-Templates/';
 const browser = await playwright.chromium.launch({ headless: true });
 await mkdir('test-results', { recursive: true });
 try {
@@ -37,7 +37,7 @@ try {
   });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'ComfyUI.LayoutTemplates'), { timeout: 15000 });
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.LayoutTemplates'), { timeout: 15000 });
   try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
@@ -182,7 +182,7 @@ try {
     await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.children?.length === 2);
 
     const rightCenter = await page.evaluate(async () => {
-      const { LayoutController } = await import('/extensions/comfyui-layout-templates/core/controller.js');
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
       const c = new LayoutController(window.comfyAPI.app.app, { isVue: () => window.LiteGraph.vueNodesMode });
       const r = c.geometry()[0].cells[1].rect;
       return [r[0] + r[2] / 2, r[1] + r[3] / 2];
