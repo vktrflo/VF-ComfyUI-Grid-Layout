@@ -84,6 +84,7 @@ try {
     await settle();
     assert.deepEqual(await membership(), [[1], [2]], 'normal workflow open restores the example layout and nodes');
     await page.locator('.clt-frame-header .clt-label').dblclick();
+    assert.equal(await page.getByRole('textbox', {name:'Frame title', exact:true}).inputValue(), 'Two columns', 'frame rename prefills the raw label without the emoji');
     await page.getByRole('textbox', {name:'Frame title', exact:true}).fill('Inline layout');
     await page.getByRole('textbox', {name:'Frame title', exact:true}).press('Enter');
     await page.waitForFunction(() => document.querySelector('.clt-frame-header .clt-label')?.textContent === 'Inline layout');
@@ -156,8 +157,9 @@ try {
     const promptBefore = await page.evaluate(async () => (await window.comfyAPI.app.app.graphToPrompt()).output);
     const creation = await worldPoint([550, 80]);
     await page.mouse.click(creation.x, creation.y, { button: 'right' });
-    await page.getByText('Add Layout Frame', { exact: true }).click();
+    await page.getByText('🌀 Add Layout Frame', { exact: true }).click();
     await page.locator('.clt-frame').waitFor();
+    assert.equal(await page.evaluate(() => document.querySelector('.clt-frame-header .clt-emoji')?.textContent), '🌀', 'frame header shows the cyclone emoji');
     await nodeDragTo(0, [850, 185]);
     assert.deepEqual(await membership(), [[1]], `${vue ? 'Vue' : 'Classic'} drop attaches first node`);
     if (vue) {
@@ -249,7 +251,7 @@ try {
     const importPoint = await worldPoint([100, 750]);
     await page.mouse.click(importPoint.x, importPoint.y, { button: 'right' });
     const chooserPromise = page.waitForEvent('filechooser');
-    await page.getByText('Import Layout Template…', { exact: true }).click();
+    await page.getByText('🌀 Import Layout Template…', { exact: true }).click();
     const chooser = await chooserPromise;
     await chooser.setFiles({ name: 'test.layout.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(template)) });
     await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames.length === 2);

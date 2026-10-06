@@ -45,3 +45,9 @@ Automated checks (2026-10-06; Windows, Node.js 26.7.0; dedicated ComfyUI 0.39.0 
 - Reviews: spec-compliance and code-quality reviews passed for all three implementation tasks; one review-driven improvement (replacing the single luma threshold with direct WCAG contrast comparison) was amended into the design spec and re-reviewed before release.
 
 Browser-suite note: run the dedicated instance with `--disable-all-custom-nodes`. On the test install, loading the full custom-node set (~600 frontend extensions) prevented the suite's canvas-menu step from surfacing the extension's menu entries; the minimal environment passes both renderers.
+
+## VF rename + cyclone emoji update (2026-10-06)
+
+- Renamed the project to `VF-ComfyUI-Layout-Templates`: repository folder, npm/pyproject package names, installable ZIP name and inner folder, extension registration name (`VF.ComfyUI.LayoutTemplates`), browser-test asset prefix, and documentation references. The workflow metadata key `comfyui_layout_templates` is intentionally unchanged so existing saved workflows and templates keep loading.
+- Added 🌀 to the frame header title bar (decorative `aria-hidden` element, separate from the editable label) and prefixed both canvas context-menu entries: `🌀 Add Layout Frame`, `🌀 Import Layout Template…`.
+- Checks (same dedicated 0.39.0 test server): `npm test` 39/0; browser suite green in both renderers with new assertions for the header emoji element and the raw-label rename prefill.

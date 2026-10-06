@@ -17,11 +17,11 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 ## Examples: workflow versus template
 
 - **`examples/two-column.workflow.json`** is a normal ComfyUI workflow. Open it with ComfyUI's **Open** action or drop it onto the canvas. It contains a populated two-column layout with connected **Empty Image → Save Image** nodes, and runs without model downloads.
-- **`examples/two-column.layout.json`** is an empty layout template. Use **right-click canvas → Import Layout Template…**. It is not a ComfyUI workflow; opening it through the normal workflow action will show an empty canvas.
+- **`examples/two-column.layout.json`** is an empty layout template. Use **right-click canvas → 🌀 Import Layout Template…**. It is not a ComfyUI workflow; opening it through the normal workflow action will show an empty canvas.
 
 ## Use
 
-- Right-click empty canvas space → **Add Layout Frame**.
+- Right-click empty canvas space → **🌀 Add Layout Frame**.
 - Drag a node by its title into a cell. Its center determines the destination. Drop several nodes into the same cell to create a vertical stack; the drop position determines stack order. Newly created nodes placed inside a cell attach automatically too.
 - Drag an attached node to another cell to transfer it, or outside all cells to release it. Released nodes keep their current size.
 - Click **+** on a cell header to split left/right, split top/bottom, create a grid, or rename the cell. Splitting keeps existing nodes in the first (top or left) cell.
@@ -30,7 +30,7 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 - Click **•••** on the frame → **Add bottom row** to append an empty full-width cell. Existing cells keep their heights and attached nodes; the frame extends downward. Split the new row into columns if needed.
 - The same **•••** menu can rename, export an empty template, or remove the frame while retaining nodes and connections.
 - Click **•••** → **Header color…** to color the frame header bar and all its cell header bars; use a cell's **+** menu to override or reset that one cell. Colors are saved with the workflow and included in exported templates.
-- Right-click the canvas → **Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
+- Right-click the canvas → **🌀 Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
 - Use ComfyUI's normal **Ctrl+Z / Ctrl+Shift+Z** shortcuts for undo/redo.
 
 Node controls are resized through ComfyUI's normal node sizing API. Nodes fill cell widths; their heights retain space for their controls and previews. When a node needs more room, the frame grows instead of clipping it. This can make the frame larger than the requested drag size.

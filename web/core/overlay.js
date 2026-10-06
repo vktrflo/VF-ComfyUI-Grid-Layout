@@ -7,6 +7,7 @@ const STYLE = `
 .clt-frame{border:2px solid #7197a5}
 .clt-frame-header{position:absolute;left:0;right:0;top:0;height:34px;background:var(--comfy-menu-bg,#20282c);display:flex;align-items:center;gap:8px;padding:0 8px;pointer-events:auto;cursor:move;border-radius:3px 3px 0 0;user-select:none}
 .clt-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
+.clt-emoji{flex:none}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
@@ -340,6 +341,9 @@ export class LayoutOverlay {
       const header = element('div', 'clt-frame-header');
       const frameColor = normalizeColor(frame.color);
       if (frameColor) applyHeaderColor(header, frameColor);
+      const badge = element('span', 'clt-emoji', '🌀');
+      badge.setAttribute('aria-hidden', 'true');
+      header.append(badge);
       header.append(this.title(frame.label, frame.id));
       header.append(button('Layout options', e => this.frameMenu(e, frame), '•••'));
       header.onpointerdown = e => this.startDrag(e, 'move', { frame, pos: [...frame.pos] });

@@ -17,8 +17,8 @@ app.registerExtension({
       const entries = original?.apply(this, args) ?? [];
       const point = [...(this.graph_mouse ?? [0, 0])];
       entries.push(null,
-        { content: 'Add Layout Frame', callback: () => overlay.safe(() => controller.create(point)) },
-        { content: 'Import Layout Template…', callback: () => overlay.importAt(point) });
+        { content: '🌀 Add Layout Frame', callback: () => overlay.safe(() => controller.create(point)) },
+        { content: '🌀 Import Layout Template…', callback: () => overlay.importAt(point) });
       return entries;
     };
   },
