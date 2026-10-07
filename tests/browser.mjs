@@ -601,6 +601,52 @@ try {
     }, lockedPos);
     console.log(`Frame lock checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
 
+    // Regression: a tall node dropped onto a small empty cell attaches by overlap,
+    // even though its center falls outside the cell rect.
+    const tallTarget = await page.evaluate(async () => {
+      const app = window.comfyAPI.app.app;
+      app.canvas.ds.scale = 1; app.canvas.ds.offset = [0, 0];
+      const { createFrame } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const frame = createFrame([120, 640]);
+      app.graph.extra.comfyui_layout_templates.frames.push(frame);
+      const node = window.LiteGraph.createNode('EmptyImage');
+      node.pos = [40, 200]; app.graph.add(node);
+      node.setSize([node.size[0], 420]);
+      window.__tallNode = node.id; window.__tallFrame = frame.id;
+      return { node: node.id, frame: frame.id };
+    });
+    await page.waitForTimeout(700);
+    const tallDrop = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry().find(l => String(l.frame.id) === String(window.__tallFrame));
+      const rect = layout.cells[0].rect;
+      const node = app.graph.getNodeById(window.__tallNode);
+      const vue2 = window.LiteGraph.vueNodesMode;
+      return {
+        source: [node.pos[0] + 70, node.pos[1] + (vue2 ? 15 : -15)],
+        dest: [rect[0] + 10 + 70, rect[1] + 5 + (vue2 ? 15 : -15)],
+        nodeSize: [...node.size], rect,
+      };
+    });
+    const tallCenter = [tallDrop.rect[0] + 10 + tallDrop.nodeSize[0] / 2, tallDrop.rect[1] + 5 + tallDrop.nodeSize[1] / 2];
+    assert.ok(
+      !(tallCenter[0] >= tallDrop.rect[0] && tallCenter[0] <= tallDrop.rect[0] + tallDrop.rect[2] && tallCenter[1] >= tallDrop.rect[1] && tallCenter[1] <= tallDrop.rect[1] + tallDrop.rect[3]),
+      'scenario: the tall node center lands outside the small cell'
+    );
+    await drag(await worldPoint(tallDrop.source), await worldPoint(tallDrop.dest));
+    await page.waitForFunction(id => {
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
+      const frame = frames.find(f => String(f.id) === String(window.__tallFrame));
+      return leaves(frame.root).some(c => c.nodes.map(String).includes(String(id)));
+    }, tallTarget.node, { timeout: 5000 });
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `test-results/drop-tall-${vue ? 'nodes-2' : 'classic'}.png` });
+    console.log(`Tall-node drop checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
+
     console.log(`${vue ? 'Nodes 2.0' : 'Classic'} interaction, history, persistence, geometry and prompt checks passed`);
   }
   if (process.env.EXPECT_INSECURE_ORIGIN === '1') {
