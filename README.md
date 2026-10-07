@@ -22,8 +22,8 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 ## Use
 
 - Right-click empty canvas space → **🌀 Add Layout Frame**.
-- Drag a node by its title into a cell. Its center determines the destination. Drop several nodes into the same cell to create a vertical stack; the drop position determines stack order. Newly created nodes placed inside a cell attach automatically too.
-- Drag an attached node to another cell to transfer it, or outside all cells to release it. Released nodes keep their current size.
+- Drag a node by its title over a cell and release while any part of it overlaps a cell — it attaches even if the node is much taller than a small empty cell. Drop several nodes into the same cell to create a vertical stack; the drop position determines stack order. Newly created nodes placed inside a cell attach automatically too.
+- Drag an attached node to another cell to transfer it, or fully clear of every cell to release it. Released nodes keep their current size.
 - Click **+** on a cell header to split left/right, split top/bottom, create a grid, or rename the cell. Splitting keeps existing nodes in the first (top or left) cell.
 - Drag a vertical divider to change column widths. Each grid cell can be split again. Drag the frame's right edge to resize its width; only cells touching that boundary change width.
 - Drag the layout header to move its nodes together. Frame and row heights automatically fit their content and shrink when content is removed. Empty cells retain a small drop area.
