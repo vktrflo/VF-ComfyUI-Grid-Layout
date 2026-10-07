@@ -1,4 +1,4 @@
-import { KEY, VERSION, createFrame, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, validateFrame } from './layout.js';
+import { KEY, VERSION, createFrame, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 export class LayoutController {
@@ -115,8 +115,12 @@ export class LayoutController {
       // Group nodes by destination so multi-selection can cross cell boundaries.
       const destinations = new Map();
       for (const node of moved) {
-        const point = [node.pos[0] + node.size[0] / 2, node.pos[1] + node.size[1] / 2];
-        const key = this.target(point)?.cell.id ?? 'outside';
+        const rect = [node.pos[0], node.pos[1], node.size[0], node.size[1]];
+        const pick = pickCell(this.geometry(), rect);
+        const key = pick?.cell.id ?? 'outside';
+        const point = pick
+          ? [pick.rect[0] + pick.rect[2] / 2, pick.rect[1] + pick.rect[3] / 2]
+          : [rect[0] + rect[2] / 2, rect[1] + rect[3] / 2];
         if (!destinations.has(key)) destinations.set(key, { point, nodes: [] });
         destinations.get(key).nodes.push(node);
       }

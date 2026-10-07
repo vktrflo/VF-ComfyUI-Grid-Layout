@@ -22,6 +22,24 @@ function id() {
 }
 const clone = value => JSON.parse(JSON.stringify(value));
 
+// Pick the cell a node rect should land in: the cell containing the rect's
+// center first (existing behavior), then the cell with the largest overlap —
+// a tall node dropped onto a small cell attaches even when its center is out.
+export function pickCell(layouts, rect) {
+  const [x, y, width, height] = rect;
+  const center = [x + width / 2, y + height / 2];
+  let best = null, bestArea = 0;
+  for (const layout of [...layouts].reverse()) {
+    for (const cell of layout.cells) {
+      const [cx, cy, cw, ch] = cell.rect;
+      if (center[0] >= cx && center[0] <= cx + cw && center[1] >= cy && center[1] <= cy + ch) return { frame: layout.frame, ...cell };
+      const area = Math.max(0, Math.min(x + width, cx + cw) - Math.max(x, cx)) * Math.max(0, Math.min(y + height, cy + ch) - Math.max(y, cy));
+      if (area > bestArea) { bestArea = area; best = { frame: layout.frame, ...cell }; }
+    }
+  }
+  return best;
+}
+
 export function normalizeColor(value) {
   if (typeof value !== 'string') return undefined;
   const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);

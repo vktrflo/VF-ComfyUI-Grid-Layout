@@ -144,3 +144,18 @@ test('repeated bottom rows preserve prior row heights and survive template round
   assert.deepEqual(after.cells.slice(0, 2).map(c => c.rect), before.cells.map(c => c.rect));
   assert.equal(engine.leaves(engine.importTemplate(engine.exportTemplate(frame), [0, 0]).root).length, 3);
 });
+
+test('pickCell prefers the cell containing the rect center, then the largest overlap', () => {
+  const cellA = { cell: { id: 'a' }, rect: [0, 0, 100, 100] };
+  const cellB = { cell: { id: 'b' }, rect: [100, 0, 100, 100] };
+  const layouts = [{ frame: { id: 'f' }, cells: [cellA, cellB] }];
+  assert.equal(engine.pickCell(layouts, [40, 40, 20, 20]).cell.id, 'a', 'center inside wins');
+  assert.equal(engine.pickCell(layouts, [-80, -80, 40, 40]), null, 'no overlap at all');
+  assert.equal(engine.pickCell(layouts, [20, 90, 60, 60]).cell.id, 'a', 'center outside, overlap still picks the cell');
+  assert.equal(engine.pickCell(layouts, [60, -80, 90, 120]).cell.id, 'b', 'the largest overlap wins');
+  const stacked = [
+    { frame: { id: 'low' }, cells: [{ cell: { id: 'lowCell' }, rect: [0, 0, 100, 100] }] },
+    { frame: { id: 'top' }, cells: [{ cell: { id: 'topCell' }, rect: [0, 0, 100, 100] }] },
+  ];
+  assert.equal(engine.pickCell(stacked, [40, 40, 20, 20]).cell.id, 'topCell', 'the topmost frame wins a tie');
+});

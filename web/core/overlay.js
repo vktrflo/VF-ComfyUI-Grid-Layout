@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, normalizeFontSize, leaves, KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, normalizeFontSize, leaves, pickCell, KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -91,7 +91,7 @@ export class LayoutOverlay {
     const container = this.app.canvas.canvas.parentElement;
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.append(this.root);
-    this.menu = null; this.drag = null; this.nativeDrag = null; this.hover = null;
+    this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null;
     const options = { capture: true, signal: this.abort.signal };
     document.addEventListener('pointerdown', e => this.nativeDown(e), options);
     document.addEventListener('pointermove', e => this.move(e), options);
@@ -325,6 +325,8 @@ export class LayoutOverlay {
     // events are then grouped with our drop/reflow into the same undo step.
     this.safe(() => {
       if (!this.controller.frames.length) return;
+      const pointer = this.controller.adapter.point(event);
+      this.nativeNode = this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
       this.controller.begin();
       this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId };
     });
@@ -356,7 +358,10 @@ export class LayoutOverlay {
         }
       });
     } else if (this.nativeDrag) {
-      this.hover = this.controller.target(this.controller.adapter.point(event))?.cell.id ?? null;
+      const pointer = this.controller.adapter.point(event);
+      const node = this.nativeNode && this.controller.graph.getNodeById(this.nativeNode.id);
+      const pick = node ? pickCell(this.controller.geometry(), [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
+      this.hover = pick?.cell.id ?? this.controller.target(pointer)?.cell.id ?? null;
     }
   }
   up(event, cancelled = false) {
@@ -366,7 +371,7 @@ export class LayoutOverlay {
     if (this.nativeDrag && (!event || event.pointerId === this.nativeDrag.pointerId)) {
       const pending = this.nativeDrag;
       if (pending.finishing) return;
-      pending.finishing = true; this.hover = null;
+      pending.finishing = true; this.nativeNode = null; this.hover = null;
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
