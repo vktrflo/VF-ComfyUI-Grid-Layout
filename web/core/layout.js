@@ -54,7 +54,7 @@ export function normalizeFontSize(value) {
   return Math.min(24, Math.max(8, Math.round(size)));
 }
 
-export const createCell = (label = 'Cell') => ({ id: id(), label, nodes: [] });
+export const createCell = (label = '') => ({ id: id(), label, nodes: [] });
 export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Layout', pos: [...pos], size: [620, 500], root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
 export function findCell(cell, cellId) {
@@ -85,7 +85,7 @@ export function splitCell(frame, cellId, axis) {
   if (!cell || cell.children) throw new Error('Only an unsplit cell can be split.');
   if (cellDepth(frame.root, cellId) >= 16) throw new Error('Layouts support up to 16 nested split levels.');
   if (leaves(frame.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
-  const first = createCell(cell.label), second = createCell('Cell');
+  const first = createCell(cell.label), second = createCell();
   first.nodes = cell.nodes;
   delete cell.nodes;
   carryHeaderConfig(first, cell);
@@ -294,7 +294,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
   function read(cell, depth) {
     if (!cell || depth > 16 || ++count > 512 || typeof cell.id !== 'string' || seen.has(cell.id)) throw new Error('Invalid or overly complex cell structure.');
     seen.add(cell.id);
-    const result = { id: freshIds ? id() : cell.id, label: String(cell.label ?? 'Cell').slice(0, 120) };
+    const result = { id: freshIds ? id() : cell.id, label: String(cell.label ?? '').slice(0, 120) };
     if (cell.children) {
       if (!['x', 'y'].includes(cell.axis) || !Array.isArray(cell.children) || cell.children.length < 2 || cell.children.length > 16 || !Array.isArray(cell.ratios) || cell.ratios.length !== cell.children.length || !cell.ratios.every(r => Number.isFinite(r) && r > 0 && r <= 1)) throw new Error('Invalid cell split.');
       Object.assign(result, { axis: cell.axis, ratios: ratios(cell), children: cell.children.map(c => read(c, depth + 1)) });
