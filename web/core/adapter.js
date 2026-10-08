@@ -28,6 +28,11 @@ export class NodeAdapter {
     const imposed = this.imposedWidths.get(node);
     const computed = Math.abs((minimum[0] || 140) - imposed) < 0.1 ? 0 : minimum[0] || 140;
     this.widths.set(node, Math.max(this.widths.get(node) ?? 140, computed, node.min_size?.[0] ?? 0));
+    let renderedMinimum = 0;
+    if (globalThis.LiteGraph?.vueNodesMode && globalThis.document) {
+      const element = document.querySelector(`.lg-node[data-node-id="${CSS.escape(String(node.id))}"]`);
+      if (element) renderedMinimum = parseFloat(getComputedStyle(element).minWidth) || 0;
+    }
     const collapsed = node.flags?.collapsed;
     // Track the intrinsic (pre-stretch) height: a fill stretch we applied is not
     // content, so the layout never reads its own stretch back as node size.
@@ -37,7 +42,7 @@ export class NodeAdapter {
     if (applied === undefined || Math.abs(size - applied) > 0.5) this.bases.set(key, size);
     const base = this.bases.get(key) ?? size;
     return {
-      minWidth: this.widths.get(node),
+      minWidth: Math.max(this.widths.get(node), renderedMinimum),
       height: collapsed ? 0 : Math.max(base, minimum[1] || 0),
       minHeight: collapsed ? 0 : minimum[1] || size,
       collapsed: Boolean(collapsed),

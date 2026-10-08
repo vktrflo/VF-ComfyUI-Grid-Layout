@@ -1,9 +1,10 @@
-import { KEY, VERSION, createFrame, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
+import { KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 export class LayoutController {
   constructor(app, options) {
     this.app = app;
+    this.defaultColumns = options?.defaultColumns ?? 2;
     this.adapter = new NodeAdapter(app, options);
     this.transaction = null;
   }
@@ -50,7 +51,39 @@ export class LayoutController {
     } finally { if (own) this.end(); }
   }
   create(pos) {
-    return this.edit(() => { const frame = createFrame(pos); this.ensureData().frames.push(frame); return frame; });
+    return this.edit(() => { const frame = createFrame(pos); gridCell(frame, frame.root.id, 1, this.defaultColumns); this.ensureData().frames.push(frame); return frame; });
+  }
+  selectedNodes() {
+    const selection = this.app.canvas.selected_nodes ?? {};
+    const values = selection instanceof Map ? [...selection.values()] : selection instanceof Set ? [...selection] : Object.values(selection);
+    return values.filter(node => node && this.graph.getNodeById(node.id) === node);
+  }
+  createFromNodes(ids, arrangement = 'columns') {
+    if (!['columns','stack'].includes(arrangement)) throw new Error('Choose columns or a single stack.');
+    const nodes = [...new Set(ids.map(String))].map(id => this.graph.getNodeById(id)).filter(Boolean);
+    if (!nodes.length) throw new Error('Select at least one node first.');
+    const columns = [];
+    for (const node of [...nodes].sort((a,b) => a.pos[0]-b.pos[0] || a.pos[1]-b.pos[1])) {
+      const column = arrangement === 'stack' ? columns[0] : columns.find(column => Math.abs(node.pos[0]-column.x) <= Math.max(48, Math.min(node.size[0],column.width)*0.35));
+      if (column) column.nodes.push(node);
+      else columns.push({x:node.pos[0],width:node.size[0],nodes:[node]});
+    }
+    if (columns.length > 256) throw new Error('A layout supports up to 256 columns.');
+    return this.edit(() => {
+      const frame = createFrame([Math.min(...nodes.map(node=>node.pos[0]))-PAD*2, Math.min(...nodes.map(node=>node.pos[1]-this.adapter.classicTitle))-FRAME_TITLE-PAD*2-CELL_TITLE]);
+      // Group large selections into bounded split nodes accepted by serialization.
+      const build = cells => {
+        if (cells.length === 1) return cells[0];
+        const groups = cells.length <= 16 ? cells : Array.from({length:Math.ceil(cells.length/16)},(_,i)=>build(cells.slice(i*16,(i+1)*16)));
+        const root=createCell('');delete root.nodes;Object.assign(root,{axis:'x',children:groups,ratios:groups.map(()=>1/groups.length)});return root;
+      };
+      const cells=columns.map(column=>{const cell=createCell('');cell.nodes=column.nodes.sort((a,b)=>a.pos[1]-b.pos[1]||a.pos[0]-b.pos[0]).map(node=>node.id);return cell;});
+      const moving=new Set(nodes.map(node=>String(node.id)));
+      for (const oldFrame of this.frames) for (const cell of leaves(oldFrame.root)) cell.nodes=cell.nodes.filter(id=>!moving.has(String(id)));
+      frame.root=build(cells);this.ensureData().frames.push(frame);
+      shrinkFrame(frame,this.metrics());
+      return frame;
+    });
   }
   remove(frameId) {
     this.edit(() => { this.ensureData().frames = this.frames.filter(f => f.id !== frameId); });

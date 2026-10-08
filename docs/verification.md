@@ -90,3 +90,11 @@ Automated checks (2026-10-06; same dedicated 0.39.0 / frontend 1.53.10 test serv
 
 - New cells default to an empty label instead of "Cell" — covering new frames, splits, grids, bottom rows, and the replacement cell created when the last one is deleted. Existing saved workflows keep whatever labels they already carry; the rename dialog still prefills the current label.
 - Checks: `npm test` 55/0; browser suite green in classic and Nodes 2.0 (no suite assertions depended on the default text).
+
+Divider regression fix: resizing now clamps both adjacent subtrees to their content minimums, including nested split ratios. The reproduced 1100-to-6528 expansion is prevented. 57 unit tests pass, including preservation of unrelated columns and stability across repeated reflow. Browser coverage includes extreme divider dragging without frame growth.
+
+Shrink-to-content: 58 unit tests pass. Regression coverage verifies exact cell minimums, multiple-node cells, reset of old column ratios, preserved membership, and repeat-action stability. Browser checks exercise the frame menu action and undo.
+
+Header slider/picker update: all 60 unit tests pass. Dedicated tests/header-ui.mjs verifies 12-24 bounds, live font/color previews, picker and panel cancellation, save and undo in classic and Nodes 2.0.
+
+Selected-node layout creation: 63 unit tests pass. Browser selection-ui.mjs passes in classic and Nodes 2.0 for the real canvas context menu, column detection, single stack, unchanged execution prompt, and undo/redo.

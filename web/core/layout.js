@@ -55,6 +55,14 @@ export function normalizeFontSize(value) {
 }
 
 export const createCell = (label = '') => ({ id: id(), label, nodes: [] });
+export function normalizeBorder(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  const color = normalizeColor(value.color);
+  const width = Number(value.width);
+  if (!color || !Number.isInteger(width) || width < 1 || width > 8 || !['solid','dashed','dotted'].includes(value.style)) return undefined;
+  return {color, width, style:value.style};
+}
+
 export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Layout', pos: [...pos], size: [620, 500], root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
 export function findCell(cell, cellId) {
@@ -74,7 +82,7 @@ function cellDepth(cell, cellId, depth = 0) {
 }
 
 function carryHeaderConfig(target, source) {
-  for (const key of ['color', 'textColor', 'fontSize']) {
+  for (const key of ['color', 'textColor', 'fontSize', 'border']) {
     if (source[key] !== undefined) { target[key] = source[key]; delete source[key]; }
   }
 }
@@ -131,11 +139,34 @@ function ratios(cell) {
   return cell.ratios.map(r => r / sum);
 }
 
-export function resizeDivider(cell, index, delta) {
+function contentMinimumWidth(cell, metrics) {
+  if (!cell.children) return Math.max(160, ...cell.nodes.map(id => metrics.get(id)?.minWidth ?? 160)) + PAD * 2;
+  const widths = cell.children.map(child => contentMinimumWidth(child, metrics));
+  return cell.axis === 'y' ? Math.max(...widths) : Math.max(...widths.map((width, index) => width / ratios(cell)[index])) + GAP * (widths.length - 1);
+}
+
+export function shrinkFrame(frame, metrics) {
+  function fit(cell) {
+    if (!cell.children) return contentMinimumWidth(cell, metrics);
+    const widths = cell.children.map(fit);
+    if (cell.axis === 'y') return Math.max(...widths);
+    const total = widths.reduce((sum, width) => sum + width, 0);
+    cell.ratios = widths.map(width => width / total);
+    return total + GAP * (widths.length - 1);
+  }
+  frame.size[0] = fit(frame.root) + PAD * 2;
+  layoutFrame(frame, metrics);
+}
+
+export function resizeDivider(cell, index, delta, available, metrics) {
   const weights = ratios(cell);
   const sum = weights[index] + weights[index + 1];
   const minimum = Math.min(0.05, sum / 4);
-  const first = Math.max(minimum, Math.min(sum - minimum, weights[index] + delta));
+  const lower = metrics && cell.axis === 'x' ? contentMinimumWidth(cell.children[index], metrics) / available : minimum;
+  const upper = sum - (metrics && cell.axis === 'x' ? contentMinimumWidth(cell.children[index + 1], metrics) / available : minimum);
+  // A changing content minimum may make the pair temporarily too small.
+  // Keep its current split rather than forcing another frame expansion.
+  const first = lower > upper ? weights[index] : Math.max(lower, Math.min(upper, weights[index] + delta));
   weights[index] = first; weights[index + 1] = sum - first;
   cell.ratios = weights;
 }
@@ -161,6 +192,14 @@ export function deleteCell(frame, cellId) {
 // Preserve absolute widths on the left. Only subtrees touching the right
 // boundary receive the delta, including each row of a vertical split.
 export function resizeRightEdge(frame, delta, metrics) {
+  resizeBoundary(frame, delta, metrics, false);
+}
+
+export function resizeLeftEdge(frame, delta, metrics) {
+  resizeBoundary(frame, -delta, metrics, true);
+}
+
+function resizeBoundary(frame, delta, metrics, left) {
   if (!Number.isFinite(delta)) throw new Error('Invalid resize distance.');
   layoutFrame(frame, metrics);
   function minimumWidth(cell) {
@@ -172,7 +211,7 @@ export function resizeRightEdge(frame, delta, metrics) {
     if (!cell.children) return width - minimumWidth(cell);
     if (cell.axis === 'y') return Math.min(...cell.children.map(child => room(child, width)));
     const available = width - GAP * (cell.children.length - 1);
-    const last = cell.children.length - 1;
+    const last = left ? 0 : cell.children.length - 1;
     return room(cell.children[last], available * ratios(cell)[last]);
   }
   const width = frame.size[0] - PAD * 2;
@@ -183,13 +222,14 @@ export function resizeRightEdge(frame, delta, metrics) {
     if (cell.axis === 'y') { cell.children.forEach(child => resize(child, width)); return; }
     const available = width - GAP * (cell.children.length - 1);
     const widths = ratios(cell).map(weight => weight * available);
-    const last = widths.length - 1;
+    const last = left ? 0 : widths.length - 1;
     resize(cell.children[last], widths[last]);
     widths[last] += delta;
     cell.ratios = widths.map(childWidth => childWidth / (available + delta));
   }
   resize(frame.root, width);
   frame.size[0] += delta;
+  if (left) frame.pos[0] -= delta;
 }
 
 export function addBottomRow(frame) {
@@ -197,7 +237,7 @@ export function addBottomRow(frame) {
   const height = 200;
   const root = frame.root;
   const contentHeight = frame.size[1] - FRAME_TITLE - PAD * 2;
-  const row = createCell('Bottom row');
+  const row = createCell('');
   if (root.axis === 'y' && root.children.length < 16) {
     const available = contentHeight - GAP * (root.children.length - 1);
     root.ratios = [...ratios(root).map(weight => weight * available / (available + height)), height / (available + height)];
@@ -307,6 +347,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
       if (textColor) result.textColor = textColor;
       const fontSize = normalizeFontSize(cell.fontSize);
       if (fontSize !== undefined) result.fontSize = fontSize;
+      const border = normalizeBorder(cell.border); if (border) result.border = border;
     }
     return result;
   }
@@ -322,6 +363,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
   if (textColor) result.textColor = textColor;
   const fontSize = normalizeFontSize(value.fontSize);
   if (fontSize !== undefined) result.fontSize = fontSize;
+  const border = normalizeBorder(value.border); if (border) result.border = border;
   return result;
 }
 

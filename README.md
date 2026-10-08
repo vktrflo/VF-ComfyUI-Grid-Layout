@@ -77,4 +77,23 @@ Run `python tools/package.py` to create the installable ZIP in `dist/`. See `doc
 
 Development update: Cell options > Delete cell (keep nodes) releases the nodes and collapses single-child parents. Deleting the final cell leaves one empty cell. Right-edge width resizing preserve other columns and stop shrinking at the rightmost cells' content minimum.
 
-Double-click a frame or cell title to rename it inline. Enter or leaving the field saves; Escape cancels. Empty titles retain the previous name. Renaming supports undo/redo.
+Double-click a frame or cell title to rename it inline. Enter or leaving the field saves; Escape cancels. Cell titles may be empty; empty frame titles retain the previous name. Renaming supports undo/redo.
+
+Cell divider dragging stops at the neighboring cells' content minimum widths, keeping the frame width and unrelated columns stable.
+
+Frame menu > Shrink layout to content fits cell widths to their widest node's content minimum, with normal padding and gaps. Nested columns are fitted independently; stacked rows share the width required by their widest row. Empty cells keep a small drop area. Undo restores the previous width and column proportions.
+
+New layout frames start with one row of two equal-width empty cells (50/50).
+
+New bottom rows have an empty title. Cell titles can be cleared through inline editing or the rename menu.
+
+Header configuration uses a 12-24 px font slider with a live value label and canvas preview. Background/text colors use the original browser color picker. The header panel retains OK/Cancel. Cancel restores previews; OK saves one undoable header edit.
+
+Drag the frame's left edge to resize only the leftmost boundary cells while keeping its right edge fixed. Minimum content widths clamp shrinking; changes are undoable.
+
+Header configuration is first in the frame and cell menus. Border configuration lets you choose border color, thickness (1-8 px), and solid/dashed/dotted style with live preview. OK saves an undoable change; Cancel restores the previous border. Border settings persist with workflows and templates.
+
+Change Appearance includes Reset appearance configuration. It previews removal of header and border overrides; OK saves the reset, Cancel restores the original appearance. Cells resume inheriting the frame's header appearance.
+
+Select nodes, right-click the canvas or a selected node, then choose Create layout from selected nodes > Preserve columns or Single stack. Column detection groups nodes with nearby left edges, orders columns left to right and stacks top to bottom. The new frame fits content minimum widths, preserves connections and supports one-step undo/redo. Selected nodes already in layouts transfer to the new frame.
+The floating selection toolbar includes a Layout button. Its More Options menu also includes Create layout from selected nodes. Both offer Preserve columns and Single stack.

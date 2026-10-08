@@ -11,7 +11,7 @@ function host() {
   const events = [];
   const canvas = { graph, emitBeforeChange: () => events.push('before'), emitAfterChange: () => events.push('after'), ds: { scale: 2, offset: [10, 20] }, canvas: { getBoundingClientRect: () => ({ left: 50, top: 60 }) } };
   const app = { canvas, graph, configuringGraph: false };
-  return { app, graph, node, events, controller: new LayoutController(app, { classicTitle: 30 }) };
+  return { app, graph, node, events, controller: new LayoutController(app, { classicTitle: 30, defaultColumns: 1 }) };
 }
 
 test('create and attach persist in graph extra and balance native transactions', () => {
@@ -65,7 +65,7 @@ test('failed edits restore metadata and release history transaction', () => {
 test('adapter accounts for zoom/pan and classic title geometry', () => {
   const { app, node } = host();
   assert.equal(typeof NodeAdapter, 'function');
-  const adapter = new NodeAdapter(app, { classicTitle: 30 });
+  const adapter = new NodeAdapter(app, { classicTitle: 30, defaultColumns: 1 });
   assert.deepEqual(adapter.point({ clientX: 150, clientY: 180 }), [40, 40]);
   assert.deepEqual(adapter.measure(node), { minWidth: 220, height: 100, minHeight: 80, collapsed: false, titleHeight: 30 });
 });
@@ -140,4 +140,36 @@ test('invalid drag updates roll back even within an already-open history gesture
   assert.equal(JSON.stringify(controller.frames), original);
   assert.doesNotThrow(() => controller.export(controller.frames[0]));
   assert.deepEqual(events, ['before', 'after', 'before', 'after']);
+});
+
+ test('new layout defaults to one row of two equal empty cells', () => {
+ const {app}=host(); const controller=new LayoutController(app);
+ const frame=controller.create([100,100]);
+ assert.equal(frame.root.axis,'x'); assert.deepEqual(frame.root.ratios,[0.5,0.5]);
+ assert.equal(frame.root.children.length,2);
+ assert.ok(frame.root.children.every(cell=>cell.nodes.length===0));
+ const cells=controller.geometry()[0].cells; assert.equal(cells[0].rect[2],cells[1].rect[2]);
+ });
+
+test('selected nodes form minimum-width columns, preserve connections, and transfer membership',()=>{
+ const {controller,graph,node,events}=host();
+ const other={...node,id:2,pos:[700,200],size:[300,100],inputs:[{link:8}],setSize(size){this.size=size;}};
+ const third={...node,id:3,pos:[15,300],size:[300,100],setSize(size){this.size=size;}};
+ graph._nodes.push(other,third);graph.getNodeById=id=>graph._nodes.find(n=>String(n.id)===String(id));
+ const f=controller.createFromNodes([3,2,1],'columns');
+ assert.equal(f.root.children.length,2);assert.deepEqual(f.root.children.map(c=>c.nodes),[[1,3],[2]]);
+ assert.equal(other.inputs[0].link,8);assert.deepEqual(events,['before','after']);
+ const stacked=controller.createFromNodes([1,2],'stack');assert.deepEqual(stacked.root.nodes,[1,2]);
+ assert.deepEqual(f.root.children.map(c=>c.nodes),[[3],[]]);
+ assert.throws(()=>controller.createFromNodes([],'columns'),/Select/);
+});
+
+test('Nodes 2.0 CSS minimum width overrides classic computation without affecting legacy mode',()=>{
+ const {app,node}=host();const adapter=new NodeAdapter(app);
+ const previous={LiteGraph:globalThis.LiteGraph,document:globalThis.document,CSS:globalThis.CSS,getComputedStyle:globalThis.getComputedStyle};
+ try {
+ globalThis.LiteGraph={vueNodesMode:true};globalThis.document={querySelector:()=>({})};globalThis.CSS={escape:String};globalThis.getComputedStyle=()=>({minWidth:'225px'});
+ assert.equal(adapter.measure(node).minWidth,225);
+ globalThis.LiteGraph.vueNodesMode=false;assert.equal(adapter.measure(node).minWidth,220);
+ }finally{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
