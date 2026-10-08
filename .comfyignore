@@ -1,0 +1,10 @@
+# Development-only assets excluded from the Comfy Registry package
+dist/
+docs/
+tests/
+tools/
+recordings/
+node_modules/
+__pycache__/
+test-results/
+.test-comfy/
