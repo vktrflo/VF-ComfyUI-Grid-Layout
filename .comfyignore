@@ -1,6 +1,7 @@
 # Development-only assets excluded from the Comfy Registry package
 dist/
-docs/
+docs/*
+!docs/media/
 tests/
 tools/
 recordings/

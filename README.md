@@ -47,7 +47,7 @@ Then restart ComfyUI and use **Ctrl+F5** to clear the old extension from the bro
 - **Drop to fit** — Drag a node onto a cell by its title and it attaches, snapping to the cell width while the frame grows to fit. Drop several into one cell to stack them; the drop position sets stack order.
 - **Inline organization** — Add full-width bottom rows, rename frames and cells inline, move a frame by its header, and transfer or release individual nodes between cells. Frame and row heights auto-fit their content and shrink as content is removed.
 - **Header and border styling** — Set the title-bar background, text color (with automatic contrast pick), and font size frame-wide or per cell. Control border color, 1–8 px thickness, and solid, dashed, or dotted style with a live preview.
-- **Fill cell height** — Stretch the bottom node of every cell flush with its cell floor; **Fit to content height** releases them again.
+- **Fill cell height** — Stretch the bottom node of every cell flush with its cell floor; **Undo Fill cell height** releases them again.
 - **Lock frame** — Freeze a frame's position and size behind a 🔒 in its header; menu commands keep working while it is locked.
 - **Reusable layouts** — Frame structure is stored in the workflow's `extra.comfyui_grid_layout` metadata (with backward compatibility for `comfyui_layout_templates`), so layouts survive save and reload. Export an empty template to reuse a shape without bringing its nodes along.
 
@@ -105,7 +105,7 @@ Drag dividers or the frame's edges to resize. **••• → Shrink grid to con
 - Click **•••** → **Header configuration…** to set the frame header's background color, text color (leave **Auto (contrast)** checked to keep the automatic dark/light pick), and font size for the frame title bar and all its cell header bars. A cell's **+** menu can override any of the three for that one cell, and the reset entry clears them. The configuration is saved with the workflow and included in exported templates.
 - Click **•••** → **Border configuration…** for border color, thickness (1–8 px), and solid/dashed/dotted style with a live preview. Cells inherit the frame's border; a cell's **+** menu can override it.
 - Click **•••** → **Change appearance → Reset appearance configuration** to clear all header and border overrides on the frame.
-- Click **•••** on a frame → **Fill cell height** to stretch every cell's bottom node flush with its cell (short cells fill up to taller neighbors); **Fit to content height** returns the nodes to their pre-fill heights. A filled frame owns its node heights — manual height drags are overridden while filling is on.
+- Click **•••** on a frame → **Fill cell height** to stretch every cell's bottom node flush with its cell (short cells fill up to taller neighbors); **Undo Fill cell height** returns the nodes to their pre-fill heights. A filled frame owns its node heights — manual height drags are overridden while filling is on.
 - Click **•••** on a frame → **Lock frame** to freeze its position and size — a 🔒 appears in its header; **Unlock frame** re-enables dragging. Locked frames ignore header, edge, and divider drags; menu commands still work.
 - Select nodes, then right-click the canvas or a selected node → **Create grid layout from selected nodes → Preserve columns** or **Single stack** to wrap your selection in a new frame. The floating selection toolbar's **Grid** button (under **More Options**) offers the same two options.
 - Right-click the canvas → **🌀 Import Grid Template…** to place a saved empty layout. Accepts both `.grid.json` and legacy `.layout.json` files.
@@ -127,3 +127,10 @@ Frames belong to the currently displayed graph, including subgraphs. Removing th
 - **Layout actions are missing under a heavy extension set.** Some installs with hundreds of other extensions drop extension menu entries; restart ComfyUI with `--disable-all-custom-nodes` and re-check, then re-enable your nodes one block at a time if you need to isolate a conflict.
 - **A node looks clipped inside its cell.** The frame should grow instead — if it doesn't, the node's package likely doesn't report its minimum size through ComfyUI's sizing API. File the issue with the upstream node pack, not here.
 - **I want to share just the empty layout.** Use **•••** → **Export empty template**. Workflow JSON with all nodes is shared through ComfyUI's normal workflow save.
+## Development verification
+
+Unit checks: `npm test`. Browser checks require Playwright and a running ComfyUI instance: `npm run test:browser` and `npm run test:ui`.
+
+Set `COMFYUI_URL` to the test server URL. Set `COMFYUI_TEST_INSTALLED=1` to test the installed package without intercepting extension assets. Use a dedicated ComfyUI base directory so workflow generation and settings changes stay within the test environment. Without installed mode, the browser checks inject this checkout's frontend files.
+
+Release verification currently covers ComfyUI 0.39.0 with frontend 1.53.10, in both classic and Nodes 2.0 rendering. Other versions and third-party extension combinations are not exhaustively tested.

@@ -118,3 +118,14 @@ Selected-node layout creation: 63 unit tests pass. Browser selection-ui.mjs pass
   - Frame default title: `Grid`.
   - Menu options: `Shrink grid to content`, `Rename grid…`, `Remove grid (keep nodes)`.
 - Checks: `npm test` 66/66 passing, verifying all layout operations plus legacy template import and legacy workflow data migration.
+
+## v1.0.0 registry release cleanup (2026-10-08)
+
+- Publisher metadata now uses `ty-woo`; license references `LICENSE`; icon is a visually checked 400x400 PNG rendered from the existing design.
+- Manual ZIP includes LICENSE, icon, and all six README demo GIFs. Registry `.comfyignore` retains the GIFs while excluding tests, tools, and design records. The installed Comfy CLI `zip_files` function produced an archive with 22 files, the license, the icon, all six GIFs, and no development directories.
+- Clean-install verification: extracted the manual ZIP into `.test-comfy/release/custom_nodes` and started ComfyUI on port 8197 with that isolated base, CPU execution, custom nodes disabled except the whitelisted package, and offline mode. Server startup confirmed package discovery. Browser checks used `COMFYUI_TEST_INSTALLED=1`, so assets were served by ComfyUI without interception. Runtime JavaScript in the registry archive was byte-identical to the installed files.
+- Environment: Windows, Node.js 22.22.0, Python 3.13.12, ComfyUI 0.39.0, frontend 1.53.10.
+- Fresh checks: 66/66 unit tests pass; main browser suite passes in classic and Nodes 2.0 (interaction, history, workflow persistence, geometry, unchanged prompt, actual EmptyImage generation, fill, frame lock, tall-node drop, and no browser runtime errors). All four supplementary suites pass in both renderers: appearance live preview/cancellation/save/history; selected-node menus/columns/stack/prompt/history; shrink/rendered bounds; toolbar/menu creation.
+- Updated stale appearance assertions to accessible labels and input events, current slider bounds and panel reset; fill scenario now uses the two-column default and drops the second node within the narrow destination cell. All browser suites can verify installed assets and assert no page runtime errors.
+- The initial clean-profile run encountered an unrelated ComfyUI dialog overlay blocking clicks. It did not recur during subsequent full verification. The heavily extended user instance is not the release test environment.
+- No registry publish was performed as part of these checks. Commit/push is required to update the registry icon URL's `main` branch asset.

@@ -1,5 +1,5 @@
-// Use a new browser context and intercept extension assets: no installation,
-// server restart, or changes to the user's open workflow are needed.
+// Use a fresh browser context. COMFYUI_TEST_INSTALLED=1 verifies server-served
+// package assets; otherwise inject this checkout for development checks.
 import { createRequire } from 'node:module';
 import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -22,19 +22,21 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/extensions', async route => {
-    const response = await route.fetch();
-    const list = await response.json();
-    await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
-  });
-  await page.route(`**${prefix}**`, async route => {
-    const relative = new URL(route.request().url()).pathname.slice(prefix.length);
-    assert.ok(!relative.includes('..'));
-    try {
-      const body = await readFile(fileURLToPath(new URL(`../web/${relative}`, import.meta.url)));
-      await route.fulfill({ contentType: 'text/javascript', body });
-    } catch { await route.fulfill({ status: 404, body: 'Extension file not implemented' }); }
-  });
+  if (process.env.COMFYUI_TEST_INSTALLED !== '1') {
+    await page.route('**/extensions', async route => {
+      const response = await route.fetch();
+      const list = await response.json();
+      await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
+    });
+    await page.route(`**${prefix}**`, async route => {
+      const relative = new URL(route.request().url()).pathname.slice(prefix.length);
+      assert.ok(!relative.includes('..'));
+      try {
+        const body = await readFile(fileURLToPath(new URL(`../web/${relative}`, import.meta.url)));
+        await route.fulfill({ contentType: 'text/javascript', body });
+      } catch { await route.fulfill({ status: 404, body: 'Extension file not implemented' }); }
+    });
+  }
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
   await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
@@ -87,4 +89,5 @@ try {
  }
  console.log(`Shrink and rendered bounds passed: ${vue?'Nodes 2.0':'Classic'}`);
  }
+  assert.deepEqual(errors, [], 'no browser runtime errors');
 }finally{await browser.close();}

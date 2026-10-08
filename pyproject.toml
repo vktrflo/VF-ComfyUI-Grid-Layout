@@ -2,7 +2,7 @@
 name = "vf-comfyui-grid-layout"
 version = "1.0.0"
 description = "Splittable canvas grid frames with drop-to-fit node stacks for ComfyUI"
-license = "MIT"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 
 [project.urls]
@@ -10,9 +10,6 @@ Repository = "https://github.com/vktrflo/VF-ComfyUI-Grid-Layout"
 "Bug Tracker" = "https://github.com/vktrflo/VF-ComfyUI-Grid-Layout/issues"
 
 [tool.comfy]
-# TODO: replace with the publisher id from https://registry.comfy.org before running
-# `comfy node publish`. The id is globally unique and cannot be changed after the
-# first publish, because it forms the public URL of this node.
-PublisherId = "TODO-REPLACE-WITH-YOUR-REGISTRY-PUBLISHER-ID"
+PublisherId = "ty-woo"
 DisplayName = "VF Grid Layout"
 Icon = "https://raw.githubusercontent.com/vktrflo/VF-ComfyUI-Grid-Layout/main/icon.png"
