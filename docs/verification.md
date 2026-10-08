@@ -15,7 +15,7 @@ Version 0.1.2 adds checks for dragging right/bottom frame edges in both renderer
 
 ## Manual checks for other ComfyUI versions or custom-node packs
 
-1. Install the ZIP, restart ComfyUI, and confirm the two layout actions appear in the canvas context menu.
+1. Install from the Registry or clone the repository into `custom_nodes`, restart ComfyUI, and confirm the two layout actions appear in the canvas context menu.
 2. Drop two nodes with text controls or image previews into a cell. Confirm their titles, controls, and connection sockets remain accessible.
 3. Split the populated cell; confirm the first child retains both nodes. Resize its divider in both directions.
 4. Drag a node between cells and out of the frame. Undo and redo each operation.

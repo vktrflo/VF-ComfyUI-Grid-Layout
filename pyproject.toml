@@ -1,5 +1,18 @@
 [project]
 name = "vf-comfyui-layout-templates"
-version = "0.3.0"
+version = "1.0.0"
 description = "Splittable canvas layout frames with drop-to-fit node stacks for ComfyUI"
+license = "MIT"
 requires-python = ">=3.10"
+
+[project.urls]
+Repository = "https://github.com/vktrflo/VF-ComfyUI-Layout-Templates"
+"Bug Tracker" = "https://github.com/vktrflo/VF-ComfyUI-Layout-Templates/issues"
+
+[tool.comfy]
+# TODO: replace with the publisher id from https://registry.comfy.org before running
+# `comfy node publish`. The id is globally unique and cannot be changed after the
+# first publish, because it forms the public URL of this node.
+PublisherId = "TODO-REPLACE-WITH-YOUR-REGISTRY-PUBLISHER-ID"
+DisplayName = "VF Layout Templates"
+Icon = "https://raw.githubusercontent.com/vktrflo/VF-ComfyUI-Layout-Templates/main/icon.png"
