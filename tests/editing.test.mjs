@@ -46,3 +46,65 @@ test('frame height snaps to content and shrinks after content removal, including
  f.root.ratios=[.01,.99]; engine.layoutFrame(f,m); close(f.size[1],50+130+114+12+60);
  f.root.children[0].nodes=[]; engine.layoutFrame(f,m); close(f.size[1],114*2+12+60);
 });
+
+test('divider drag clamps at content minimum without enlarging frame or unrelated column',()=>{
+ const f=engine.createFrame(); engine.gridCell(f,f.root.id,1,3); f.size[0]=1100;
+ f.root.children[0].nodes=[1]; f.root.children[1].nodes=[2];
+ const m=new Map([[1,{minWidth:260,height:100,titleHeight:30}],[2,{minWidth:300,height:100,titleHeight:30}]]);
+ const before=engine.layoutFrame(f,m), size=f.size[0];
+ const available=before.dividers[0].available;
+ engine.resizeDivider(f.root,0,10,available,m);
+ const after=engine.layoutFrame(f,m);
+ close(f.size[0],size); close(after.cells[2].rect[2],before.cells[2].rect[2]);
+ close(after.cells[1].rect[2],324);
+ engine.resizeDivider(f.root,0,-10,available,m);
+ close(engine.layoutFrame(f,m).cells[0].rect[2],284); close(f.size[0],size);
+});
+
+test('divider clamp respects nested split minimums and stays stable on repeated reflows',()=>{
+ const f=engine.createFrame(); engine.gridCell(f,f.root.id,1,3);
+ engine.splitCell(f,f.root.children[1].id,'x'); f.root.children[1].ratios=[.25,.75];
+ f.root.children[1].children[0].nodes=[1];
+ const m=new Map([[1,{minWidth:300,height:100,titleHeight:30}]]);
+ const before=engine.layoutFrame(f,m), width=f.size[0];
+ engine.resizeDivider(f.root,0,100,before.dividers.find(d=>d.cell===f.root).available,m);
+ for(let i=0;i<20;i++) close(engine.layoutFrame(f,m).cells[3].rect[2],before.cells[3].rect[2]);
+ close(f.size[0],width);
+});
+
+test('shrink layout fits nested columns to control minimums independently of old ratios',()=>{
+ const f=engine.createFrame(); engine.gridCell(f,f.root.id,1,3); f.size[0]=5000;
+ f.root.ratios=[.1,.2,.7]; f.root.children[0].nodes=[1,2]; f.root.children[1].nodes=[3];
+ const m=new Map([[1,{minWidth:220,height:100,titleHeight:30}],[2,{minWidth:300,height:100,titleHeight:30}],[3,{minWidth:250,height:100,titleHeight:30}]]);
+ engine.shrinkFrame(f,m); const result=engine.layoutFrame(f,m);
+ close(f.size[0],324+274+184+24+24);
+ result.cells.forEach((c,i)=>close(c.rect[2],[324,274,184][i]));
+ assert.deepEqual(result.cells[0].cell.nodes,[1,2]);
+ const size=[...f.size]; engine.shrinkFrame(f,m); assert.deepEqual(f.size,size);
+});
+
+test('bottom rows have blank titles that survive validation and template reuse',()=>{
+ const f=engine.createFrame(); engine.addBottomRow(f);
+ assert.equal(engine.leaves(f.root).at(-1).label,'');
+ assert.equal(engine.leaves(engine.validateFrame(f).root).at(-1).label,'');
+ assert.equal(engine.leaves(engine.importTemplate(engine.exportTemplate(f),[0,0]).root).at(-1).label,'');
+});
+
+test('left-edge resizing changes only boundary cells and keeps the right edge fixed',()=>{
+ const f=engine.createFrame(); engine.gridCell(f,f.root.id,2,3); f.size[0]=1200;
+ const before=engine.layoutFrame(f,new Map()).cells.map(c=>c.rect), right=f.pos[0]+f.size[0];
+ engine.resizeLeftEdge(f,-100,new Map());
+ const after=engine.layoutFrame(f,new Map()).cells.map(c=>c.rect);
+ close(f.pos[0]+f.size[0],right);
+ after.forEach((r,i)=>{close(r[0],before[i][0]-(i%3===0?100:0));close(r[2],before[i][2]+(i%3===0?100:0));});
+ engine.resizeLeftEdge(f,10000,new Map());close(f.pos[0]+f.size[0],right);
+ close(engine.layoutFrame(f,new Map()).cells[0].rect[2],184);
+});
+
+test('border settings validate, survive reload/template reuse and transfer on splits',()=>{
+ const f=engine.createFrame();f.border={color:'#123456',width:4,style:'dashed'};f.root.border={color:'#abcdef',width:2,style:'dotted'};
+ assert.deepEqual(engine.validateFrame(f).border,f.border);
+ engine.splitCell(f,f.root.id,'x');assert.equal(f.root.children[0].border.style,'dotted');
+ const restored=engine.importTemplate(engine.exportTemplate(f),[0,0]);assert.deepEqual(restored.border,f.border);assert.deepEqual(restored.root.children[0].border,f.root.children[0].border);
+ assert.equal(engine.normalizeBorder({color:'#fff',width:99,style:'solid'}),undefined);
+});

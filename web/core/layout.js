@@ -22,6 +22,24 @@ function id() {
 }
 const clone = value => JSON.parse(JSON.stringify(value));
 
+// Pick the cell a node rect should land in: the cell containing the rect's
+// center first (existing behavior), then the cell with the largest overlap —
+// a tall node dropped onto a small cell attaches even when its center is out.
+export function pickCell(layouts, rect) {
+  const [x, y, width, height] = rect;
+  const center = [x + width / 2, y + height / 2];
+  let best = null, bestArea = 0;
+  for (const layout of [...layouts].reverse()) {
+    for (const cell of layout.cells) {
+      const [cx, cy, cw, ch] = cell.rect;
+      if (center[0] >= cx && center[0] <= cx + cw && center[1] >= cy && center[1] <= cy + ch) return { frame: layout.frame, ...cell };
+      const area = Math.max(0, Math.min(x + width, cx + cw) - Math.max(x, cx)) * Math.max(0, Math.min(y + height, cy + ch) - Math.max(y, cy));
+      if (area > bestArea) { bestArea = area; best = { frame: layout.frame, ...cell }; }
+    }
+  }
+  return best;
+}
+
 export function normalizeColor(value) {
   if (typeof value !== 'string') return undefined;
   const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
@@ -30,7 +48,21 @@ export function normalizeColor(value) {
   return `#${hex.toLowerCase()}`;
 }
 
-export const createCell = (label = 'Cell') => ({ id: id(), label, nodes: [] });
+export function normalizeFontSize(value) {
+  const size = Number(value);
+  if (!Number.isFinite(size)) return undefined;
+  return Math.min(24, Math.max(8, Math.round(size)));
+}
+
+export const createCell = (label = '') => ({ id: id(), label, nodes: [] });
+export function normalizeBorder(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  const color = normalizeColor(value.color);
+  const width = Number(value.width);
+  if (!color || !Number.isInteger(width) || width < 1 || width > 8 || !['solid','dashed','dotted'].includes(value.style)) return undefined;
+  return {color, width, style:value.style};
+}
+
 export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Layout', pos: [...pos], size: [620, 500], root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
 export function findCell(cell, cellId) {
@@ -49,16 +81,22 @@ function cellDepth(cell, cellId, depth = 0) {
   }
 }
 
+function carryHeaderConfig(target, source) {
+  for (const key of ['color', 'textColor', 'fontSize', 'border']) {
+    if (source[key] !== undefined) { target[key] = source[key]; delete source[key]; }
+  }
+}
+
 export function splitCell(frame, cellId, axis) {
   if (!['x', 'y'].includes(axis)) throw new Error('Choose a horizontal or vertical split.');
   const cell = findCell(frame.root, cellId);
   if (!cell || cell.children) throw new Error('Only an unsplit cell can be split.');
   if (cellDepth(frame.root, cellId) >= 16) throw new Error('Layouts support up to 16 nested split levels.');
   if (leaves(frame.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
-  const first = createCell(cell.label), second = createCell('Cell');
+  const first = createCell(cell.label), second = createCell();
   first.nodes = cell.nodes;
   delete cell.nodes;
-  if (cell.color) { first.color = cell.color; delete cell.color; }
+  carryHeaderConfig(first, cell);
   Object.assign(cell, { axis, ratios: [0.5, 0.5], children: [first, second] });
 }
 
@@ -81,7 +119,7 @@ export function gridCell(frame, cellId, rows, columns) {
   else Object.assign(cell, { axis: 'y', ratios: Array(rows).fill(1 / rows), children: Array.from({ length: rows }, makeRow) });
   const first = leaves(cell)[0];
   first.nodes = nodes;
-  if (cell.color) { first.color = cell.color; delete cell.color; }
+  carryHeaderConfig(first, cell);
 }
 
 export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity) {
@@ -101,11 +139,34 @@ function ratios(cell) {
   return cell.ratios.map(r => r / sum);
 }
 
-export function resizeDivider(cell, index, delta) {
+function contentMinimumWidth(cell, metrics) {
+  if (!cell.children) return Math.max(160, ...cell.nodes.map(id => metrics.get(id)?.minWidth ?? 160)) + PAD * 2;
+  const widths = cell.children.map(child => contentMinimumWidth(child, metrics));
+  return cell.axis === 'y' ? Math.max(...widths) : Math.max(...widths.map((width, index) => width / ratios(cell)[index])) + GAP * (widths.length - 1);
+}
+
+export function shrinkFrame(frame, metrics) {
+  function fit(cell) {
+    if (!cell.children) return contentMinimumWidth(cell, metrics);
+    const widths = cell.children.map(fit);
+    if (cell.axis === 'y') return Math.max(...widths);
+    const total = widths.reduce((sum, width) => sum + width, 0);
+    cell.ratios = widths.map(width => width / total);
+    return total + GAP * (widths.length - 1);
+  }
+  frame.size[0] = fit(frame.root) + PAD * 2;
+  layoutFrame(frame, metrics);
+}
+
+export function resizeDivider(cell, index, delta, available, metrics) {
   const weights = ratios(cell);
   const sum = weights[index] + weights[index + 1];
   const minimum = Math.min(0.05, sum / 4);
-  const first = Math.max(minimum, Math.min(sum - minimum, weights[index] + delta));
+  const lower = metrics && cell.axis === 'x' ? contentMinimumWidth(cell.children[index], metrics) / available : minimum;
+  const upper = sum - (metrics && cell.axis === 'x' ? contentMinimumWidth(cell.children[index + 1], metrics) / available : minimum);
+  // A changing content minimum may make the pair temporarily too small.
+  // Keep its current split rather than forcing another frame expansion.
+  const first = lower > upper ? weights[index] : Math.max(lower, Math.min(upper, weights[index] + delta));
   weights[index] = first; weights[index + 1] = sum - first;
   cell.ratios = weights;
 }
@@ -131,6 +192,14 @@ export function deleteCell(frame, cellId) {
 // Preserve absolute widths on the left. Only subtrees touching the right
 // boundary receive the delta, including each row of a vertical split.
 export function resizeRightEdge(frame, delta, metrics) {
+  resizeBoundary(frame, delta, metrics, false);
+}
+
+export function resizeLeftEdge(frame, delta, metrics) {
+  resizeBoundary(frame, -delta, metrics, true);
+}
+
+function resizeBoundary(frame, delta, metrics, left) {
   if (!Number.isFinite(delta)) throw new Error('Invalid resize distance.');
   layoutFrame(frame, metrics);
   function minimumWidth(cell) {
@@ -142,7 +211,7 @@ export function resizeRightEdge(frame, delta, metrics) {
     if (!cell.children) return width - minimumWidth(cell);
     if (cell.axis === 'y') return Math.min(...cell.children.map(child => room(child, width)));
     const available = width - GAP * (cell.children.length - 1);
-    const last = cell.children.length - 1;
+    const last = left ? 0 : cell.children.length - 1;
     return room(cell.children[last], available * ratios(cell)[last]);
   }
   const width = frame.size[0] - PAD * 2;
@@ -153,13 +222,14 @@ export function resizeRightEdge(frame, delta, metrics) {
     if (cell.axis === 'y') { cell.children.forEach(child => resize(child, width)); return; }
     const available = width - GAP * (cell.children.length - 1);
     const widths = ratios(cell).map(weight => weight * available);
-    const last = widths.length - 1;
+    const last = left ? 0 : widths.length - 1;
     resize(cell.children[last], widths[last]);
     widths[last] += delta;
     cell.ratios = widths.map(childWidth => childWidth / (available + delta));
   }
   resize(frame.root, width);
   frame.size[0] += delta;
+  if (left) frame.pos[0] -= delta;
 }
 
 export function addBottomRow(frame) {
@@ -167,7 +237,7 @@ export function addBottomRow(frame) {
   const height = 200;
   const root = frame.root;
   const contentHeight = frame.size[1] - FRAME_TITLE - PAD * 2;
-  const row = createCell('Bottom row');
+  const row = createCell('');
   if (root.axis === 'y' && root.children.length < 16) {
     const available = contentHeight - GAP * (root.children.length - 1);
     root.ratios = [...ratios(root).map(weight => weight * available / (available + height)), height / (available + height)];
@@ -214,11 +284,19 @@ export function layoutFrame(frame, metrics) {
     if (!cell.children) {
       cells.push({ cell, rect });
       let y = rect[1] + CELL_TITLE + PAD;
-      for (const nodeId of cell.nodes) {
+      const last = cell.nodes.length - 1;
+      const floor = rect[1] + rect[3] - PAD;
+      const filling = frame.fill === true;
+      cell.nodes.forEach((nodeId, index) => {
         const metric = metrics.get(nodeId);
-        placements.push({ nodeId, x: rect[0] + PAD, y: y + metric.titleHeight, width: rect[2] - PAD * 2, height: metric.height });
-        y += metric.titleHeight + metric.height + GAP;
-      }
+        let height = metric.height;
+        const owned = filling && index === last && !metric.collapsed;
+        if (owned) height = Math.max(metric.minHeight, floor - y - metric.titleHeight);
+        const placement = { nodeId, x: rect[0] + PAD, y: y + metric.titleHeight, width: rect[2] - PAD * 2, height };
+        if (owned) placement.fill = true;
+        placements.push(placement);
+        y += metric.titleHeight + height + GAP;
+      });
       return;
     }
     const dim = cell.axis === 'x' ? 0 : 1;
@@ -256,7 +334,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
   function read(cell, depth) {
     if (!cell || depth > 16 || ++count > 512 || typeof cell.id !== 'string' || seen.has(cell.id)) throw new Error('Invalid or overly complex cell structure.');
     seen.add(cell.id);
-    const result = { id: freshIds ? id() : cell.id, label: String(cell.label ?? 'Cell').slice(0, 120) };
+    const result = { id: freshIds ? id() : cell.id, label: String(cell.label ?? '').slice(0, 120) };
     if (cell.children) {
       if (!['x', 'y'].includes(cell.axis) || !Array.isArray(cell.children) || cell.children.length < 2 || cell.children.length > 16 || !Array.isArray(cell.ratios) || cell.ratios.length !== cell.children.length || !cell.ratios.every(r => Number.isFinite(r) && r > 0 && r <= 1)) throw new Error('Invalid cell split.');
       Object.assign(result, { axis: cell.axis, ratios: ratios(cell), children: cell.children.map(c => read(c, depth + 1)) });
@@ -265,6 +343,11 @@ export function validateFrame(value, freshIds = false, empty = false) {
       result.nodes = empty ? [] : [...new Set(cell.nodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
       const color = normalizeColor(cell.color);
       if (color) result.color = color;
+      const textColor = normalizeColor(cell.textColor);
+      if (textColor) result.textColor = textColor;
+      const fontSize = normalizeFontSize(cell.fontSize);
+      if (fontSize !== undefined) result.fontSize = fontSize;
+      const border = normalizeBorder(cell.border); if (border) result.border = border;
     }
     return result;
   }
@@ -274,6 +357,13 @@ export function validateFrame(value, freshIds = false, empty = false) {
   const result = { id: freshIds ? id() : value.id, label: String(value.label ?? 'Layout').slice(0, 120), pos: [...value.pos], size: [...value.size], root };
   const color = normalizeColor(value.color);
   if (color) result.color = color;
+  if (value.fill === true) result.fill = true;
+  if (value.lock === true) result.lock = true;
+  const textColor = normalizeColor(value.textColor);
+  if (textColor) result.textColor = textColor;
+  const fontSize = normalizeFontSize(value.fontSize);
+  if (fontSize !== undefined) result.fontSize = fontSize;
+  const border = normalizeBorder(value.border); if (border) result.border = border;
   return result;
 }
 

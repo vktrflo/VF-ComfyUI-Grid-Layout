@@ -1,13 +1,13 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, deleteCell, resizeRightEdge, normalizeColor, KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, leaves, pickCell, KEY } from './layout.js';
 
 const STYLE = `
-.clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font:13px Consolas,monospace;color:var(--fg-color,#e4e4e7)}
+.clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
 .clt-plane{position:absolute;inset:0;transform-origin:0 0;pointer-events:none}
 .clt-frame,.clt-cell{position:absolute;box-sizing:border-box;pointer-events:none;border:1px solid #5d7e89;border-radius:5px}
 .clt-frame{border:2px solid #7197a5}
 .clt-frame-header{position:absolute;left:0;right:0;top:0;height:34px;background:var(--comfy-menu-bg,#20282c);display:flex;align-items:center;gap:8px;padding:0 8px;pointer-events:auto;cursor:move;border-radius:3px 3px 0 0;user-select:none}
-.clt-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji{flex:none}
+.clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
+.clt-emoji,.clt-lock{flex:none}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
@@ -20,13 +20,14 @@ const STYLE = `
 .clt-divider-x{cursor:col-resize}.clt-divider-x::after{width:2px;height:32px;left:5px;top:calc(50% - 16px)}
 .clt-divider-y{cursor:row-resize}.clt-divider-y::after{height:2px;width:32px;top:5px;left:calc(50% - 16px)}
 .clt-divider:hover::after{opacity:1;background:#70d8be}
-.clt-resize-x{position:absolute;pointer-events:auto;touch-action:none;z-index:2}
+.clt-resize-x,.clt-resize-left{position:absolute;pointer-events:auto;touch-action:none;z-index:2}
 .clt-resize-x{right:-2px;top:36px;bottom:0;width:10px;cursor:ew-resize}
-.clt-resize-x:hover{background:#70d8be55}
-.clt-menu{position:fixed;z-index:10000;min-width:180px;padding:5px;background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:5px;box-shadow:0 4px 16px #0006;font:13px Consolas,monospace}
+.clt-resize-left{left:-2px;top:36px;bottom:0;width:10px;cursor:ew-resize}
+.clt-resize-x:hover,.clt-resize-left:hover{background:#70d8be55}
+.clt-menu{position:fixed;z-index:10000;min-width:180px;padding:5px;background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:5px;box-shadow:0 4px 16px #0006;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px}
 .clt-menu button{display:block;width:100%;text-align:left;padding:8px;border:0;background:none;color:inherit;cursor:pointer}.clt-menu button:hover{background:#345361}
-.clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:280px;font:14px Consolas,monospace}.clt-dialog::backdrop{background:#0007}
-.clt-dialog h3{margin:0 0 16px}.clt-dialog label{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:12px 0}.clt-dialog input{background:var(--comfy-input-bg,#111b20);color:inherit;padding:6px;border:1px solid #5d7e89;border-radius:3px;max-width:200px}.clt-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
+.clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:280px;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:14px}.clt-dialog::backdrop{background:#0007}
+.clt-dialog h3{margin:0 0 16px}.clt-dialog label{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:12px 0}.clt-dialog input{background:var(--comfy-input-bg,#111b20);color:inherit;padding:6px;border:1px solid #5d7e89;border-radius:3px;max-width:200px}.clt-dialog input[type=color]{width:160px;height:42px;padding:2px;border:1px solid #7197a5;border-radius:6px;cursor:pointer}.clt-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -46,16 +47,37 @@ export function contrastColor(hex) {
   const background = luminance(hex);
   return contrast(background, luminance(HEADER_TEXT_DARK)) >= contrast(background, luminance(HEADER_TEXT_LIGHT)) ? HEADER_TEXT_DARK : HEADER_TEXT_LIGHT;
 }
-function applyHeaderColor(el, color) {
-  el.classList.add('clt-custom-bg');
-  el.style.background = color;
-  el.style.color = contrastColor(color);
+function applyHeaderStyle(el, { color, textColor, fontSize } = {}) {
+  if (color) {
+    el.classList.add('clt-custom-bg');
+    el.style.background = color;
+  }
+  if (textColor) el.style.color = textColor;
+  else if (color) el.style.color = contrastColor(color);
+  if (fontSize) el.style.fontSize = `${fontSize}px`;
+}
+function applyHeaderConfig(target, values) {
+  if (values.resetAppearance) {
+    for (const key of ['color','textColor','fontSize','border']) delete target[key];
+    return;
+  }
+  const border = normalizeBorder(values.border); if (border) target.border = border;
+  const color = normalizeColor(values.color);
+  if (color) target.color = color; else delete target.color;
+  const textColor = values.auto === true ? undefined : normalizeColor(values.textColor);
+  if (textColor) target.textColor = textColor; else delete target.textColor;
+  const fontSize = values.fontSize == null ? undefined : normalizeFontSize(values.fontSize);
+  if (fontSize === undefined) delete target.fontSize; else target.fontSize = fontSize;
 }
 function element(tag, className, text) {
   const el = document.createElement(tag);
   el.className = className;
   if (text != null) el.textContent = text;
   return el;
+}
+function applyBorder(el, value) {
+  const border = normalizeBorder(value);
+  if (border) {el.style.borderColor = border.color; el.style.borderWidth = `${border.width}px`; el.style.borderStyle = border.style;}
 }
 function rectStyle(el, rect) {
   Object.assign(el.style, { left: `${rect[0]}px`, top: `${rect[1]}px`, width: `${rect[2]}px`, height: `${rect[3]}px` });
@@ -79,7 +101,7 @@ export class LayoutOverlay {
     const container = this.app.canvas.canvas.parentElement;
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.append(this.root);
-    this.menu = null; this.drag = null; this.nativeDrag = null; this.hover = null;
+    this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null;
     const options = { capture: true, signal: this.abort.signal };
     document.addEventListener('pointerdown', e => this.nativeDown(e), options);
     document.addEventListener('pointermove', e => this.move(e), options);
@@ -107,7 +129,7 @@ export class LayoutOverlay {
         if (finished) return;
         finished = true; this.editing = null; this.signature = null;
         const value = input.value.trim();
-        if (save && value && value !== label && graph === this.controller.graph) this.safe(() => this.controller.edit(() => {
+        if (save && (cellId !== null || value) && value !== label && graph === this.controller.graph) this.safe(() => this.controller.edit(() => {
           const frame = this.controller.frames.find(frame => frame.id === frameId);
           const target = cellId ? frame && findCell(frame.root, cellId) : frame;
           if (target) target.label = value;
@@ -137,28 +159,128 @@ export class LayoutOverlay {
     const inputs = {};
     for (const field of fields) {
       const label = element('label', '', field.label), input = document.createElement('input');
-      input.name = field.name; input.type = field.type ?? 'text'; input.value = field.value;
-      input.setAttribute('aria-label', field.label); input.required = true;
-      if (input.type === 'number') { input.min = '1'; input.max = '16'; input.step = '1'; } else input.maxLength = 120;
+      input.name = field.name; input.type = field.type ?? 'text';
+      input.setAttribute('aria-label', field.label);
+      input.required = field.optional !== true && input.type !== 'checkbox';
+      if (input.type === 'number') {
+        input.min = String(field.min ?? 1); input.max = String(field.max ?? 16); input.step = String(field.step ?? 1);
+        if (field.value != null) input.value = String(field.value);
+      } else if (input.type === 'checkbox') {
+        input.checked = field.value === true;
+      } else {
+        input.value = field.value;
+        input.maxLength = 120;
+      }
+      if (field.onChange) input.addEventListener('change', () => field.onChange(input, inputs));
       label.append(input); form.append(label); inputs[field.name] = input;
     }
+    for (const field of fields) field.onChange?.(inputs[field.name], inputs);
     const footer = element('footer', '');
     const cancel = element('button', '', fields.length ? 'Cancel' : 'Close'); cancel.type = 'button'; cancel.onclick = () => dialog.close();
     footer.append(cancel);
-    if (fields.length) { const save = element('button', '', 'Apply'); save.type = 'submit'; footer.append(save); }
+    if (fields.length) { const save = element('button', '', 'OK'); save.type = 'submit'; footer.append(save); }
     form.append(footer); dialog.append(form); document.body.append(dialog);
     form.addEventListener('submit', e => {
       e.preventDefault();
-      const values = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.type === 'number' ? Number(input.value) : input.value]));
+      const values = Object.fromEntries(Object.entries(inputs).map(([key, input]) => {
+        if (input.type === 'number') return [key, input.value === '' ? null : Number(input.value)];
+        if (input.type === 'checkbox') return [key, input.checked];
+        return [key, input.value];
+      }));
       dialog.close(); this.safe(() => submit(values));
     });
     dialog.addEventListener('close', () => dialog.remove(), { once: true });
     dialog.showModal();
   }
+  headerConfigDialog(defaults, submit) {
+    const dialog = element('dialog', 'clt-dialog');
+    dialog.append(element('h3', '', 'Change Appearance'));
+    const values = { ...defaults, fontSize: Math.max(12, Math.min(24, defaults.fontSize ?? 13)) };
+    const frame = this.controller.frames.find(frame => frame.id === defaults.frameId);
+    const target = defaults.cellId ? frame && findCell(frame.root, defaults.cellId) : frame;
+    values.border = normalizeBorder(target?.border) ?? {color: defaults.cellId ? '#5d7e89' : '#7197a5', width: defaults.cellId ? 1 : 2, style: 'solid'};
+    const preview = (reset = false) => {
+      values.resetAppearance = reset;
+      this.borderPreview = {frameId: defaults.frameId, cellId: defaults.cellId, ...values.border};
+      this.previewBorder();
+      this.headerPreview = { ...values };
+      this.previewHeader();
+    };
+    const row = (label, input) => {
+      const el = element('label', '', label); el.append(input); dialog.append(el); return el;
+    };
+    const colorButton = (key, label) => {
+      const input = document.createElement('input'); input.type = 'color';
+      input.value = values[key]; input.setAttribute('aria-label', label);
+      input.oninput = () => { values[key] = input.value; preview(); };
+      row(label, input); return input;
+    };
+    const background = colorButton('color', 'Background color');
+    const auto = document.createElement('input'); auto.type = 'checkbox'; auto.checked = values.auto;
+    auto.setAttribute('aria-label', 'Auto (contrast)'); row('Auto (contrast)', auto);
+    const text = colorButton('textColor', 'Text color'); text.disabled = values.auto;
+    auto.onchange = () => { values.auto = auto.checked; text.disabled = auto.checked; preview(); };
+    const slider = document.createElement('input'); slider.type = 'range'; slider.min = '12'; slider.max = '24'; slider.step = '1'; slider.value = values.fontSize;
+    slider.setAttribute('aria-label', 'Font size');
+    const label = row(`Font size: ${values.fontSize} px`, slider);
+    slider.oninput = () => { values.fontSize = Number(slider.value); label.firstChild.textContent = `Font size: ${values.fontSize} px`; preview(); };
+    dialog.append(element('h3', '', 'Border'));
+    const borderColor = document.createElement('input'); borderColor.type = 'color'; borderColor.value = values.border.color;
+    borderColor.setAttribute('aria-label', 'Border color'); row('Border color', borderColor);
+    borderColor.oninput = () => {values.border.color = borderColor.value; preview();};
+    const thickness = document.createElement('input'); thickness.type='range';thickness.min='1';thickness.max='8';thickness.step='1';thickness.value=values.border.width;
+    thickness.setAttribute('aria-label','Border thickness');
+    const thicknessLabel=row(`Border thickness: ${values.border.width} px`,thickness);
+    thickness.oninput=()=>{values.border.width=Number(thickness.value);thicknessLabel.firstChild.textContent=`Border thickness: ${values.border.width} px`;preview();};
+    const style=document.createElement('select');style.setAttribute('aria-label','Border style');
+    for(const name of ['solid','dashed','dotted']){const option=element('option','',name);option.value=name;style.append(option);}
+    style.value=values.border.style;row('Border style',style);style.onchange=()=>{values.border.style=style.value;preview();};
+    const footer = element('footer', '');
+    const cancel = element('button', '', 'Cancel'), ok = element('button', '', 'OK');
+    cancel.onclick = () => dialog.close();
+    ok.onclick = () => { this.safe(() => submit(values)); dialog.close(); };
+    const reset = element('button', '', 'Reset appearance configuration');
+    reset.type = 'button';
+    reset.onclick = () => {
+      const inherited = defaults.cellId ? frame : null;
+      values.color = normalizeColor(inherited?.color) ?? '#20282c';
+      values.auto = !normalizeColor(inherited?.textColor);
+      values.textColor = normalizeColor(inherited?.textColor) ?? contrastColor(values.color);
+      values.fontSize = normalizeFontSize(inherited?.fontSize) ?? 13;
+      values.border = {color:defaults.cellId ? '#5d7e89' : '#7197a5',width:defaults.cellId ? 1 : 2,style:'solid'};
+      background.value=values.color;auto.checked=values.auto;text.value=values.textColor;text.disabled=values.auto;
+      slider.value=values.fontSize;label.firstChild.textContent=`Font size: ${values.fontSize} px`;
+      borderColor.value=values.border.color;thickness.value=values.border.width;thicknessLabel.firstChild.textContent=`Border thickness: ${values.border.width} px`;style.value=values.border.style;
+      preview(true);
+    };
+    dialog.append(reset);
+    footer.append(cancel, ok); dialog.append(footer);
+    dialog.onclose = () => { this.borderPreview = null; this.headerPreview = null; this.signature = null; dialog.remove(); };
+    document.body.append(dialog); dialog.showModal();
+  }
+  previewHeader() {
+    const values = this.headerPreview;
+    if (!values) return;
+    const frame = this.controller.frames.find(frame => frame.id === values.frameId);
+    if (!frame) return;
+    const color = values.color, textColor = values.auto ? contrastColor(color) : values.textColor;
+    const selectors = values.cellId ? `[data-cell-id="${values.cellId}"] .clt-cell-header` : `[data-frame-id="${values.frameId}"] .clt-frame-header`;
+    for (const header of this.plane.querySelectorAll(selectors)) applyHeaderStyle(header, {color,textColor,fontSize:values.fontSize});
+    if (!values.cellId) for (const cell of leaves(frame.root)) {
+      const header = this.plane.querySelector(`[data-cell-id="${cell.id}"] .clt-cell-header`);
+      if (header) applyHeaderStyle(header, {color:cell.color ?? color,textColor:cell.textColor ?? (values.auto ? contrastColor(cell.color ?? color) : textColor),fontSize:cell.fontSize ?? values.fontSize});
+    }
+  }
+  previewBorder() {
+    const value=this.borderPreview;if(!value)return;
+    const target=this.plane.querySelector(value.cellId?`[data-cell-id="${value.cellId}"]`:`[data-frame-id="${value.frameId}"]`);
+    if(target)applyBorder(target,value);
+  }
   closeMenu() { this.menu?.remove(); this.menu = null; }
   showMenu(event, actions) {
     this.closeMenu();
     const menu = element('div', 'clt-menu'); menu.setAttribute('role', 'menu');
+    actions = [...actions].sort((a,b) => Number(b[0].startsWith('Change Appearance')) - Number(a[0].startsWith('Change Appearance')));
     for (const [label, action] of actions) {
       const item = element('button', '', label); item.type = 'button'; item.setAttribute('role', 'menuitem');
       item.onclick = () => { this.closeMenu(); this.safe(action); }; menu.append(item);
@@ -180,34 +302,58 @@ export class LayoutOverlay {
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x'))],
       ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y'))],
       ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns)))],
-      ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
-      ['Header color…', () => {
+      ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', optional: true, value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
+      ['Change Appearance…', () => {
         const frame = this.controller.frames.find(f => f.id === frameId);
         const cell = frame && findCell(frame.root, cellId);
-        const current = (cell && (normalizeColor(cell.color) ?? normalizeColor(frame.color))) ?? '#20282c';
-        this.dialog('Header color', [{ name: 'color', label: 'Header color', type: 'color', value: current }], ({ color }) => edit((targetFrame, targetCell) => {
-          const next = normalizeColor(color);
-          if (next) targetCell.color = next; else delete targetCell.color;
-        }));
+        if (!cell) return;
+        const color = normalizeColor(cell.color) ?? normalizeColor(frame.color) ?? '#20282c';
+        this.headerConfigDialog({
+          frameId, cellId, color,
+          textColor: normalizeColor(cell.textColor) ?? normalizeColor(frame.textColor) ?? contrastColor(color),
+          auto: !normalizeColor(cell.textColor),
+          fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
+        }, values => edit((targetFrame, targetCell) => applyHeaderConfig(targetCell, values)));
       }],
     ];
     const frame = this.controller.frames.find(f => f.id === frameId);
     const cell = frame && findCell(frame.root, cellId);
-    if (cell && normalizeColor(cell.color)) actions.push(['Reset header color', () => edit((targetFrame, targetCell) => { delete targetCell.color; })]);
     this.showMenu(event, actions);
   }
   frameMenu(event, frame) {
     frame = this.controller.frames.find(f => f.id === frame.id);
     if (!frame) return;
     const actions = [
+      ['Shrink layout to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
       ['Rename layout…', () => this.dialog('Rename layout', [{ name: 'label', label: 'Layout name', value: frame.label }], ({ label }) => this.controller.edit(() => { frame.label = label; }))],
-      ['Header color…', () => this.dialog('Header color', [{ name: 'color', label: 'Header color', type: 'color', value: normalizeColor(frame.color) ?? '#20282c' }], ({ color }) => this.controller.edit(() => {
-        const next = normalizeColor(color);
-        if (next) frame.color = next; else delete frame.color;
-      }))],
+      ['Change Appearance…', () => {
+        const color = normalizeColor(frame.color) ?? '#20282c';
+        this.headerConfigDialog({
+          frameId: frame.id, color,
+          textColor: normalizeColor(frame.textColor) ?? contrastColor(color),
+          auto: !normalizeColor(frame.textColor),
+          fontSize: normalizeFontSize(frame.fontSize),
+        }, values => this.controller.edit(() => applyHeaderConfig(frame, values)));
+      }],
     ];
-    if (normalizeColor(frame.color)) actions.push(['Reset header color', () => this.controller.edit(() => { delete frame.color; })]);
+    if (frame.fill === true) {
+      actions.push(['Undo Fill cell height', () => this.controller.edit(() => {
+        delete frame.fill;
+        for (const cell of leaves(frame.root)) {
+          const nodeId = cell.nodes[cell.nodes.length - 1];
+          const node = nodeId != null ? this.controller.graph.getNodeById(nodeId) : null;
+          if (node) this.controller.adapter.releaseFill(node);
+        }
+      })]);
+    } else {
+      actions.push(['Fill cell height', () => this.controller.edit(() => { frame.fill = true; })]);
+    }
+    if (frame.lock === true) {
+      actions.push(['Unlock frame', () => this.controller.edit(() => { delete frame.lock; })]);
+    } else {
+      actions.push(['Lock frame', () => this.controller.edit(() => { frame.lock = true; })]);
+    }
     actions.push(['Export empty template', () => {
         const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
@@ -234,9 +380,11 @@ export class LayoutOverlay {
       const frame = this.controller.frames.find(f => f.id === data.frame.id);
       if (!frame) return;
       data.frame = frame;
+      if (frame.lock === true) return; // locked frames ignore header, edge, and divider drags
       if (kind === 'move') data.pos = [...frame.pos];
       if (kind.startsWith('resize')) {
         data.size = [...frame.size];
+        data.pos = [...frame.pos];
         data.root = structuredClone(frame.root);
       }
       if (kind === 'divider') {
@@ -256,6 +404,8 @@ export class LayoutOverlay {
     // events are then grouped with our drop/reflow into the same undo step.
     this.safe(() => {
       if (!this.controller.frames.length) return;
+      const pointer = this.controller.adapter.point(event);
+      this.nativeNode = this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
       this.controller.begin();
       this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId };
     });
@@ -273,12 +423,14 @@ export class LayoutOverlay {
             else if (kind.startsWith('resize')) {
               frame.root = structuredClone(this.drag.root);
               frame.size = [...this.drag.size];
-              resizeRightEdge(frame, dx, this.controller.metrics());
+              frame.pos = [...this.drag.pos];
+              if (kind === 'resize-left') resizeLeftEdge(frame, dx, this.controller.metrics());
+              else resizeRightEdge(frame, dx, this.controller.metrics());
             }
             else {
               const { cell, index, weights, available } = this.drag;
               const delta = (cell.axis === 'x' ? dx : dy) / available;
-              cell.ratios = [...weights]; resizeDivider(cell, index, delta);
+              cell.ratios = [...weights]; resizeDivider(cell, index, delta, available, this.controller.metrics());
             }
           });
         } catch (error) {
@@ -287,7 +439,10 @@ export class LayoutOverlay {
         }
       });
     } else if (this.nativeDrag) {
-      this.hover = this.controller.target(this.controller.adapter.point(event))?.cell.id ?? null;
+      const pointer = this.controller.adapter.point(event);
+      const node = this.nativeNode && this.controller.graph.getNodeById(this.nativeNode.id);
+      const pick = node ? pickCell(this.controller.geometry(), [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
+      this.hover = pick?.cell.id ?? this.controller.target(pointer)?.cell.id ?? null;
     }
   }
   up(event, cancelled = false) {
@@ -297,7 +452,7 @@ export class LayoutOverlay {
     if (this.nativeDrag && (!event || event.pointerId === this.nativeDrag.pointerId)) {
       const pending = this.nativeDrag;
       if (pending.finishing) return;
-      pending.finishing = true; this.hover = null;
+      pending.finishing = true; this.nativeNode = null; this.hover = null;
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
@@ -325,6 +480,8 @@ export class LayoutOverlay {
           if (!this.drag && !this.nativeDrag && this.controller.frames.length) this.controller.reflow();
           this.signature = signature; this.renderedData = data; this.render(layouts);
         }
+        this.previewHeader();
+        this.previewBorder();
         this.plane.style.transform = `translate(${ds.offset[0] * ds.scale}px,${ds.offset[1] * ds.scale}px) scale(${ds.scale})`;
       } catch (error) {
         if (!this.reportedError) { console.error('[Layout Templates]', error); this.reportedError = true; }
@@ -338,13 +495,23 @@ export class LayoutOverlay {
       const { frame } = layout;
       const el = element('section', 'clt-frame'); el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
       rectStyle(el, [...frame.pos, ...frame.size]);
+      applyBorder(el, frame.border);
       const header = element('div', 'clt-frame-header');
-      const frameColor = normalizeColor(frame.color);
-      if (frameColor) applyHeaderColor(header, frameColor);
+      applyHeaderStyle(header, {
+        color: normalizeColor(frame.color),
+        textColor: normalizeColor(frame.textColor),
+        fontSize: normalizeFontSize(frame.fontSize),
+      });
       const badge = element('span', 'clt-emoji', '🌀');
       badge.setAttribute('aria-hidden', 'true');
       header.append(badge);
       header.append(this.title(frame.label, frame.id));
+      if (frame.lock === true) {
+        header.style.cursor = 'default';
+        const lock = element('span', 'clt-lock', '🔒');
+        lock.title = 'Locked';
+        header.append(lock);
+      }
       header.append(button('Layout options', e => this.frameMenu(e, frame), '•••'));
       header.onpointerdown = e => this.startDrag(e, 'move', { frame, pos: [...frame.pos] });
       el.append(header);
@@ -355,13 +522,22 @@ export class LayoutOverlay {
         edge.onpointerdown = e => this.startDrag(e, `resize-${axis}`, { frame });
         el.append(edge);
       }
+      const leftEdge = element('div', 'clt-resize-left');
+      leftEdge.title = 'Drag to resize leftmost cells';
+      leftEdge.setAttribute('aria-label', 'Resize layout from left');
+      leftEdge.onpointerdown = event => this.startDrag(event, 'resize-left', {frame});
+      el.append(leftEdge);
       fragment.append(el);
       for (const { cell, rect } of layout.cells) {
         const cellEl = element('div', `clt-cell${this.hover === cell.id ? ' clt-target' : ''}`);
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
+        applyBorder(cellEl, cell.border);
         const cellHeader = element('div', 'clt-cell-header');
-        const cellColor = normalizeColor(cell.color) ?? normalizeColor(frame.color);
-        if (cellColor) applyHeaderColor(cellHeader, cellColor);
+        applyHeaderStyle(cellHeader, {
+          color: normalizeColor(cell.color) ?? normalizeColor(frame.color),
+          textColor: normalizeColor(cell.textColor) ?? normalizeColor(frame.textColor),
+          fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
+        });
         cellHeader.append(this.title(cell.label, frame.id, cell.id));
         cellHeader.append(button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '+'));
         cellEl.append(cellHeader);

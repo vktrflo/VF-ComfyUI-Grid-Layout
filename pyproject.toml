@@ -1,5 +1,5 @@
 [project]
 name = "vf-comfyui-layout-templates"
-version = "0.2.0"
+version = "0.3.0"
 description = "Splittable canvas layout frames with drop-to-fit node stacks for ComfyUI"
 requires-python = ">=3.10"

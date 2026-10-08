@@ -159,6 +159,13 @@ try {
     await page.mouse.click(creation.x, creation.y, { button: 'right' });
     await page.getByText('🌀 Add Layout Frame', { exact: true }).click();
     await page.locator('.clt-frame').waitFor();
+    assert.deepEqual(await membership(), [[], []], 'new frame has two empty cells');
+    assert.deepEqual(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.ratios), [0.5, 0.5]);
+    // Continue the single-cell split scenarios using the normal delete action.
+    await page.getByRole('button', {name:'Cell options',exact:true}).last().click();
+    await page.getByRole('menuitem', {name:'Delete cell (keep nodes)',exact:true}).click();
+    await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 1);
+
     assert.equal(await page.evaluate(() => document.querySelector('.clt-frame-header .clt-emoji')?.textContent), '🌀', 'frame header shows the cyclone emoji');
     await nodeDragTo(0, [850, 185]);
     assert.deepEqual(await membership(), [[1]], `${vue ? 'Vue' : 'Classic'} drop attaches first node`);
@@ -210,12 +217,27 @@ try {
     await drag({ x: divider.x + divider.width / 2, y: divider.y + 100 }, { x: divider.x + divider.width / 2 + 35, y: divider.y + 100 });
     assert.ok(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.ratios[0] > 0.5));
 
+    const widthBeforeClamp = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]);
+    const clampDivider = await box(page.locator('.clt-divider').first());
+    await drag({x:clampDivider.x+clampDivider.width/2,y:clampDivider.y+70}, {x:clampDivider.x+clampDivider.width/2+700,y:clampDivider.y+70});
+    assert.ok(await page.evaluate(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]-width)<1, widthBeforeClamp), 'extreme divider drag cannot expand the frame');
+    await page.keyboard.press('Control+z');
+    await settle();
+
+    const beforeShrink = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]);
+    await page.getByRole('button', {name:'Layout options',exact:true}).click();
+    await page.getByRole('menuitem', {name:'Shrink layout to content',exact:true}).click();
+    assert.ok(await page.evaluate(width => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0] < width, beforeShrink), 'shrink menu fits controls');
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]-width)<1, beforeShrink);
+    await settle();
+
     // Grid UI, a nested split, export via download, and import via file picker.
     await page.getByRole('button', { name: 'Cell options', exact: true }).last().click();
     await page.getByRole('menuitem', { name: 'Create grid…' }).click();
     await page.getByLabel('Rows', { exact: true }).fill('2');
     await page.getByLabel('Columns', { exact: true }).fill('2');
-    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 5);
     await page.getByRole('button', { name: 'Cell options', exact: true }).last().click();
     await page.getByRole('menuitem', { name: 'Split into top / bottom' }).click();
@@ -300,33 +322,39 @@ try {
 
     // Header colors: frame color covers the frame bar and all cell bars; per-cell override; undo/redo; persistence; reset.
     const defaultHeader = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor);
+    const defaultLabel = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color);
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
-    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    const swatch = await page.locator('.clt-dialog input[name="color"]').evaluate(el => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+    assert.ok(swatch.w >= 140 && swatch.h >= 36, 'color swatch is a large rectangle');
+    const titleFont = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).fontFamily);
+    assert.ok(titleFont.includes('Inter') && !titleFont.includes('Consolas'), 'frame title uses the ComfyUI font stack');
+    await page.screenshot({ path: `test-results/dialog-${vue ? 'nodes-2' : 'classic'}.png` });
+    await page.locator('.clt-dialog input[name="color"]').evaluate((el, value) => { el.value = value; }, '#70d8be');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === 'rgb(112, 216, 190)');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color), 'rgb(16, 20, 24)', 'frame label switches to dark contrast text');
     const inherited = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].map(el => getComputedStyle(el).backgroundColor));
     assert.ok(inherited.length >= 2 && inherited.every(color => color === 'rgb(112, 216, 190)'), 'all cell headers inherit the frame color');
 
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry hidden before an own color is set');
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    assert.equal(await page.locator('.clt-dialog input[type="color"]').inputValue(), '#70d8be', 'cell dialog prefills the inherited frame color');
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'cell reset entry hidden before an own color is set');
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'cell dialog prefills the inherited frame color');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    await page.locator('.clt-dialog input[type="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
-    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    await page.locator('.clt-dialog input[name="color"]').evaluate((el, value) => { el.value = value; }, '#112233');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color), 'rgb(244, 246, 247)', 'overridden cell label uses light contrast text');
     const siblings = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].slice(1).map(el => getComputedStyle(el).backgroundColor));
     assert.ok(siblings.every(color => color === 'rgb(112, 216, 190)'), 'siblings keep the frame color');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor), 'rgb(112, 216, 190)', 'frame bar unchanged by cell override');
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Header color…', exact: true }).click();
-    assert.equal(await page.locator('.clt-dialog input[type="color"]').inputValue(), '#70d8be', 'frame dialog prefills the current frame color');
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'frame dialog prefills the current frame color');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.screenshot({ path: `test-results/colors-${vue ? 'nodes-2' : 'classic'}.png` });
 
@@ -347,17 +375,299 @@ try {
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(17, 34, 51)');
 
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(112, 216, 190)');
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(defaultBg => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === defaultBg, defaultHeader);
     await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'frame reset entry gone after reset');
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'frame reset entry gone after reset');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
-    assert.equal(await page.getByRole('menuitem', { name: 'Reset header color', exact: true }).count(), 0, 'cell reset entry gone after reset');
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'cell reset entry gone after reset');
     await page.keyboard.press('Escape');
+
+    // Change Appearance: background + text color + font size, inherited by cells, per-cell overrides, reset.
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#20282c', 'panel prefills the default background');
+    assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), true, 'text color defaults to auto');
+    assert.equal(await page.locator('.clt-dialog input[name="textColor"]').inputValue(), '#f4f6f7', 'auto swatch shows the computed contrast color');
+    assert.equal(await page.locator('.clt-dialog input[name="fontSize"]').inputValue(), '', 'size stays blank when unset');
+    await page.locator('.clt-dialog input[name="color"]').evaluate(el => { el.value = '#70d8be'; });
+    await page.locator('.clt-dialog input[name="auto"]').uncheck();
+    assert.equal(await page.locator('.clt-dialog input[name="textColor"]').isEnabled(), true, 'unchecking auto enables the text swatch');
+    await page.locator('.clt-dialog input[name="textColor"]').evaluate(el => { el.value = '#112233'; });
+    await page.locator('.clt-dialog input[name="fontSize"]').fill('18');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === 'rgb(112, 216, 190)');
+    const headerConfig = await page.evaluate(() => {
+      const frame = document.querySelector('.clt-frame-header');
+      return {
+        frame: {
+          background: getComputedStyle(frame).backgroundColor,
+          size: getComputedStyle(frame).fontSize,
+          text: getComputedStyle(frame.querySelector('.clt-label')).color,
+        },
+        cells: [...document.querySelectorAll('.clt-cell-header')].map(el => ({
+          background: getComputedStyle(el).backgroundColor,
+          size: getComputedStyle(el).fontSize,
+          text: getComputedStyle(el.querySelector('.clt-label')).color,
+        })),
+      };
+    });
+    assert.deepEqual(headerConfig.frame, { background: 'rgb(112, 216, 190)', size: '18px', text: 'rgb(17, 34, 51)' }, 'frame header applies all three fields');
+    assert.ok(headerConfig.cells.length >= 2 && headerConfig.cells.every(c => c.background === 'rgb(112, 216, 190)' && c.size === '18px' && c.text === 'rgb(17, 34, 51)'), 'cell headers inherit background, text color, and font size');
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `test-results/header-config-${vue ? 'nodes-2' : 'classic'}.png` });
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'cell panel prefills the inherited background');
+    assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), true, 'cell text color has no own pin yet');
+    assert.equal(await page.locator('.clt-dialog input[name="textColor"]').inputValue(), '#112233', 'cell panel shows the inherited text color');
+    await page.locator('.clt-dialog input[name="fontSize"]').fill('11');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '11px');
+    const overridden = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].map(el => getComputedStyle(el).fontSize));
+    assert.ok(overridden[0] === '11px' && overridden.slice(1).every(s => s === '18px'), 'cell overrides only the size');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color), 'rgb(17, 34, 51)', 'text color stays inherited');
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    await page.locator('.clt-dialog input[name="auto"]').uncheck();
+    await page.locator('.clt-dialog input[name="textColor"]').evaluate(el => { el.value = '#ffffff'; });
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(255, 255, 255)');
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
+    assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), false, 'cell text color is pinned');
+    await page.locator('.clt-dialog input[name="auto"]').check();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(17, 34, 51)');
+
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(255, 255, 255)');
+    await page.keyboard.press('Control+Shift+z');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header .clt-label')).color === 'rgb(17, 34, 51)');
+
+    const configSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
+    await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, configSave);
+    await settle();
+    const configPersisted = await page.evaluate(() => {
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
+      const cell = leaves(frames[0].root)[0];
+      return { frame: { textColor: frames[0].textColor, fontSize: frames[0].fontSize }, cellFontSize: cell.fontSize, hasCellText: 'textColor' in cell };
+    });
+    assert.equal(configPersisted.frame.textColor, '#112233', 'frame text color persists');
+    assert.equal(configPersisted.frame.fontSize, 18, 'frame font size persists');
+    assert.equal(configPersisted.cellFontSize, 11, 'cell font size persists');
+    assert.equal(configPersisted.hasCellText, false, 'cleared cell text pin stays absent');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '11px');
+
+    await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '18px');
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
+    await page.waitForFunction(({ background, label }) => {
+      const frame = document.querySelector('.clt-frame-header');
+      const style = getComputedStyle(frame);
+      return style.backgroundColor === background && style.fontSize === '13px' && getComputedStyle(frame.querySelector('.clt-label')).color === label;
+    }, { background: defaultHeader, label: defaultLabel });
+    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'reset entry gone after clearing the configuration');
+    await page.keyboard.press('Escape');
+
+    // Fill cell height: the bottom node stretches flush with the cell's content floor.
+    await page.evaluate(async () => {
+      const app = window.comfyAPI.app.app;
+      await app.loadGraphData({ version: 0.4, nodes: [], links: [], groups: [], extra: {} });
+      const image = window.LiteGraph.createNode('EmptyImage'); image.pos = [100, 160]; app.graph.add(image);
+      image.widgets.find(w => w.name === 'width').value = 64; image.widgets.find(w => w.name === 'height').value = 64;
+      const save = window.LiteGraph.createNode('SaveImage'); save.pos = [100, 420]; app.graph.add(save);
+      save.widgets.find(w => w.name === 'filename_prefix').value = 'layout-fill';
+      image.connect(0, save, 0);
+      app.canvas.ds.scale = 0.8; app.canvas.ds.offset = [0, 0];
+      window.testNodes = [image.id, save.id];
+    });
+    await page.waitForTimeout(400);
+    const fillCreation = await worldPoint([550, 80]);
+    await page.mouse.click(fillCreation.x, fillCreation.y, { button: 'right' });
+    await page.getByText('🌀 Add Layout Frame', { exact: true }).click();
+    await page.locator('.clt-frame').waitFor();
+    await nodeDragTo(0, [850, 185]);
+    assert.deepEqual(await membership(), [[1]], 'fill scenario attaches the tall-column node');
+    await page.evaluate(() => { const n = window.comfyAPI.app.app.graph.getNodeById(window.testNodes[0]); n.setSize([n.size[0], 420]); });
+    await settle();
+    await page.waitForTimeout(250);
+    await page.getByRole('button', { name: 'Cell options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Split into left / right', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 2);
+    await settle();
+    const fillRight = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const c = new LayoutController(window.comfyAPI.app.app, {});
+      const r = c.geometry()[0].cells[1].rect;
+      return [r[0] + r[2] / 2, r[1] + r[3] / 2];
+    });
+    await nodeDragTo(1, fillRight);
+    assert.deepEqual(await membership(), [[1], [2]], 'fill scenario columns hold one node each');
+    await settle();
+    const fillBefore = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { PAD } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry()[0];
+      const saved = String(window.testNodes[1]);
+      const entry = layout.cells.find(({ cell }) => cell.nodes.some(n => String(n) === saved));
+      const placement = layout.placements.find(p => String(p.nodeId) === saved);
+      const node = app.graph.getNodeById(window.testNodes[1]);
+      const tallNode = app.graph.getNodeById(window.testNodes[0]);
+      return { size: node.size[1], tallSize: tallNode.size[1], target: (entry.rect[1] + entry.rect[3] - PAD) - placement.y };
+    });
+    assert.ok(fillBefore.size < fillBefore.target - 40, 'scenario: the short column has spare height to fill');
+    // The drag left the node selected, which summons ComfyUI's Selection Toolbox over the chrome.
+    const openFrameMenu = async () => {
+      await page.evaluate(() => window.comfyAPI.app.app.canvas.deselectAllNodes());
+      await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    };
+    await openFrameMenu();
+    assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).count(), 0, 'fit entry hidden before filling');
+    await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
+    const waitForFlush = () => page.waitForFunction(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { PAD } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry()[0];
+      const saved = String(window.testNodes[1]);
+      const entry = layout.cells.find(({ cell }) => cell.nodes.some(n => String(n) === saved));
+      if (!entry) return false;
+      const placement = layout.placements.find(p => String(p.nodeId) === saved);
+      if (!placement) return false;
+      const node = app.graph.getNodeById(window.testNodes[1]);
+      return Math.abs((placement.y + placement.height) - (entry.rect[1] + entry.rect[3] - PAD)) < 1.5 && Math.abs(node.size[1] - placement.height) < 1.5;
+    }, undefined, { timeout: 5000 });
+    await waitForFlush();
+    const fillAfter = await page.evaluate(() => {
+      const app = window.comfyAPI.app.app;
+      const frames = app.graph.extra.comfyui_layout_templates.frames;
+      const node = app.graph.getNodeById(window.testNodes[1]);
+      const tallNode = app.graph.getNodeById(window.testNodes[0]);
+      return { height: node.size[1], tallHeight: tallNode.size[1], flag: frames[0].fill === true };
+    });
+    assert.equal(fillAfter.flag, true, 'fill flag is set on the frame');
+    assert.ok(Math.abs(fillAfter.height - fillBefore.target) < 1.5, 'stretched node matches the computed fill height');
+    assert.ok(Math.abs(fillAfter.tallHeight - fillBefore.tallSize) < 1.5, 'the taller column node is unchanged (anchor preserved)');
+    await openFrameMenu();
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 0, 'fill entry hidden while filling');
+    assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).count(), 1);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(size => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - size) < 1.5, fillBefore.size);
+    await page.keyboard.press('Control+Shift+z');
+    await waitForFlush();
+    await openFrameMenu();
+    await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).click();
+    await page.waitForFunction(size => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - size) < 1.5, fillBefore.size);
+    await openFrameMenu();
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 1, 'fill entry returns after release');
+    await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
+    await waitForFlush();
+    const filledSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
+    await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, filledSave);
+    await settle();
+    const fillPersisted = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].fill === true);
+    assert.equal(fillPersisted, true, 'frame fill persists through a workflow save/load round trip');
+    await waitForFlush();
+    // Force a canvas repaint; screenshotting right after a layout change can
+    // otherwise capture a stale bitmap in headless runs.
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `test-results/fill-${vue ? 'nodes-2' : 'classic'}.png` });
+    console.log(`Fill cell height checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
+
+    // Lock scenario: the frame gains a lock icon, ignores header drags, and moves again after unlocking.
+    await openFrameMenu();
+    await page.getByRole('menuitem', { name: 'Lock frame', exact: true }).click();
+    await settle();
+    await page.locator('.clt-lock').waitFor({ state: 'attached', timeout: 3000 });
+    assert.equal(await page.locator('.clt-lock').textContent(), '🔒', 'lock icon appears in the frame header');
+    const lockedPos = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos]);
+    const headerBox = await page.locator('.clt-frame-header').first().boundingBox();
+    await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(headerBox.x + headerBox.width / 2 + 60, headerBox.y + headerBox.height / 2 + 40, { steps: 5 });
+    await page.mouse.up();
+    await settle();
+    const lockedAfter = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos]);
+    assert.deepEqual(lockedAfter, lockedPos, 'a locked frame ignores header drags');
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `test-results/lock-${vue ? 'nodes-2' : 'classic'}.png` });
+    await openFrameMenu();
+    await page.getByRole('menuitem', { name: 'Unlock frame', exact: true }).click();
+    await settle();
+    assert.equal(await page.locator('.clt-lock').count(), 0, 'lock icon disappears after unlocking');
+    await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(headerBox.x + headerBox.width / 2 + 60, headerBox.y + headerBox.height / 2 + 40, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForFunction(pos => {
+      const p = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos;
+      return Math.abs(p[0] - pos[0]) > 20 || Math.abs(p[1] - pos[1]) > 20;
+    }, lockedPos);
+    console.log(`Frame lock checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
+
+    // Regression: a tall node dropped onto a small empty cell attaches by overlap,
+    // even though its center falls outside the cell rect.
+    const tallTarget = await page.evaluate(async () => {
+      const app = window.comfyAPI.app.app;
+      app.canvas.ds.scale = 1; app.canvas.ds.offset = [0, 0];
+      const { createFrame } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const frame = createFrame([120, 640]);
+      app.graph.extra.comfyui_layout_templates.frames.push(frame);
+      const node = window.LiteGraph.createNode('EmptyImage');
+      node.pos = [40, 200]; app.graph.add(node);
+      node.setSize([node.size[0], 420]);
+      window.__tallNode = node.id; window.__tallFrame = frame.id;
+      return { node: node.id, frame: frame.id };
+    });
+    await page.waitForTimeout(700);
+    const tallDrop = await page.evaluate(async () => {
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const app = window.comfyAPI.app.app;
+      const c = new LayoutController(app, {});
+      const layout = c.geometry().find(l => String(l.frame.id) === String(window.__tallFrame));
+      const rect = layout.cells[0].rect;
+      const node = app.graph.getNodeById(window.__tallNode);
+      const vue2 = window.LiteGraph.vueNodesMode;
+      return {
+        source: [node.pos[0] + 70, node.pos[1] + (vue2 ? 15 : -15)],
+        dest: [rect[0] + 10 + 70, rect[1] + 5 + (vue2 ? 15 : -15)],
+        nodeSize: [...node.size], rect,
+      };
+    });
+    const tallCenter = [tallDrop.rect[0] + 10 + tallDrop.nodeSize[0] / 2, tallDrop.rect[1] + 5 + tallDrop.nodeSize[1] / 2];
+    assert.ok(
+      !(tallCenter[0] >= tallDrop.rect[0] && tallCenter[0] <= tallDrop.rect[0] + tallDrop.rect[2] && tallCenter[1] >= tallDrop.rect[1] && tallCenter[1] <= tallDrop.rect[1] + tallDrop.rect[3]),
+      'scenario: the tall node center lands outside the small cell'
+    );
+    await drag(await worldPoint(tallDrop.source), await worldPoint(tallDrop.dest));
+    await page.waitForFunction(id => {
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
+      const frame = frames.find(f => String(f.id) === String(window.__tallFrame));
+      return leaves(frame.root).some(c => c.nodes.map(String).includes(String(id)));
+    }, tallTarget.node, { timeout: 5000 });
+    await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `test-results/drop-tall-${vue ? 'nodes-2' : 'classic'}.png` });
+    console.log(`Tall-node drop checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
 
     console.log(`${vue ? 'Nodes 2.0' : 'Classic'} interaction, history, persistence, geometry and prompt checks passed`);
   }

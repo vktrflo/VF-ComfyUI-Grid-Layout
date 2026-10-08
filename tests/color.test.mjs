@@ -89,3 +89,65 @@ test('contrastColor picks the higher-contrast label for saturated colors', () =>
   assert.equal(contrastColor('#999999'), '#101418');
   assert.equal(contrastColor('#ff6600'), '#101418');
 });
+
+test('validateFrame keeps text color and clamps font size, dropping junk', () => {
+  const frame = engine.createFrame([10, 20]);
+  frame.color = '#123abc';
+  frame.fill = true;
+  frame.lock = true;
+  frame.textColor = '#AB12CD';
+  frame.fontSize = 40;
+  engine.splitCell(frame, frame.root.id, 'x');
+  frame.root.children[0].textColor = 'ff0000';
+  frame.root.children[0].fontSize = 9.6;
+  frame.root.children[1].textColor = 'nope';
+  frame.root.children[1].fontSize = 'big';
+  const validated = engine.validateFrame(frame);
+  assert.equal(validated.textColor, '#ab12cd');
+  assert.equal(validated.fontSize, 24, 'out-of-range sizes clamp');
+  assert.equal(validated.color, '#123abc');
+  assert.equal(validated.fill, true);
+  assert.equal(validated.lock, true);
+  assert.equal(validated.root.children[0].textColor, '#ff0000');
+  assert.equal(validated.root.children[0].fontSize, 10, 'sizes round');
+  assert.equal('textColor' in validated.root.children[1], false);
+  assert.equal('fontSize' in validated.root.children[1], false);
+
+  const plain = engine.createFrame([0, 0]);
+  assert.equal('textColor' in engine.validateFrame(plain), false);
+  assert.equal('fontSize' in engine.validateFrame(plain), false);
+});
+
+test('text color and font size survive splits, grids, and template round trips', () => {
+  const frame = engine.createFrame([10, 20]);
+  frame.root.textColor = '#112233';
+  frame.root.fontSize = 18;
+  engine.splitCell(frame, frame.root.id, 'x');
+  assert.equal('textColor' in frame.root, false);
+  assert.equal('fontSize' in frame.root, false);
+  assert.equal(frame.root.children[0].textColor, '#112233');
+  assert.equal(frame.root.children[0].fontSize, 18);
+  assert.equal('textColor' in frame.root.children[1], false);
+
+  const grid = engine.createFrame();
+  grid.root.textColor = '#abcdef';
+  grid.root.fontSize = 10;
+  engine.gridCell(grid, grid.root.id, 2, 2);
+  assert.equal(engine.leaves(grid.root)[0].textColor, '#abcdef');
+  assert.equal(engine.leaves(grid.root)[0].fontSize, 10);
+  assert.ok(engine.leaves(grid.root).slice(1).every(leaf => !('textColor' in leaf) && !('fontSize' in leaf)));
+
+  const travel = engine.createFrame([10, 20]);
+  travel.textColor = '#112233';
+  travel.fontSize = 18;
+  engine.splitCell(travel, travel.root.id, 'x');
+  travel.root.children[0].fontSize = 12;
+  const template = engine.exportTemplate(travel);
+  assert.equal(template.frame.textColor, '#112233');
+  assert.equal(template.frame.fontSize, 18);
+  assert.equal(template.frame.root.children[0].fontSize, 12);
+  const restored = engine.importTemplate(JSON.parse(JSON.stringify(template)), [5, 6]);
+  assert.equal(restored.textColor, '#112233');
+  assert.equal(restored.fontSize, 18);
+  assert.equal(restored.root.children[0].fontSize, 12);
+});

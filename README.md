@@ -12,7 +12,7 @@ This is a **frontend extension** installed as a custom-node package. It adds can
 
 No extra Python packages, frontend build, or model downloads are required.
 
-When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars.
+When updating, replace the existing package files, restart ComfyUI, and use **Ctrl+F5** to clear the old extension from the browser cache. Version 0.1.1 fixes creating layouts over HTTP network addresses (for example, `http://10.0.0.164:8188`). Version 0.2.0 adds customizable header colors for frame and cell header bars. Version 0.3.0 adds frame-level fill-cell-height (a frame's bottom nodes can stretch to fill their cells), a frame lock, and a header configuration panel (background, text color, font size).
 
 ## Examples: workflow versus template
 
@@ -22,14 +22,16 @@ When updating, replace the existing package files, restart ComfyUI, and use **Ct
 ## Use
 
 - Right-click empty canvas space → **🌀 Add Layout Frame**.
-- Drag a node by its title into a cell. Its center determines the destination. Drop several nodes into the same cell to create a vertical stack; the drop position determines stack order. Newly created nodes placed inside a cell attach automatically too.
-- Drag an attached node to another cell to transfer it, or outside all cells to release it. Released nodes keep their current size.
+- Drag a node by its title over a cell and release while any part of it overlaps a cell — it attaches even if the node is much taller than a small empty cell. Drop several nodes into the same cell to create a vertical stack; the drop position determines stack order. Newly created nodes placed inside a cell attach automatically too.
+- Drag an attached node to another cell to transfer it, or fully clear of every cell to release it. Released nodes keep their current size.
 - Click **+** on a cell header to split left/right, split top/bottom, create a grid, or rename the cell. Splitting keeps existing nodes in the first (top or left) cell.
 - Drag a vertical divider to change column widths. Each grid cell can be split again. Drag the frame's right edge to resize its width; only cells touching that boundary change width.
 - Drag the layout header to move its nodes together. Frame and row heights automatically fit their content and shrink when content is removed. Empty cells retain a small drop area.
 - Click **•••** on the frame → **Add bottom row** to append an empty full-width cell. Existing cells keep their heights and attached nodes; the frame extends downward. Split the new row into columns if needed.
 - The same **•••** menu can rename, export an empty template, or remove the frame while retaining nodes and connections.
-- Click **•••** → **Header color…** to color the frame header bar and all its cell header bars; use a cell's **+** menu to override or reset that one cell. Colors are saved with the workflow and included in exported templates.
+- Click **•••** → **Header configuration…** to set the frame header's background color, text color (leave **Auto (contrast)** checked to keep the automatic dark/light pick), and font size for the frame title bar and all its cell header bars; use a cell's **+** menu to override any of the three for that one cell, and the reset entry to clear them. The configuration is saved with the workflow and included in exported templates.
+- Click **•••** on a frame → **Fill cell height** to stretch every cell's bottom node flush with its cell (short cells fill up to taller neighbors); **Fit to content height** returns the nodes to their pre-fill heights. A filled frame owns its node heights — manual height drags are overridden while filling is on.
+- Click **•••** on a frame → **Lock frame** to freeze its position and size — a 🔒 appears in its header; **Unlock frame** re-enables dragging. Locked frames ignore header, edge, and divider drags; menu commands still work.
 - Right-click the canvas → **🌀 Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
 - Use ComfyUI's normal **Ctrl+Z / Ctrl+Shift+Z** shortcuts for undo/redo.
 
@@ -75,4 +77,23 @@ Run `python tools/package.py` to create the installable ZIP in `dist/`. See `doc
 
 Development update: Cell options > Delete cell (keep nodes) releases the nodes and collapses single-child parents. Deleting the final cell leaves one empty cell. Right-edge width resizing preserve other columns and stop shrinking at the rightmost cells' content minimum.
 
-Double-click a frame or cell title to rename it inline. Enter or leaving the field saves; Escape cancels. Empty titles retain the previous name. Renaming supports undo/redo.
+Double-click a frame or cell title to rename it inline. Enter or leaving the field saves; Escape cancels. Cell titles may be empty; empty frame titles retain the previous name. Renaming supports undo/redo.
+
+Cell divider dragging stops at the neighboring cells' content minimum widths, keeping the frame width and unrelated columns stable.
+
+Frame menu > Shrink layout to content fits cell widths to their widest node's content minimum, with normal padding and gaps. Nested columns are fitted independently; stacked rows share the width required by their widest row. Empty cells keep a small drop area. Undo restores the previous width and column proportions.
+
+New layout frames start with one row of two equal-width empty cells (50/50).
+
+New bottom rows have an empty title. Cell titles can be cleared through inline editing or the rename menu.
+
+Header configuration uses a 12-24 px font slider with a live value label and canvas preview. Background/text colors use the original browser color picker. The header panel retains OK/Cancel. Cancel restores previews; OK saves one undoable header edit.
+
+Drag the frame's left edge to resize only the leftmost boundary cells while keeping its right edge fixed. Minimum content widths clamp shrinking; changes are undoable.
+
+Header configuration is first in the frame and cell menus. Border configuration lets you choose border color, thickness (1-8 px), and solid/dashed/dotted style with live preview. OK saves an undoable change; Cancel restores the previous border. Border settings persist with workflows and templates.
+
+Change Appearance includes Reset appearance configuration. It previews removal of header and border overrides; OK saves the reset, Cancel restores the original appearance. Cells resume inheriting the frame's header appearance.
+
+Select nodes, right-click the canvas or a selected node, then choose Create layout from selected nodes > Preserve columns or Single stack. Column detection groups nodes with nearby left edges, orders columns left to right and stacks top to bottom. The new frame fits content minimum widths, preserves connections and supports one-step undo/redo. Selected nodes already in layouts transfer to the new frame.
+The floating selection toolbar includes a Layout button. Its More Options menu also includes Create layout from selected nodes. Both offer Preserve columns and Single stack.
