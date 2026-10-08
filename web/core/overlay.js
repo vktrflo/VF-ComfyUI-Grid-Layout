@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, leaves, pickCell, KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, leaves, pickCell, KEY, LEGACY_KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -149,7 +149,7 @@ export class LayoutOverlay {
     return title;
   }
   message(text) {
-    this.dialog('Layout Templates', [], () => {}, text);
+    this.dialog('Grid Layout', [], () => {}, text);
   }
   dialog(title, fields, submit, message = '') {
     const dialog = element('dialog', 'clt-dialog');
@@ -324,9 +324,9 @@ export class LayoutOverlay {
     frame = this.controller.frames.find(f => f.id === frame.id);
     if (!frame) return;
     const actions = [
-      ['Shrink layout to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
+      ['Shrink grid to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
-      ['Rename layout…', () => this.dialog('Rename layout', [{ name: 'label', label: 'Layout name', value: frame.label }], ({ label }) => this.controller.edit(() => { frame.label = label; }))],
+      ['Rename grid…', () => this.dialog('Rename grid', [{ name: 'label', label: 'Grid name', value: frame.label }], ({ label }) => this.controller.edit(() => { frame.label = label; }))],
       ['Change Appearance…', () => {
         const color = normalizeColor(frame.color) ?? '#20282c';
         this.headerConfigDialog({
@@ -357,17 +357,17 @@ export class LayoutOverlay {
     actions.push(['Export empty template', () => {
         const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
         const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
-        link.download = `${frame.label.replace(/[^a-z0-9_-]/gi, '-') || 'layout'}.layout.json`; link.click();
+        link.download = `${frame.label.replace(/[^a-z0-9_-]/gi, '-') || 'grid'}.grid.json`; link.click();
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
       }]);
-    actions.push(['Remove layout (keep nodes)', () => this.controller.remove(frame.id)]);
+    actions.push(['Remove grid (keep nodes)', () => this.controller.remove(frame.id)]);
     this.showMenu(event, actions);
   }
   importAt(pos) {
-    const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json';
+    const input = document.createElement('input'); input.type = 'file'; input.accept = '.grid.json,.layout.json,.json,application/json';
     input.onchange = async () => {
       const file = input.files?.[0]; if (!file) return;
-      if (file.size > 1024 * 1024) return this.message('Layout templates must be smaller than 1 MB.');
+      if (file.size > 1024 * 1024) return this.message('Grid templates must be smaller than 1 MB.');
       try { this.controller.import(JSON.parse(await file.text()), pos); }
       catch (error) { this.message(error.message); }
     };
@@ -469,7 +469,7 @@ export class LayoutOverlay {
         const layouts = this.controller.geometry();
         const { ds } = this.app.canvas;
         const signature = JSON.stringify([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover]);
-        const data = this.controller.graph?.extra?.[KEY];
+        const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
           const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
           if (this.editing.graph !== this.controller.graph || !frame || (this.editing.cellId && !findCell(frame.root, this.editing.cellId))) this.editing.cancel();
@@ -484,7 +484,7 @@ export class LayoutOverlay {
         this.previewBorder();
         this.plane.style.transform = `translate(${ds.offset[0] * ds.scale}px,${ds.offset[1] * ds.scale}px) scale(${ds.scale})`;
       } catch (error) {
-        if (!this.reportedError) { console.error('[Layout Templates]', error); this.reportedError = true; }
+        if (!this.reportedError) { console.error('[Grid Layout]', error); this.reportedError = true; }
       }
     }
     this.animation = requestAnimationFrame(this.tick);
@@ -512,19 +512,19 @@ export class LayoutOverlay {
         lock.title = 'Locked';
         header.append(lock);
       }
-      header.append(button('Layout options', e => this.frameMenu(e, frame), '•••'));
+      header.append(button('Grid options', e => this.frameMenu(e, frame), '•••'));
       header.onpointerdown = e => this.startDrag(e, 'move', { frame, pos: [...frame.pos] });
       el.append(header);
       for (const axis of ['x']) {
         const edge = element('div', `clt-resize-${axis}`);
         edge.title = axis === 'x' ? 'Drag to resize rightmost cells' : 'Drag to resize bottom cells';
-        edge.setAttribute('aria-label', axis === 'x' ? 'Resize layout width' : 'Resize layout height');
+        edge.setAttribute('aria-label', axis === 'x' ? 'Resize grid width' : 'Resize grid height');
         edge.onpointerdown = e => this.startDrag(e, `resize-${axis}`, { frame });
         el.append(edge);
       }
       const leftEdge = element('div', 'clt-resize-left');
       leftEdge.title = 'Drag to resize leftmost cells';
-      leftEdge.setAttribute('aria-label', 'Resize layout from left');
+      leftEdge.setAttribute('aria-label', 'Resize grid from left');
       leftEdge.onpointerdown = event => this.startDrag(event, 'resize-left', {frame});
       el.append(leftEdge);
       fragment.append(el);

@@ -1,55 +1,55 @@
-# VF-ComfyUI-Layout-Templates
+# VF-ComfyUI-Grid-Layout
 
-Reusable layout frames for the ComfyUI workflow canvas. Drop normal nodes into a cell to attach them, match their widths, and stack them vertically. Split cells into adjustable columns, rows, or grids.
+Reusable grid layout frames for the ComfyUI workflow canvas. Drop normal nodes into a cell to attach them, match their widths, and stack them vertically. Split cells into adjustable columns, rows, or grids.
 
 This is a **frontend extension** installed as a custom-node package. It adds canvas tools — it does not add an executable generation node.
 
 ## Try it in 30 seconds
 
 1. Install (below) and refresh ComfyUI with **Ctrl+F5**.
-2. Right-click an empty spot on the canvas → **🌀 Add Layout Frame**.
+2. Right-click an empty spot on the canvas → **🌀 Add Grid Frame**.
 3. Drag any node by its title over a cell and release. The node snaps to the cell's width and the frame grows to fit it.
 4. Drop a second node into the same cell to stack it. Click **+** on a cell header to split, grid, or rename.
 
-A ready-made starting point is in **`examples/two-column.layout.json`** (empty template) and **`examples/two-column.workflow.json`** (a runnable layout with Empty Image → Save Image). Open the workflow through ComfyUI's normal **Open** action, or place the layout template with **right-click canvas → 🌀 Import Layout Template…**.
+A ready-made starting point is in **`examples/two-column.grid.json`** (empty template) and **`examples/two-column.workflow.json`** (a runnable layout with Empty Image → Save Image). Open the workflow through ComfyUI's normal **Open** action, or place the template with **right-click canvas → 🌀 Import Grid Template…**.
 
 ## Install
 
 ### ComfyUI Registry (recommended)
 
 1. In ComfyUI-Manager, open the **Registry** tab.
-2. Search for **VF Layout Templates** and click **Install**.
+2. Search for **VF Grid Layout** and click **Install**.
 3. Restart ComfyUI and hard-refresh the browser with **Ctrl+F5**.
 
 ### Manual install from GitHub
 
 ```bash
 cd <your-comfyui-path>/custom_nodes
-git clone https://github.com/vktrflo/VF-ComfyUI-Layout-Templates.git
+git clone https://github.com/vktrflo/VF-ComfyUI-Grid-Layout.git
 ```
 
 Restart ComfyUI and hard-refresh the browser with **Ctrl+F5**.
 
-After either install, check that `custom_nodes/VF-ComfyUI-Layout-Templates/__init__.py` and `custom_nodes/VF-ComfyUI-Layout-Templates/web/layout_templates.js` exist directly inside the package folder.
+After either install, check that `custom_nodes/VF-ComfyUI-Grid-Layout/__init__.py` and `custom_nodes/VF-ComfyUI-Grid-Layout/web/grid_layout.js` exist directly inside the package folder.
 
 No extra Python packages, frontend build, or model downloads are required.
 
 ### Updating
 
 - **Registry** — update the node from ComfyUI-Manager.
-- **Manual** — `git -C custom_nodes/VF-ComfyUI-Layout-Templates pull`
+- **Manual** — `git -C custom_nodes/VF-ComfyUI-Grid-Layout pull`
 
 Then restart ComfyUI and use **Ctrl+F5** to clear the old extension from the browser cache.
 
 ## Features
 
-- **Frames and cells** — Right-click the canvas to add a layout frame, or wrap an existing selection as **Preserve columns** or **Single stack**. Frames split into columns, rows, and grids up to 16 levels deep, with draggable dividers and edges.
+- **Frames and cells** — Right-click the canvas to add a grid frame, or wrap an existing selection as **Preserve columns** or **Single stack**. Frames split into columns, rows, and grids up to 16 levels deep, with draggable dividers and edges.
 - **Drop to fit** — Drag a node onto a cell by its title and it attaches, snapping to the cell width while the frame grows to fit. Drop several into one cell to stack them; the drop position sets stack order.
 - **Inline organization** — Add full-width bottom rows, rename frames and cells inline, move a frame by its header, and transfer or release individual nodes between cells. Frame and row heights auto-fit their content and shrink as content is removed.
 - **Header and border styling** — Set the title-bar background, text color (with automatic contrast pick), and font size frame-wide or per cell. Control border color, 1–8 px thickness, and solid, dashed, or dotted style with a live preview.
 - **Fill cell height** — Stretch the bottom node of every cell flush with its cell floor; **Fit to content height** releases them again.
 - **Lock frame** — Freeze a frame's position and size behind a 🔒 in its header; menu commands keep working while it is locked.
-- **Reusable layouts** — Frame structure is stored in the workflow's `extra.comfyui_layout_templates` metadata, so layouts survive save and reload. Export an empty template to reuse a shape without bringing its nodes along.
+- **Reusable layouts** — Frame structure is stored in the workflow's `extra.comfyui_grid_layout` metadata (with backward compatibility for `comfyui_layout_templates`), so layouts survive save and reload. Export an empty template to reuse a shape without bringing its nodes along.
 
 ## Use
 
@@ -59,7 +59,7 @@ Six short demos, in roughly the order you need them.
 
 ![Selecting nodes and creating a layout that preserves their columns](docs/media/01-instant-layout.gif)
 
-Select nodes, then right-click the canvas or a selected node → **Create layout from selected nodes → Preserve columns** or **Single stack**. The floating toolbar's **Layout** button offers the same two options. Connections and widget values are kept.
+Select nodes, then right-click the canvas or a selected node → **Create grid layout from selected nodes → Preserve columns** or **Single stack**. The floating toolbar's **Grid** button offers the same two options. Connections and widget values are kept.
 
 ### 2. Split cells and add rows
 
@@ -83,7 +83,7 @@ Double-click any frame or cell title, type, then **Enter** or click away to save
 
 ![Dragging the left edge of a frame, then shrinking the layout back to its content](docs/media/05-resize-and-shrink.gif)
 
-Drag dividers or the frame's edges to resize. **••• → Shrink layout to content** fits every cell back to its controls.
+Drag dividers or the frame's edges to resize. **••• → Shrink grid to content** fits every cell back to its controls.
 
 ### 6. Fill cell height and undo
 
@@ -93,12 +93,12 @@ Drag dividers or the frame's edges to resize. **••• → Shrink layout to c
 
 ### Everything else
 
-- Right-click empty canvas space → **🌀 Add Layout Frame**.
+- Right-click empty canvas space → **🌀 Add Grid Frame**.
 - Drag a node by its title over a cell and release while any part of it overlaps a cell — it attaches even if the node is much taller than a small empty cell. Drop several nodes into the same cell to create a vertical stack; the drop position determines stack order. Newly created nodes placed inside a cell attach automatically too.
 - Drag an attached node to another cell to transfer it, or fully clear of every cell to release it. Released nodes keep their current size.
 - Click **+** on a cell header to split left/right, split top/bottom, create a grid, or rename the cell. Splitting keeps existing nodes in the first (top or left) cell.
 - Drag a vertical divider to change column widths. Each grid cell can be split again. Drag the frame's right or left edge to resize its width; only the cells touching that boundary change width.
-- Drag the layout header to move its nodes together. Frame and row heights automatically fit their content and shrink when content is removed. Empty cells retain a small drop area.
+- Drag the grid header to move its nodes together. Frame and row heights automatically fit their content and shrink when content is removed. Empty cells retain a small drop area.
 - Double-click a frame or cell title to rename it inline. **Enter** or clicking away saves, **Esc** cancels. Empty frame titles keep the previous name; cell titles can be cleared.
 - Click **•••** on the frame → **Add bottom row** to append an empty full-width cell. Existing cells keep their heights and attached nodes; the frame extends downward. Split the new row into columns if needed.
 - The same **•••** menu can rename the frame, export an empty template, or remove the frame while retaining nodes and connections.
@@ -107,15 +107,15 @@ Drag dividers or the frame's edges to resize. **••• → Shrink layout to c
 - Click **•••** → **Change appearance → Reset appearance configuration** to clear all header and border overrides on the frame.
 - Click **•••** on a frame → **Fill cell height** to stretch every cell's bottom node flush with its cell (short cells fill up to taller neighbors); **Fit to content height** returns the nodes to their pre-fill heights. A filled frame owns its node heights — manual height drags are overridden while filling is on.
 - Click **•••** on a frame → **Lock frame** to freeze its position and size — a 🔒 appears in its header; **Unlock frame** re-enables dragging. Locked frames ignore header, edge, and divider drags; menu commands still work.
-- Select nodes, then right-click the canvas or a selected node → **Create layout from selected nodes → Preserve columns** or **Single stack** to wrap your selection in a new frame. The floating selection toolbar's **Layout** button (under **More Options**) offers the same two options.
-- Right-click the canvas → **🌀 Import Layout Template…** to place a saved empty layout. Try `examples/two-column.layout.json`.
+- Select nodes, then right-click the canvas or a selected node → **Create grid layout from selected nodes → Preserve columns** or **Single stack** to wrap your selection in a new frame. The floating selection toolbar's **Grid** button (under **More Options**) offers the same two options.
+- Right-click the canvas → **🌀 Import Grid Template…** to place a saved empty layout. Accepts both `.grid.json` and legacy `.layout.json` files.
 - Use ComfyUI's normal **Ctrl+Z / Ctrl+Shift+Z** shortcuts for undo/redo.
 
 Node controls are resized through ComfyUI's normal node sizing API. Nodes fill cell widths; their heights retain space for their controls and previews. When a node needs more room, the frame grows instead of clipping it. This can make the frame larger than the requested drag size.
 
 ## Saving and reuse
 
-Normal workflow saves include frame positions, sizes, labels, cell splits, and attached node IDs. The extension stores versioned layout metadata in `workflow.extra.comfyui_layout_templates`; node execution, widget values, and connections use ComfyUI's normal workflow data.
+Normal workflow saves include frame positions, sizes, labels, cell splits, and attached node IDs. The extension stores versioned grid layout metadata in `workflow.extra.comfyui_grid_layout` (while transparently reading and migrating older `comfyui_layout_templates` workflow data); node execution, widget values, and connections use ComfyUI's normal workflow data.
 
 Exported templates contain only empty layout structure. Import creates fresh frame and cell IDs and does not create or connect nodes. Workflow copies retain populated layout metadata; copying selected nodes alone does not copy frames.
 

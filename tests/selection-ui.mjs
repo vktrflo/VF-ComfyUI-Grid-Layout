@@ -14,7 +14,7 @@ catch {
 }
 const base = process.env.COMFYUI_URL ?? 'http://127.0.0.1:8188';
 const exampleWorkflow = JSON.parse(await readFile(new URL('../examples/two-column.workflow.json', import.meta.url), 'utf8'));
-const prefix = '/extensions/VF-ComfyUI-Layout-Templates/';
+const prefix = '/extensions/VF-ComfyUI-Grid-Layout/';
 const browser = await playwright.chromium.launch({ headless: true });
 await mkdir('test-results', { recursive: true });
 try {
@@ -25,7 +25,7 @@ try {
   await page.route('**/extensions', async route => {
     const response = await route.fetch();
     const list = await response.json();
-    await route.fulfill({ response, json: [...list, `${prefix}layout_templates.js`] });
+    await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
   });
   await page.route(`**${prefix}**`, async route => {
     const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -37,7 +37,7 @@ try {
   });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.LayoutTemplates'), { timeout: 15000 });
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
   try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
@@ -68,7 +68,7 @@ try {
     await drag(await worldPoint(points.source), await worldPoint(points.dest));
   };
   const membership = () => page.evaluate(() => {
-    const data = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates;
+    const data = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout ?? window.comfyAPI.app.app.graph.extra.comfyui_layout_templates;
     const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
     return data?.frames.flatMap(f => leaves(f.root).map(c => c.nodes.map(Number))) ?? [];
   });
@@ -78,7 +78,7 @@ try {
   for (const vue of [false,true]) {
     await page.evaluate(async ({vue,workflow})=>{
       const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);
-      const data=structuredClone(workflow);delete data.extra.comfyui_layout_templates;
+      const data=structuredClone(workflow);delete data.extra.comfyui_grid_layout;delete data.extra.comfyui_layout_templates;
       await app.loadGraphData(data);app.graph._nodes[0].pos=[100,200];app.graph._nodes[1].pos=[600,200];
       app.canvas.ds.scale=.8;app.canvas.ds.offset=[0,0];app.canvas.selectNodes(app.graph._nodes);
     },{vue,workflow:exampleWorkflow});
@@ -86,7 +86,7 @@ try {
     const prompt=await page.evaluate(async()=> (await window.comfyAPI.app.app.graphToPrompt()).output);
     const click=await worldPoint([1100,700]);
     await page.mouse.click(click.x,click.y,{button:'right'});
-    await page.getByText('Create layout from selected nodes',{exact:true}).click();
+    await page.getByText('Create grid layout from selected nodes',{exact:true}).click();
     await page.getByText('Preserve columns',{exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
     assert.deepEqual(await membership(),[[1],[2]]);
@@ -94,7 +94,7 @@ try {
     await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
     await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes(app.graph._nodes);});
     await page.mouse.click(click.x,click.y,{button:'right'});
-    await page.getByText('Create layout from selected nodes',{exact:true}).click();
+    await page.getByText('Create grid layout from selected nodes',{exact:true}).click();
     await page.getByText('Single stack',{exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
     assert.deepEqual(await membership(),[[1,2]]);

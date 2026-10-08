@@ -1,6 +1,9 @@
 // Geometry and membership are independent of ComfyUI's rendering system.
 export const VERSION = 1;
-export const KEY = 'comfyui_layout_templates';
+export const KEY = 'comfyui_grid_layout';
+export const LEGACY_KEY = 'comfyui_layout_templates';
+export const KIND = 'comfyui-grid-layout';
+export const LEGACY_KIND = 'comfyui-layout-template';
 export const PAD = 12;
 export const GAP = 12;
 export const CELL_TITLE = 26;
@@ -63,7 +66,7 @@ export function normalizeBorder(value) {
   return {color, width, style:value.style};
 }
 
-export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Layout', pos: [...pos], size: [620, 500], root: createCell() });
+export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Grid', pos: [...pos], size: [620, 500], root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
 export function findCell(cell, cellId) {
   if (cell.id === cellId) return cell;
@@ -351,10 +354,10 @@ export function validateFrame(value, freshIds = false, empty = false) {
     }
     return result;
   }
-  if (typeof value.id !== 'string') throw new Error('Invalid layout ID.');
+  if (typeof value.id !== 'string') throw new Error('Invalid grid ID.');
   const root = read(value.root, 0);
-  if (leaves(root).length > 256) throw new Error('A layout supports up to 256 cells.');
-  const result = { id: freshIds ? id() : value.id, label: String(value.label ?? 'Layout').slice(0, 120), pos: [...value.pos], size: [...value.size], root };
+  if (leaves(root).length > 256) throw new Error('A grid supports up to 256 cells.');
+  const result = { id: freshIds ? id() : value.id, label: String(value.label ?? 'Grid').slice(0, 120), pos: [...value.pos], size: [...value.size], root };
   const color = normalizeColor(value.color);
   if (color) result.color = color;
   if (value.fill === true) result.fill = true;
@@ -370,11 +373,11 @@ export function validateFrame(value, freshIds = false, empty = false) {
 export function exportTemplate(frame) {
   const emptyFrame = validateFrame(clone(frame), false, true);
   layoutFrame(emptyFrame, new Map());
-  return { kind: 'comfyui-layout-template', version: VERSION, frame: emptyFrame };
+  return { kind: KIND, version: VERSION, frame: emptyFrame };
 }
 
 export function importTemplate(value, pos) {
-  if (value?.kind !== 'comfyui-layout-template' || value.version !== VERSION) throw new Error('Choose a version 1 ComfyUI layout template JSON file.');
+  if ((value?.kind !== KIND && value?.kind !== LEGACY_KIND) || value.version !== VERSION) throw new Error('Choose a version 1 ComfyUI grid template JSON file.');
   const frame = validateFrame(value.frame, true, true);
   frame.pos = [...pos];
   layoutFrame(frame, new Map());

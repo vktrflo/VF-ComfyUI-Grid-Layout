@@ -14,7 +14,7 @@ catch {
 }
 const base = process.env.COMFYUI_URL ?? 'http://127.0.0.1:8188';
 const exampleWorkflow = JSON.parse(await readFile(new URL('../examples/two-column.workflow.json', import.meta.url), 'utf8'));
-const prefix = '/extensions/VF-ComfyUI-Layout-Templates/';
+const prefix = '/extensions/VF-ComfyUI-Grid-Layout/';
 const browser = await playwright.chromium.launch({ headless: true });
 await mkdir('test-results', { recursive: true });
 try {
@@ -25,7 +25,7 @@ try {
   await page.route('**/extensions', async route => {
     const response = await route.fetch();
     const list = await response.json();
-    await route.fulfill({ response, json: [...list, `${prefix}layout_templates.js`] });
+    await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
   });
   await page.route(`**${prefix}**`, async route => {
     const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -37,7 +37,7 @@ try {
   });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.LayoutTemplates'), { timeout: 15000 });
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
   try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
@@ -68,7 +68,7 @@ try {
     await drag(await worldPoint(points.source), await worldPoint(points.dest));
   };
   const membership = () => page.evaluate(() => {
-    const data = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates;
+    const data = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout ?? window.comfyAPI.app.app.graph.extra.comfyui_grid_layout;
     const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
     return data?.frames.flatMap(f => leaves(f.root).map(c => c.nodes.map(Number))) ?? [];
   });
@@ -105,12 +105,12 @@ try {
     assert.deepEqual(examplePrompt['2'].inputs.images, ['1', 0]);
     const edge = await box(page.locator('.clt-resize-x'));
     const leftBeforeResize = await page.evaluate(() => { const n=window.comfyAPI.app.app.graph.getNodeById(1); return [...n.pos,...n.size]; });
-    const widthBefore = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]);
+    const widthBefore = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]);
     await drag({ x: edge.x + edge.width / 2, y: edge.y + edge.height / 2 }, { x: edge.x + edge.width / 2 + 40, y: edge.y + edge.height / 2 });
-    assert.ok(await page.evaluate(before => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0] > before + 45, widthBefore), 'right edge resizes outermost cells');
+    assert.ok(await page.evaluate(before => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0] > before + 45, widthBefore), 'right edge resizes outermost cells');
     assert.deepEqual(await page.evaluate(() => { const n=window.comfyAPI.app.app.graph.getNodeById(1); return [...n.pos,...n.size]; }), leftBeforeResize, 'right edge leaves left column unchanged');
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(before => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0] - before) < 1, widthBefore);
+    await page.waitForFunction(before => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0] - before) < 1, widthBefore);
     await settle();
     const beforeDelete = await page.evaluate(() => {const n=window.comfyAPI.app.app.graph.getNodeById(2);return [...n.pos,...n.size];});
     await page.getByRole('button', { name: 'Cell options', exact: true }).nth(1).click();
@@ -128,7 +128,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 2);
     await settle();
     const positionsBeforeRow = await page.evaluate(() => window.comfyAPI.app.app.graph._nodes.map(n => [...n.pos]));
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Add bottom row', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 3);
     assert.deepEqual(await membership(), [[1], [2], []]);
@@ -157,10 +157,10 @@ try {
     const promptBefore = await page.evaluate(async () => (await window.comfyAPI.app.app.graphToPrompt()).output);
     const creation = await worldPoint([550, 80]);
     await page.mouse.click(creation.x, creation.y, { button: 'right' });
-    await page.getByText('🌀 Add Layout Frame', { exact: true }).click();
+    await page.getByText('🌀 Add Grid Frame', { exact: true }).click();
     await page.locator('.clt-frame').waitFor();
     assert.deepEqual(await membership(), [[], []], 'new frame has two empty cells');
-    assert.deepEqual(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.ratios), [0.5, 0.5]);
+    assert.deepEqual(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].root.ratios), [0.5, 0.5]);
     // Continue the single-cell split scenarios using the normal delete action.
     await page.getByRole('button', {name:'Cell options',exact:true}).last().click();
     await page.getByRole('menuitem', {name:'Delete cell (keep nodes)',exact:true}).click();
@@ -182,16 +182,16 @@ try {
 
     await page.getByRole('button', { name: 'Cell options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Split into left / right', exact: true }).click();
-    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.children?.length === 2);
+    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].root.children?.length === 2);
     assert.deepEqual(await membership(), [[1, 2], []]);
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(() => !window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.children);
+    await page.waitForFunction(() => !window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].root.children);
     assert.deepEqual(await membership(), [[1, 2]], 'split undo restores membership');
     await page.keyboard.press('Control+Shift+z');
-    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.children?.length === 2);
+    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].root.children?.length === 2);
 
     const rightCenter = await page.evaluate(async () => {
-      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');
       const c = new LayoutController(window.comfyAPI.app.app, { isVue: () => window.LiteGraph.vueNodesMode });
       const r = c.geometry()[0].cells[1].rect;
       return [r[0] + r[2] / 2, r[1] + r[3] / 2];
@@ -201,7 +201,7 @@ try {
     await nodeDragTo(1, [200, 550]);
     assert.deepEqual(await membership(), [[1], []], 'dragging out releases node');
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.children[1].nodes.length === 1);
+    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].root.children[1].nodes.length === 1);
     await settle();
 
     // Frame movement uses the overlay; the nodes remain ordinary graph nodes.
@@ -215,21 +215,21 @@ try {
     }
     const divider = await box(page.locator('.clt-divider').first());
     await drag({ x: divider.x + divider.width / 2, y: divider.y + 100 }, { x: divider.x + divider.width / 2 + 35, y: divider.y + 100 });
-    assert.ok(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].root.ratios[0] > 0.5));
+    assert.ok(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].root.ratios[0] > 0.5));
 
-    const widthBeforeClamp = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]);
+    const widthBeforeClamp = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]);
     const clampDivider = await box(page.locator('.clt-divider').first());
     await drag({x:clampDivider.x+clampDivider.width/2,y:clampDivider.y+70}, {x:clampDivider.x+clampDivider.width/2+700,y:clampDivider.y+70});
-    assert.ok(await page.evaluate(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]-width)<1, widthBeforeClamp), 'extreme divider drag cannot expand the frame');
+    assert.ok(await page.evaluate(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]-width)<1, widthBeforeClamp), 'extreme divider drag cannot expand the frame');
     await page.keyboard.press('Control+z');
     await settle();
 
-    const beforeShrink = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]);
-    await page.getByRole('button', {name:'Layout options',exact:true}).click();
-    await page.getByRole('menuitem', {name:'Shrink layout to content',exact:true}).click();
-    assert.ok(await page.evaluate(width => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0] < width, beforeShrink), 'shrink menu fits controls');
+    const beforeShrink = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]);
+    await page.getByRole('button', {name:'Grid options',exact:true}).click();
+    await page.getByRole('menuitem', {name:'Shrink grid to content',exact:true}).click();
+    assert.ok(await page.evaluate(width => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0] < width, beforeShrink), 'shrink menu fits controls');
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size[0]-width)<1, beforeShrink);
+    await page.waitForFunction(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]-width)<1, beforeShrink);
     await settle();
 
     // Grid UI, a nested split, export via download, and import via file picker.
@@ -245,7 +245,7 @@ try {
     await settle();
 
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Export empty template', exact: true }).click();
     const download = await downloadPromise;
     const file = await download.path();
@@ -260,26 +260,26 @@ try {
     assert.deepEqual(await page.evaluate(async () => (await window.comfyAPI.app.app.graphToPrompt()).output), promptBefore, 'layout leaves API execution prompt unchanged');
 
     const resize = await box(page.locator('.clt-resize-x'));
-    const previousSize = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size]);
+    const previousSize = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size]);
     await drag({ x: resize.x + 5, y: resize.y + 50 }, { x: resize.x + 45, y: resize.y + 90 });
-    const resizedSize = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size]);
+    const resizedSize = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size]);
     assert.ok(resizedSize[0] >= previousSize[0] + 49 && Math.abs(resizedSize[1] - previousSize[1]) < 1, 'width handle preserves content height even with diagonal drag');
     await page.keyboard.press('Control+z');
     await page.waitForFunction(previous => {
-      const size = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].size;
+      const size = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size;
       return Math.abs(size[0] - previous[0]) < 1 && Math.abs(size[1] - previous[1]) < 1;
     }, previousSize);
 
     const importPoint = await worldPoint([100, 750]);
     await page.mouse.click(importPoint.x, importPoint.y, { button: 'right' });
     const chooserPromise = page.waitForEvent('filechooser');
-    await page.getByText('🌀 Import Layout Template…', { exact: true }).click();
+    await page.getByText('🌀 Import Grid Template…', { exact: true }).click();
     const chooser = await chooserPromise;
-    await chooser.setFiles({ name: 'test.layout.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(template)) });
-    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames.length === 2);
+    await chooser.setFiles({ name: 'test.grid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(template)) });
+    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames.length === 2);
     assert.equal((await membership()).slice(6).flat().length, 0, 'imported template has no nodes');
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames.length === 1);
+    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames.length === 1);
 
     // A real model-free generation verifies that ordinary node execution works.
     const queued = await page.request.post(`${base}/prompt`, { data: { prompt: promptBefore, extra_data: { extra_pnginfo: { workflow: saved } } } });
@@ -299,8 +299,8 @@ try {
     await page.screenshot({ path: `test-results/${vue ? 'nodes-2' : 'classic'}-layout.png` });
     assert.equal(await page.locator('.clt-frame').count(), 1);
     const countBeforeRemove = await page.evaluate(() => window.comfyAPI.app.app.graph._nodes.length);
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Remove layout (keep nodes)', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Remove grid (keep nodes)', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 0);
     assert.equal(await page.evaluate(() => window.comfyAPI.app.app.graph._nodes.length), countBeforeRemove);
     assert.deepEqual(await page.evaluate(async () => (await window.comfyAPI.app.app.graphToPrompt()).output), promptBefore);
@@ -315,7 +315,7 @@ try {
       return Number(node.id);
     });
     await page.waitForFunction(id => {
-      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames;
       const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
       return frames.some(f => leaves(f.root).some(c => c.nodes.some(n => Number(n) === id)));
     }, newlyAdded, { timeout: 3000 });
@@ -323,7 +323,7 @@ try {
     // Header colors: frame color covers the frame bar and all cell bars; per-cell override; undo/redo; persistence; reset.
     const defaultHeader = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor);
     const defaultLabel = await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header .clt-label')).color);
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'frame reset entry hidden before a color is set');
     await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
     const swatch = await page.locator('.clt-dialog input[name="color"]').evaluate(el => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
@@ -352,7 +352,7 @@ try {
     const siblings = await page.evaluate(() => [...document.querySelectorAll('.clt-cell-header')].slice(1).map(el => getComputedStyle(el).backgroundColor));
     assert.ok(siblings.every(color => color === 'rgb(112, 216, 190)'), 'siblings keep the frame color');
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor), 'rgb(112, 216, 190)', 'frame bar unchanged by cell override');
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
     assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#70d8be', 'frame dialog prefills the current frame color');
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -367,7 +367,7 @@ try {
     await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, colored);
     await settle();
     const persisted = await page.evaluate(() => {
-      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames;
       const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
       return { frame: frames[0].color, cell: leaves(frames[0].root)[0].color };
     });
@@ -377,10 +377,10 @@ try {
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
     await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).backgroundColor === 'rgb(112, 216, 190)');
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(defaultBg => getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor === defaultBg, defaultHeader);
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'frame reset entry gone after reset');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
@@ -388,7 +388,7 @@ try {
     await page.keyboard.press('Escape');
 
     // Change Appearance: background + text color + font size, inherited by cells, per-cell overrides, reset.
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Change Appearance…', exact: true }).click();
     assert.equal(await page.locator('.clt-dialog input[name="color"]').inputValue(), '#20282c', 'panel prefills the default background');
     assert.equal(await page.locator('.clt-dialog input[name="auto"]').isChecked(), true, 'text color defaults to auto');
@@ -456,7 +456,7 @@ try {
     await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, configSave);
     await settle();
     const configPersisted = await page.evaluate(() => {
-      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames;
       const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
       const cell = leaves(frames[0].root)[0];
       return { frame: { textColor: frames[0].textColor, fontSize: frames[0].fontSize }, cellFontSize: cell.fontSize, hasCellText: 'textColor' in cell };
@@ -470,14 +470,14 @@ try {
     await page.getByRole('button', { name: 'Cell options', exact: true }).first().click();
     await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.clt-cell-header')).fontSize === '18px');
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).click();
     await page.waitForFunction(({ background, label }) => {
       const frame = document.querySelector('.clt-frame-header');
       const style = getComputedStyle(frame);
       return style.backgroundColor === background && style.fontSize === '13px' && getComputedStyle(frame.querySelector('.clt-label')).color === label;
     }, { background: defaultHeader, label: defaultLabel });
-    await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     assert.equal(await page.getByRole('menuitem', { name: 'Reset header configuration', exact: true }).count(), 0, 'reset entry gone after clearing the configuration');
     await page.keyboard.press('Escape');
 
@@ -496,7 +496,7 @@ try {
     await page.waitForTimeout(400);
     const fillCreation = await worldPoint([550, 80]);
     await page.mouse.click(fillCreation.x, fillCreation.y, { button: 'right' });
-    await page.getByText('🌀 Add Layout Frame', { exact: true }).click();
+    await page.getByText('🌀 Add Grid Frame', { exact: true }).click();
     await page.locator('.clt-frame').waitFor();
     await nodeDragTo(0, [850, 185]);
     assert.deepEqual(await membership(), [[1]], 'fill scenario attaches the tall-column node');
@@ -508,7 +508,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 2);
     await settle();
     const fillRight = await page.evaluate(async () => {
-      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');
       const c = new LayoutController(window.comfyAPI.app.app, {});
       const r = c.geometry()[0].cells[1].rect;
       return [r[0] + r[2] / 2, r[1] + r[3] / 2];
@@ -517,8 +517,8 @@ try {
     assert.deepEqual(await membership(), [[1], [2]], 'fill scenario columns hold one node each');
     await settle();
     const fillBefore = await page.evaluate(async () => {
-      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
-      const { PAD } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');
+      const { PAD } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/layout.js');
       const app = window.comfyAPI.app.app;
       const c = new LayoutController(app, {});
       const layout = c.geometry()[0];
@@ -533,14 +533,14 @@ try {
     // The drag left the node selected, which summons ComfyUI's Selection Toolbox over the chrome.
     const openFrameMenu = async () => {
       await page.evaluate(() => window.comfyAPI.app.app.canvas.deselectAllNodes());
-      await page.getByRole('button', { name: 'Layout options', exact: true }).click();
+      await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     };
     await openFrameMenu();
     assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).count(), 0, 'fit entry hidden before filling');
     await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
     const waitForFlush = () => page.waitForFunction(async () => {
-      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
-      const { PAD } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');
+      const { PAD } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/layout.js');
       const app = window.comfyAPI.app.app;
       const c = new LayoutController(app, {});
       const layout = c.geometry()[0];
@@ -555,7 +555,7 @@ try {
     await waitForFlush();
     const fillAfter = await page.evaluate(() => {
       const app = window.comfyAPI.app.app;
-      const frames = app.graph.extra.comfyui_layout_templates.frames;
+      const frames = app.graph.extra.comfyui_grid_layout.frames;
       const node = app.graph.getNodeById(window.testNodes[1]);
       const tallNode = app.graph.getNodeById(window.testNodes[0]);
       return { height: node.size[1], tallHeight: tallNode.size[1], flag: frames[0].fill === true };
@@ -581,7 +581,7 @@ try {
     const filledSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
     await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, filledSave);
     await settle();
-    const fillPersisted = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].fill === true);
+    const fillPersisted = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fill === true);
     assert.equal(fillPersisted, true, 'frame fill persists through a workflow save/load round trip');
     await waitForFlush();
     // Force a canvas repaint; screenshotting right after a layout change can
@@ -597,14 +597,14 @@ try {
     await settle();
     await page.locator('.clt-lock').waitFor({ state: 'attached', timeout: 3000 });
     assert.equal(await page.locator('.clt-lock').textContent(), '🔒', 'lock icon appears in the frame header');
-    const lockedPos = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos]);
+    const lockedPos = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].pos]);
     const headerBox = await page.locator('.clt-frame-header').first().boundingBox();
     await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(headerBox.x + headerBox.width / 2 + 60, headerBox.y + headerBox.height / 2 + 40, { steps: 5 });
     await page.mouse.up();
     await settle();
-    const lockedAfter = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos]);
+    const lockedAfter = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].pos]);
     assert.deepEqual(lockedAfter, lockedPos, 'a locked frame ignores header drags');
     await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
     await page.waitForTimeout(400);
@@ -618,7 +618,7 @@ try {
     await page.mouse.move(headerBox.x + headerBox.width / 2 + 60, headerBox.y + headerBox.height / 2 + 40, { steps: 5 });
     await page.mouse.up();
     await page.waitForFunction(pos => {
-      const p = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames[0].pos;
+      const p = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].pos;
       return Math.abs(p[0] - pos[0]) > 20 || Math.abs(p[1] - pos[1]) > 20;
     }, lockedPos);
     console.log(`Frame lock checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
@@ -628,9 +628,9 @@ try {
     const tallTarget = await page.evaluate(async () => {
       const app = window.comfyAPI.app.app;
       app.canvas.ds.scale = 1; app.canvas.ds.offset = [0, 0];
-      const { createFrame } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/layout.js');
+      const { createFrame } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/layout.js');
       const frame = createFrame([120, 640]);
-      app.graph.extra.comfyui_layout_templates.frames.push(frame);
+      app.graph.extra.comfyui_grid_layout.frames.push(frame);
       const node = window.LiteGraph.createNode('EmptyImage');
       node.pos = [40, 200]; app.graph.add(node);
       node.setSize([node.size[0], 420]);
@@ -639,7 +639,7 @@ try {
     });
     await page.waitForTimeout(700);
     const tallDrop = await page.evaluate(async () => {
-      const { LayoutController } = await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');
+      const { LayoutController } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');
       const app = window.comfyAPI.app.app;
       const c = new LayoutController(app, {});
       const layout = c.geometry().find(l => String(l.frame.id) === String(window.__tallFrame));
@@ -659,7 +659,7 @@ try {
     );
     await drag(await worldPoint(tallDrop.source), await worldPoint(tallDrop.dest));
     await page.waitForFunction(id => {
-      const frames = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates.frames;
+      const frames = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames;
       const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
       const frame = frames.find(f => String(f.id) === String(window.__tallFrame));
       return leaves(frame.root).some(c => c.nodes.map(String).includes(String(id)));
