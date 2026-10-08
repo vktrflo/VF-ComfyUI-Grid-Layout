@@ -87,7 +87,7 @@
         0
       ]
     },
-    "comfyui_layout_templates": {
+    "comfyui_grid_layout": {
       "version": 1,
       "frames": [
         {

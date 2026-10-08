@@ -5,15 +5,15 @@ import { LayoutOverlay } from './core/overlay.js';
 let active;
 
 app.registerExtension({
-  name: 'VF.ComfyUI.LayoutTemplates',
+  name: 'VF.ComfyUI.GridLayout',
   commands: [{
-    id: 'VF.LayoutTemplates.CreateFromSelection',
-    label: 'Create layout from selected nodes',
+    id: 'VF.GridLayout.CreateFromSelection',
+    label: 'Create grid layout from selected nodes',
     icon: 'icon-[lucide--panels-top-left]',
     function: () => active?.openSelectionMenu(),
   }],
   getSelectionToolboxCommands(item) {
-    return item && active?.controller.graph.getNodeById(item.id) === item ? ['VF.LayoutTemplates.CreateFromSelection'] : [];
+    return item && active?.controller.graph.getNodeById(item.id) === item ? ['VF.GridLayout.CreateFromSelection'] : [];
   },
   async setup() {
     const LiteGraph = globalThis.LiteGraph ?? globalThis.comfyAPI?.litegraph?.LiteGraph;
@@ -37,10 +37,10 @@ app.registerExtension({
     }, {capture:true,signal:overlay.abort.signal});
     const observer = new MutationObserver(() => {
       const toolbarButton = document.querySelector('.selection-toolbox [class~="icon-[lucide--panels-top-left]"]')?.closest('button');
-      if (toolbarButton && toolbarButton.getAttribute('aria-label') !== 'Create layout from selected nodes') {
-        toolbarButton.setAttribute('aria-label','Create layout from selected nodes');
-        toolbarButton.title='Create layout from selected nodes';
-        const label=document.createElement('span');label.textContent='Layout';toolbarButton.append(label);
+      if (toolbarButton && toolbarButton.getAttribute('aria-label') !== 'Create grid layout from selected nodes') {
+        toolbarButton.setAttribute('aria-label','Create grid layout from selected nodes');
+        toolbarButton.title='Create grid layout from selected nodes';
+        const label=document.createElement('span');label.textContent='Grid';toolbarButton.append(label);
       }
       if (!selectionMenuPending || !controller.selectedNodes().length) return;
       const list = [...document.querySelectorAll('.p-contextmenu-root-list')].find(list => list.getBoundingClientRect().width > 0);
@@ -49,11 +49,11 @@ app.registerExtension({
       if (!example) return;
       const item = example.cloneNode(true);
       item.removeAttribute('id');item.removeAttribute('aria-posinset');item.removeAttribute('aria-setsize');
-      item.setAttribute('aria-label','Create layout from selected nodes');
+      item.setAttribute('aria-label','Create grid layout from selected nodes');
       item.dataset.cltSelectionAction = 'true';
       const link = item.querySelector('a');
       if (!link) return;
-      link.replaceChildren(document.createTextNode('Create layout from selected nodes'));
+      link.replaceChildren(document.createTextNode('Create grid layout from selected nodes'));
       link.tabIndex=0;
       const activate = event => {
         event.preventDefault();event.stopPropagation();
@@ -70,7 +70,7 @@ app.registerExtension({
     const canvas = app.canvas;
     const selectionEntry = () => {
       const ids = controller.selectedNodes().map(node => node.id);
-      return { content: 'Create layout from selected nodes', disabled: !ids.length, submenu: { options: [
+      return { content: 'Create grid layout from selected nodes', disabled: !ids.length, submenu: { options: [
         { content: 'Preserve columns', callback: () => overlay.safe(() => controller.createFromNodes(ids, 'columns')) },
         { content: 'Single stack', callback: () => overlay.safe(() => controller.createFromNodes(ids, 'stack')) },
       ] } };
@@ -85,8 +85,8 @@ app.registerExtension({
       const entries = original?.apply(this, args) ?? [];
       const point = [...(this.graph_mouse ?? [0, 0])];
       entries.push(null, selectionEntry(),
-        { content: '🌀 Add Layout Frame', callback: () => overlay.safe(() => controller.create(point)) },
-        { content: '🌀 Import Layout Template…', callback: () => overlay.importAt(point) });
+        { content: '🌀 Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
+        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) });
       return entries;
     };
   },

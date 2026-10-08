@@ -1,4 +1,4 @@
-import { KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
+import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 export class LayoutController {
@@ -10,15 +10,24 @@ export class LayoutController {
   }
   get graph() { return this.app.canvas.graph ?? this.app.graph; }
   get frames() {
-    const data = this.graph?.extra?.[KEY];
+    const data = this.graph?.extra?.[KEY] ?? this.graph?.extra?.[LEGACY_KEY];
     return data?.version === VERSION && Array.isArray(data.frames) ? data.frames : [];
   }
   ensureData() {
     const graph = this.graph;
     if (!graph || this.app.configuringGraph) throw new Error('Wait until the workflow has finished loading.');
     graph.extra ??= {};
-    if (graph.extra[KEY] && graph.extra[KEY].version !== VERSION) throw new Error('This workflow uses an unsupported layout version.');
-    return graph.extra[KEY] ??= { version: VERSION, frames: [] };
+    if (graph.extra[KEY]) {
+      if (graph.extra[KEY].version !== VERSION) throw new Error('This workflow uses an unsupported grid layout version.');
+      return graph.extra[KEY];
+    }
+    if (graph.extra[LEGACY_KEY]) {
+      if (graph.extra[LEGACY_KEY].version !== VERSION) throw new Error('This workflow uses an unsupported grid layout version.');
+      const legacy = graph.extra[LEGACY_KEY];
+      delete graph.extra[LEGACY_KEY];
+      return graph.extra[KEY] = { version: VERSION, frames: Array.isArray(legacy.frames) ? legacy.frames : [] };
+    }
+    return graph.extra[KEY] = { version: VERSION, frames: [] };
   }
   begin() {
     if (this.transaction) return false;
@@ -68,7 +77,7 @@ export class LayoutController {
       if (column) column.nodes.push(node);
       else columns.push({x:node.pos[0],width:node.size[0],nodes:[node]});
     }
-    if (columns.length > 256) throw new Error('A layout supports up to 256 columns.');
+    if (columns.length > 256) throw new Error('A grid supports up to 256 columns.');
     return this.edit(() => {
       const frame = createFrame([Math.min(...nodes.map(node=>node.pos[0]))-PAD*2, Math.min(...nodes.map(node=>node.pos[1]-this.adapter.classicTitle))-FRAME_TITLE-PAD*2-CELL_TITLE]);
       // Group large selections into bounded split nodes accepted by serialization.

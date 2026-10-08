@@ -58,6 +58,7 @@ test('templates contain only empty structure and instantiate fresh IDs at chosen
   const frame = fixture(); frame.root.nodes = [1, 2];
   engine.gridCell(frame, frame.root.id, 2, 2);
   const template = engine.exportTemplate(frame);
+  assert.equal(template.kind, 'comfyui-grid-layout');
   assert.ok(engine.leaves(template.frame.root).every(c => c.nodes.length === 0));
   const restored = engine.importTemplate(JSON.parse(JSON.stringify(template)), [50, 60]);
   assert.notEqual(restored.id, frame.id);
@@ -66,9 +67,22 @@ test('templates contain only empty structure and instantiate fresh IDs at chosen
   assert.equal(JSON.stringify(frame).includes('"nodes":[1,2]'), true);
 });
 
+test('legacy templates (comfyui-layout-template) import successfully with backward compatibility', () => {
+  const frame = fixture();
+  engine.gridCell(frame, frame.root.id, 2, 2);
+  const legacyTemplate = {
+    kind: 'comfyui-layout-template',
+    version: 1,
+    frame: JSON.parse(JSON.stringify(frame))
+  };
+  const imported = engine.importTemplate(legacyTemplate, [70, 80]);
+  assert.deepEqual(imported.pos, [70, 80]);
+  assert.equal(engine.leaves(imported.root).length, 4);
+});
+
 test('malformed, oversized, and future-version templates fail before modifying a workflow', () => {
   fixture();
-  for (const value of [null, {}, { version: 999 }, { version: 1, kind: 'comfyui-layout-template', frame: { size: [1, 1], root: { axis: 'z' } } }]) {
+  for (const value of [null, {}, { version: 999 }, { version: 1, kind: 'unknown-template', frame: { size: [1, 1], root: { axis: 'z' } } }]) {
     assert.throws(() => engine.importTemplate(value, [0, 0]));
   }
   const frame = fixture();
@@ -111,7 +125,7 @@ test('extreme ratios and growth fail without persisting infinite dimensions', ()
   const initialSize = [...frame.size];
   assert.throws(() => engine.layoutFrame(frame, new Map()), /dimensions|large|finite/i);
   assert.deepEqual(frame.size, initialSize);
-  assert.throws(() => engine.importTemplate({ kind: 'comfyui-layout-template', version: 1, frame }, [0, 0]));
+  assert.throws(() => engine.importTemplate({ kind: 'comfyui-grid-layout', version: 1, frame }, [0, 0]));
 });
 
 test('adding a bottom row preserves existing cells, nodes, and their geometry', () => {
@@ -158,4 +172,31 @@ test('pickCell prefers the cell containing the rect center, then the largest ove
     { frame: { id: 'top' }, cells: [{ cell: { id: 'topCell' }, rect: [0, 0, 100, 100] }] },
   ];
   assert.equal(engine.pickCell(stacked, [40, 40, 20, 20]).cell.id, 'topCell', 'the topmost frame wins a tie');
+});
+
+test('LayoutController migrates legacy comfyui_layout_templates to comfyui_grid_layout', async () => {
+  const { LayoutController } = await import('../web/core/controller.js');
+  const mockGraph = {
+    extra: {
+      comfyui_layout_templates: {
+        version: 1,
+        frames: [{ id: 'legacy-1', label: 'Legacy Grid', pos: [10, 20], size: [620, 500], root: { id: 'c1', label: '', nodes: [] } }]
+      }
+    },
+    getNodeById: () => null,
+  };
+  const mockApp = { canvas: { graph: mockGraph } };
+  const controller = new LayoutController(mockApp);
+  
+  // frames getter can read legacy frames
+  assert.equal(controller.frames.length, 1);
+  assert.equal(controller.frames[0].id, 'legacy-1');
+  
+  // ensureData() migrates to comfyui_grid_layout and cleans up legacy key
+  const data = controller.ensureData();
+  assert.equal(data.version, 1);
+  assert.equal(data.frames.length, 1);
+  assert.equal(data.frames[0].id, 'legacy-1');
+  assert.equal(mockGraph.extra.comfyui_grid_layout, data);
+  assert.equal(mockGraph.extra.comfyui_layout_templates, undefined);
 });

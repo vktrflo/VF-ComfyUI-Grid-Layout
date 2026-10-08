@@ -98,3 +98,23 @@ Shrink-to-content: 58 unit tests pass. Regression coverage verifies exact cell m
 Header slider/picker update: all 60 unit tests pass. Dedicated tests/header-ui.mjs verifies 12-24 bounds, live font/color previews, picker and panel cancellation, save and undo in classic and Nodes 2.0.
 
 Selected-node layout creation: 63 unit tests pass. Browser selection-ui.mjs passes in classic and Nodes 2.0 for the real canvas context menu, column detection, single stack, unchanged execution prompt, and undo/redo.
+
+## VF Grid Layout rename update (2026-10-08)
+
+- Renamed package, repository, and extension to **`VF-ComfyUI-Grid-Layout`** / **`VF Grid Layout`**:
+  - Python package name: `vf-comfyui-grid-layout` in `pyproject.toml` and `package.json`.
+  - Display name: `VF Grid Layout`.
+  - Extension registration: `VF.ComfyUI.GridLayout`.
+  - Frontend entrypoint: `web/grid_layout.js`.
+  - Distribution package: `dist/VF-ComfyUI-Grid-Layout.zip`.
+  - Git remote: `https://github.com/vktrflo/VF-ComfyUI-Grid-Layout.git`.
+- Workflow storage & template format migration:
+  - Storage key: `graph.extra.comfyui_grid_layout`.
+  - Legacy backward compatibility: `LayoutController` reads legacy `comfyui_layout_templates` workflows and migrates them to `comfyui_grid_layout` on save/edit.
+  - Template format: exports `kind: 'comfyui-grid-layout'` as `*.grid.json`; import accepts both `comfyui-grid-layout` and legacy `comfyui-layout-template` format, accepting `.grid.json` and `.layout.json`.
+- UI Terminology:
+  - Menu items: `🌀 Add Grid Frame`, `🌀 Import Grid Template…`, `Create grid layout from selected nodes`.
+  - Toolbar button: `Grid`.
+  - Frame default title: `Grid`.
+  - Menu options: `Shrink grid to content`, `Rename grid…`, `Remove grid (keep nodes)`.
+- Checks: `npm test` 66/66 passing, verifying all layout operations plus legacy template import and legacy workflow data migration.

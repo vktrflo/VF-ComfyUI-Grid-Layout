@@ -1,0 +1,38 @@
+{
+  "kind": "comfyui-grid-layout",
+  "version": 1,
+  "frame": {
+    "id": "029d326c-59c7-4b88-9a64-c8d4413c72a7",
+    "label": "Two columns",
+    "pos": [
+      0,
+      0
+    ],
+    "size": [
+      900,
+      650
+    ],
+    "root": {
+      "id": "be6e359c-7cb1-4209-99bb-baefe3adc503",
+      "label": "Cell",
+      "axis": "x",
+      "ratios": [
+        0.5,
+        0.5
+      ],
+      "children": [
+        {
+          "id": "527066e0-25d1-46e4-b4e1-d31bf80a105c",
+          "label": "Inputs",
+          "nodes": []
+        },
+        {
+          "id": "b207a953-104c-4219-b6a5-804cf998dd91",
+          "label": "Processing and outputs",
+          "nodes": []
+        }
+      ]
+    }
+  }
+}
+

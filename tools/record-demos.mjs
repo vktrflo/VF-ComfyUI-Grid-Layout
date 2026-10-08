@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE);
 const browser=await chromium.launch({headless:true,slowMo:120});
-const prefix='/extensions/VF-ComfyUI-Layout-Templates/';
+const prefix='/extensions/VF-ComfyUI-Grid-Layout/';
 const clips=[];
 async function run(name,title,subtitle,setup,actions){
  const context=await browser.newContext({viewport:{width:1080,height:850},recordVideo:{dir:'recordings/raw',size:{width:1080,height:850}}});
@@ -21,7 +21,7 @@ async function run(name,title,subtitle,setup,actions){
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
  });
- await page.route('**/extensions',route=>route.fulfill({json:[prefix+'layout_templates.js']}));
+ await page.route('**/extensions',route=>route.fulfill({json:[prefix+'grid_layout.js']}));
  await page.route(`**${prefix}**`,async route=>{const rel=new URL(route.request().url()).pathname.slice(prefix.length);await route.fulfill({contentType:'text/javascript',body:await readFile(fileURLToPath(new URL('../web/'+rel,import.meta.url)))});});
  await page.route('**/object_info',async route=>{const response=await page.request.get('http://127.0.0.1:8188/object_info');await route.fulfill({response});});
  await page.goto('http://127.0.0.1:8197',{waitUntil:'domcontentloaded'});
@@ -30,10 +30,10 @@ async function run(name,title,subtitle,setup,actions){
  await page.evaluate(async()=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',false);await app.ui.settings.setSettingValue('Comfy.Canvas.SelectionToolbox',true);await app.ui.settings.setSettingValue('Comfy.Minimap.Visible',false);const workflow=structuredClone(window.comfyAPI.defaultGraph.defaultGraph);await app.loadGraphData(workflow);app.extensionManager?.toast?.removeAll?.();});
  await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});
  await page.addStyleTag({content:'.side-toolbar-container{display:none!important}.comfyui-menu{display:none!important}'});
- const fit=async()=>page.evaluate(async()=>{const app=window.comfyAPI.app.app;const f=app.graph.extra.comfyui_layout_templates?.frames?.[0];let x,y,w,h;if(f){[x,y]=f.pos;[w,h]=f.size;}else{const ns=app.graph._nodes;x=Math.min(...ns.map(n=>n.pos[0]));y=Math.min(...ns.map(n=>n.pos[1]-30));w=Math.max(...ns.map(n=>n.pos[0]+n.size[0]))-x;h=Math.max(...ns.map(n=>n.pos[1]+n.size[1]))-y;}
+ const fit=async()=>page.evaluate(async()=>{const app=window.comfyAPI.app.app;const f=app.graph.extra.comfyui_grid_layout?.frames?.[0] ?? app.graph.extra.comfyui_layout_templates?.frames?.[0];let x,y,w,h;if(f){[x,y]=f.pos;[w,h]=f.size;}else{const ns=app.graph._nodes;x=Math.min(...ns.map(n=>n.pos[0]));y=Math.min(...ns.map(n=>n.pos[1]-30));w=Math.max(...ns.map(n=>n.pos[0]+n.size[0]))-x;h=Math.max(...ns.map(n=>n.pos[1]+n.size[1]))-y;}
  const scale=Math.min(970/w,660/h,1);app.canvas.ds.scale=scale;app.canvas.ds.offset=[(1080/scale-w)/2-x,(850/scale-h)/2-y+25];app.canvas.setDirty(true,true);});
- const baseline=async()=>{await page.evaluate(async()=>{const {LayoutController}=await import('/extensions/VF-ComfyUI-Layout-Templates/core/controller.js');const app=window.comfyAPI.app.app;const c=new LayoutController(app);c.createFromNodes(app.graph._nodes.map(n=>n.id),'columns');});await fit();};
- const menu=async(name)=>{await page.getByRole('button',{name:'Layout options',exact:true}).click();await page.waitForTimeout(2200);await page.getByRole('menuitem',{name,exact:true}).hover();await page.waitForTimeout(900);await page.getByRole('menuitem',{name,exact:true}).click();};
+ const baseline=async()=>{await page.evaluate(async()=>{const {LayoutController}=await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');const app=window.comfyAPI.app.app;const c=new LayoutController(app);c.createFromNodes(app.graph._nodes.map(n=>n.id),'columns');});await fit();};
+ const menu=async(name)=>{await page.getByRole('button',{name:'Grid options',exact:true}).click();await page.waitForTimeout(2200);await page.getByRole('menuitem',{name,exact:true}).hover();await page.waitForTimeout(900);await page.getByRole('menuitem',{name,exact:true}).click();};
  const pause=ms=>page.waitForTimeout(ms*2);
  const drag=async(locator,dx,dy)=>{const b=await locator.boundingBox();const x=b.x+b.width/2,y=b.y+b.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:35});await page.mouse.up();};
  const helpers={fit,baseline,menu,pause,drag};

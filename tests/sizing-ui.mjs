@@ -14,7 +14,7 @@ catch {
 }
 const base = process.env.COMFYUI_URL ?? 'http://127.0.0.1:8188';
 const exampleWorkflow = JSON.parse(await readFile(new URL('../examples/two-column.workflow.json', import.meta.url), 'utf8'));
-const prefix = '/extensions/VF-ComfyUI-Layout-Templates/';
+const prefix = '/extensions/VF-ComfyUI-Grid-Layout/';
 const browser = await playwright.chromium.launch({ headless: true });
 await mkdir('test-results', { recursive: true });
 try {
@@ -25,7 +25,7 @@ try {
   await page.route('**/extensions', async route => {
     const response = await route.fetch();
     const list = await response.json();
-    await route.fulfill({ response, json: [...list, `${prefix}layout_templates.js`] });
+    await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
   });
   await page.route(`**${prefix}**`, async route => {
     const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -37,7 +37,7 @@ try {
   });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.LayoutTemplates'), { timeout: 15000 });
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
   try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
@@ -68,7 +68,7 @@ try {
     await drag(await worldPoint(points.source), await worldPoint(points.dest));
   };
   const membership = () => page.evaluate(() => {
-    const data = window.comfyAPI.app.app.graph.extra.comfyui_layout_templates;
+    const data = window.comfyAPI.app.app.graph.extra.comfyui_grid_layout ?? window.comfyAPI.app.app.graph.extra.comfyui_layout_templates;
     const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
     return data?.frames.flatMap(f => leaves(f.root).map(c => c.nodes.map(Number))) ?? [];
   });
@@ -79,7 +79,7 @@ try {
  for(const vue of [false,true]) {
  await page.evaluate(async ({vue,workflow})=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);await app.loadGraphData(workflow);app.canvas.ds.scale=.75;app.canvas.ds.offset=[20,15];},{vue,workflow:exampleWorkflow});
  await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await page.waitForTimeout(500);
- await page.getByRole('button',{name:'Layout options',exact:true}).click();await page.getByRole('menuitem',{name:'Shrink layout to content',exact:true}).click();await page.waitForTimeout(500);
+ await page.getByRole('button',{name:'Grid options',exact:true}).click();await page.getByRole('menuitem',{name:'Shrink grid to content',exact:true}).click();await page.waitForTimeout(500);
  const widths=await page.evaluate(()=>{const app=window.comfyAPI.app.app;return app.graph._nodes.map(n=>n.size[0]);});
  if(vue){
  assert.ok(widths.every(w=>w>=225));
