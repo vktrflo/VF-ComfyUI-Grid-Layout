@@ -52,26 +52,33 @@ test('collapsedNodes survives only while collapsed and never ships in a template
   assert.equal('collapsedNodes' in template.frame, false, 'a template carries no node references');
 });
 
-test('a collapsed frame stacks its nodes as title bars and wraps them', () => {
+test('a collapsed frame maintains column structure and column dividers', () => {
   const frame = populated();
   const titleHeight = metrics.get(1).titleHeight;
-  assert.equal(engine.layoutFrame(frame, metrics).placements.length, 2, 'the expanded grid has geometry');
+  const expanded = engine.layoutFrame(frame, metrics);
+  assert.equal(expanded.placements.length, 2, 'the expanded grid has geometry');
 
   frame.collapsed = true;
   const collapsed = engine.layoutFrame(frame, metrics);
   assert.deepEqual(collapsed.cells, [], 'a collapsed frame offers no drop targets');
-  assert.deepEqual(collapsed.dividers, [], 'a collapsed frame offers no dividers');
+  assert.equal(collapsed.dividers.length, 1, 'a collapsed frame includes column dividers');
   assert.equal(collapsed.placements.length, 2, 'every contained node keeps a placement');
 
-  // Flush under the header, in cell order, no gap between title bars. Bodies
-  // sit below their titles, so placement.y is one title height further down.
-  const top = frame.pos[1] + engine.FRAME_TITLE;
-  assert.equal(collapsed.placements[0].x, frame.pos[0] + engine.PAD);
-  assert.equal(collapsed.placements[0].y, top + titleHeight);
-  assert.equal(collapsed.placements[1].y, top + titleHeight * 2, 'no vertical gap between stacked titles');
+  // Nodes maintain column positions and widths from the grid layout
+  assert.equal(collapsed.placements[0].x, expanded.placements[0].x, 'node 1 maintains column 1 x');
+  assert.equal(collapsed.placements[0].width, expanded.placements[0].width, 'node 1 maintains column 1 width');
+  assert.equal(collapsed.placements[1].x, expanded.placements[1].x, 'node 2 maintains column 2 x');
+  assert.equal(collapsed.placements[1].width, expanded.placements[1].width, 'node 2 maintains column 2 width');
+  assert.notEqual(collapsed.placements[0].x, collapsed.placements[1].x, 'nodes do not stack under 1 column flush left');
 
-  // The border wraps the stack: header + both title bars + one pad.
-  assert.equal(frame.size[1], engine.FRAME_TITLE + titleHeight * 2 + engine.PAD);
+  // Both single-node columns start flush under the header
+  const top = frame.pos[1] + engine.FRAME_TITLE;
+  assert.equal(collapsed.placements[0].y, top + titleHeight);
+  assert.equal(collapsed.placements[1].y, top + titleHeight);
+
+  // The border wraps the tallest column: header + 1 title bar + pad
+  assert.equal(frame.size[1], engine.FRAME_TITLE + titleHeight + engine.PAD);
+  assert.equal(collapsed.dividers[0].rect[3], titleHeight, 'divider matches column height');
   assert.ok(frame.size[1] > engine.COLLAPSED_TITLE, 'the frame grows past its empty collapsed height');
 
   // An empty collapsed frame is just its header.
@@ -79,6 +86,40 @@ test('a collapsed frame stacks its nodes as title bars and wraps them', () => {
   bare.collapsed = true;
   assert.deepEqual(engine.layoutFrame(bare, metrics).placements, []);
   assert.equal(bare.size[1], engine.COLLAPSED_TITLE);
+});
+
+test('a collapsed frame stacks multiple nodes vertically within their column', () => {
+  const multiMetrics = new Map([
+    [1, { minWidth: 200, height: 100, titleHeight: 30 }],
+    [2, { minWidth: 200, height: 100, titleHeight: 30 }],
+    [3, { minWidth: 200, height: 100, titleHeight: 30 }],
+  ]);
+  const frame = engine.createFrame([100, 200]);
+  engine.gridCell(frame, frame.root.id, 1, 2);
+  const [first, second] = engine.leaves(frame.root);
+  engine.dropNodes([frame], frame.id, first.id, [1, 3]);
+  engine.dropNodes([frame], frame.id, second.id, [2]);
+
+  frame.collapsed = true;
+  const collapsed = engine.layoutFrame(frame, multiMetrics);
+  const top = frame.pos[1] + engine.FRAME_TITLE;
+
+  const node1 = collapsed.placements.find(p => p.nodeId === 1);
+  const node3 = collapsed.placements.find(p => p.nodeId === 3);
+  const node2 = collapsed.placements.find(p => p.nodeId === 2);
+
+  // Column 1 has node 1 and node 3 stacked vertically
+  assert.equal(node1.x, node3.x, 'column 1 nodes share x');
+  assert.equal(node1.y, top + 30);
+  assert.equal(node3.y, top + 60, 'node 3 stacks below node 1');
+
+  // Column 2 has node 2
+  assert.notEqual(node2.x, node1.x, 'column 2 has distinct x');
+  assert.equal(node2.y, top + 30);
+
+  // Frame height matches the tallest column (column 1: 2 nodes = 60px)
+  assert.equal(frame.size[1], engine.FRAME_TITLE + 60 + engine.PAD);
+  assert.equal(collapsed.dividers[0].rect[3], 60);
 });
 
 test('expanding restores the full geometry and content-derived height', () => {
