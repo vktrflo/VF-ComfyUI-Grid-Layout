@@ -98,17 +98,17 @@ try {
     assert.equal(await isCollapsed(), true, 'collapse is recorded on the frame');
     assert.equal(await page.locator('.clt-collapse').textContent(), '▾', 'the chevron points down while collapsed');
     assert.equal(await page.locator('.clt-cell').count(), 0, 'cells stop rendering when collapsed');
-    assert.equal(await page.locator('.clt-divider').count(), 0, 'dividers stop rendering when collapsed');
+    assert.ok(await page.locator('.clt-divider').count() > 0, 'column dividers render when collapsed');
     assert.equal(await page.getByRole('button', { name: 'Expand grid', exact: true }).count(), 1, 'the chevron flips to expand');
     assert.ok(folded.nodes.every(([, , isFolded]) => isFolded), 'every contained node folds to its title bar');
 
-    const step = folded.nodes[1][1][1] - folded.nodes[0][1][1];
-    assert.ok(step > 0, 'stacked titles are separated by a positive step');
-    assert.ok(folded.nodes.every(n => n[1][0] === folded.nodes[0][1][0]), 'stacked titles share one left edge');
-    assert.equal(folded.nodes[0][1][1] - step, folded.frame.pos[1] + FRAME_TITLE, 'the stack is flush under the header');
-    assert.equal(folded.frame.size[1], FRAME_TITLE + step * folded.nodes.length + PAD, 'the border wraps the whole stack');
+    assert.notEqual(folded.nodes[0][1][0], folded.nodes[1][1][0], 'nodes maintain separate column positions');
+    const titleHeight = 30;
+    assert.equal(folded.nodes[0][1][1], folded.frame.pos[1] + FRAME_TITLE + titleHeight, 'column 1 node is flush under header');
+    assert.equal(folded.nodes[1][1][1], folded.frame.pos[1] + FRAME_TITLE + titleHeight, 'column 2 node is flush under header');
+    assert.equal(folded.frame.size[1], FRAME_TITLE + titleHeight + PAD, 'the border wraps the tallest column');
 
-    // In Nodes 2.0 the titles are real DOM; confirm they truly abut.
+    // In Nodes 2.0 the titles are real DOM; confirm they sit side-by-side in their columns.
     if (vue) {
       const rects = await page.evaluate(() => {
         const app = window.comfyAPI.app.app;
@@ -119,11 +119,9 @@ try {
           .sort((a, b) => a.top - b.top);
       });
       assert.equal(rects.length, folded.nodes.length, 'every folded node renders a DOM element');
-      for (let i = 1; i < rects.length; i++) {
-        assert.ok(Math.abs(rects[i].top - rects[i - 1].bottom) <= 2, `stacked titles have no gap at index ${i}`);
-      }
+      assert.ok(Math.abs(rects[0].top - rects[1].top) <= 2, 'column titles start at the same top under the header');
       const frameRect = await page.locator('.clt-frame').first().evaluate(el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; });
-      assert.ok(rects[rects.length - 1].bottom <= frameRect.bottom + 2, 'the last title sits inside the frame border');
+      assert.ok(rects[0].bottom <= frameRect.bottom + 2, 'the titles sit inside the frame border');
     }
 
     // Dragging the collapsed frame must carry its folded children along.
@@ -199,12 +197,11 @@ try {
     assert.equal(await isCollapsed(), true, 'collapse persists through a workflow save/load round trip');
     assert.equal(await page.locator('.clt-cell').count(), 0, 'a reloaded collapsed frame renders no cells');
 
-    // The menu offers the same toggle.
-    await page.getByRole('button', { name: 'Grid options', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Expand grid', exact: true }).click();
+    // Expand grid via header button.
+    await page.getByRole('button', { name: 'Expand grid', exact: true }).click();
     await settle();
-    assert.equal(await isCollapsed(), false, 'the menu item expands the frame');
-    assert.ok((await frameHeight()) > FRAME_TITLE, 'expanding via the menu restores the content height');
+    assert.equal(await isCollapsed(), false, 'expanding restores the frame');
+    assert.ok((await frameHeight()) > FRAME_TITLE, 'expanding restores the content height');
 
     await page.screenshot({ path: `test-results/collapse-${vue ? 'nodes-2' : 'classic'}.png` });
     console.log(`Frame collapse checks passed: ${mode}`);

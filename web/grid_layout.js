@@ -29,6 +29,9 @@ app.registerExtension({
       ]);
     };
     active = { controller, overlay, openSelectionMenu };
+    this.controller = controller;
+    this.overlay = overlay;
+    this.openSelectionMenu = openSelectionMenu;
     // Multi-selection's Vue menu does not call the node-menu extension hook.
     // Limit the additional item to the menu opened by the toolbox's More button.
     let selectionMenuPending = false;
