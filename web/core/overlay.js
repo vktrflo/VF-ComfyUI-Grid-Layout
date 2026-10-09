@@ -26,7 +26,7 @@ const STYLE = `
 .clt-resize-x:hover,.clt-resize-left:hover{background:#70d8be55}
 .clt-menu{position:fixed;z-index:10000;min-width:180px;padding:5px;background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:5px;box-shadow:0 4px 16px #0006;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px}
 .clt-menu button{display:block;width:100%;text-align:left;padding:8px;border:0;background:none;color:inherit;cursor:pointer}.clt-menu button:hover{background:#345361}
-.clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:360px;max-height:85vh;overflow-y:auto;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:14px}.clt-dialog::backdrop{background:#0007}
+.clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:400px;max-height:85vh;overflow-y:auto;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:14px}.clt-dialog::backdrop{background:#0007}
 .clt-dialog h3{margin:0 0 12px}
 .clt-dialog h4{margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #345361;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#70d8be}
 .clt-dialog label{display:flex;justify-content:space-between;align-items:center;gap:18px;margin:10px 0}
@@ -44,7 +44,8 @@ const STYLE = `
 .clt-dialog .clt-child-tab.active{color:#70d8be;background:#345361;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
 .clt-tab-panel{display:none}
 .clt-tab-panel.active{display:block}
-.clt-dialog footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.clt-dialog footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:18px}
+.clt-dialog footer .clt-reset-btn{margin-right:auto}
 .clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
 `;
 
@@ -438,7 +439,7 @@ export class LayoutOverlay {
       { id: 'border', label: 'Border', panel: borderPanel },
     ];
     if (containerPanel) {
-      tabPanels.push({ id: 'container', label: 'Grid Container', panel: containerPanel });
+      tabPanels.push({ id: 'container', label: 'Grid Background', panel: containerPanel });
     }
 
     const tabButtons = [];
@@ -676,7 +677,7 @@ export class LayoutOverlay {
     const cancel = element('button', '', 'Cancel'), ok = element('button', '', 'OK');
     cancel.onclick = () => dialog.close();
     ok.onclick = () => { this.safe(() => submit(values)); dialog.close(); };
-    const reset = element('button', '', 'Reset appearance configuration');
+    const reset = element('button', 'clt-reset-btn', 'Reset appearance configuration');
     reset.type = 'button';
     reset.onclick = () => {
       const inherited = defaults.cellId ? frame : null;
@@ -717,8 +718,7 @@ export class LayoutOverlay {
 
       preview(true);
     };
-    dialog.append(reset);
-    footer.append(cancel, ok); dialog.append(footer);
+    footer.append(reset, cancel, ok); dialog.append(footer);
     dialog.onclose = () => {
       this.borderPreview = null;
       this.headerPreview = null;

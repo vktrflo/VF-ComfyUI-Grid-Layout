@@ -39,7 +39,7 @@ try {
   const topTabs = dialog.locator('.clt-tabs .clt-tab');
   const tabTexts = await topTabs.allTextContents();
   console.log('Top tabs found:', tabTexts);
-  assert.deepEqual(tabTexts, ['Title Bar', 'Border', 'Grid Container']);
+  assert.deepEqual(tabTexts, ['Title Bar', 'Border', 'Grid Background']);
 
   // Take screenshot of Title Bar tab
   await page.screenshot({ path: 'test-results/tabs-title-tab.png' });
