@@ -6,6 +6,6 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "test:browser": "node tests/browser.mjs",
-    "test:ui": "node tests/header-ui.mjs && node tests/selection-ui.mjs && node tests/sizing-ui.mjs && node tests/toolbar-ui.mjs"
+    "test:ui": "node tests/header-ui.mjs && node tests/selection-ui.mjs && node tests/sizing-ui.mjs && node tests/toolbar-ui.mjs && node tests/collapse-ui.mjs"
   }
 }

@@ -8,6 +8,9 @@ export const PAD = 12;
 export const GAP = 12;
 export const CELL_TITLE = 26;
 export const FRAME_TITLE = 36;
+// Height of a collapsed frame holding no nodes; with nodes it grows by one
+// title bar each, and the border wraps the stack.
+export const COLLAPSED_TITLE = FRAME_TITLE + PAD;
 let fallbackId = 0;
 function id() {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
@@ -236,6 +239,7 @@ function resizeBoundary(frame, delta, metrics, left) {
 }
 
 export function addBottomRow(frame) {
+  if (frame.collapsed === true) throw new Error('Expand the grid before adding a bottom row.');
   if (leaves(frame.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
   const height = 200;
   const root = frame.root;
@@ -256,6 +260,27 @@ export function addBottomRow(frame) {
 }
 
 export function layoutFrame(frame, metrics) {
+  // A collapsed frame folds its nodes to their title bars and stacks those
+  // flush under the header, with the frame border wrapping the stack. Cells and
+  // dividers are dropped, so the frame offers no drop target while folded, but
+  // placements are still emitted: reflow is what carries the titles into place.
+  if (frame.collapsed === true) {
+    const titles = [];
+    for (const cell of leaves(frame.root)) for (const nodeId of cell.nodes) {
+      const metric = metrics.get(nodeId);
+      if (metric) titles.push({ nodeId, title: metric.titleHeight });
+    }
+    let y = frame.pos[1] + FRAME_TITLE;
+    const placements = titles.map(({ nodeId, title }) => {
+      // Both renderers keep LiteGraph's body-origin convention, so the body
+      // sits below its title bar (web/core/adapter.js).
+      const placement = { nodeId, x: frame.pos[0] + PAD, y: y + title, width: frame.size[0] - PAD * 2, height: 0 };
+      y += title;
+      return placement;
+    });
+    frame.size[1] = FRAME_TITLE + (y - frame.pos[1] - FRAME_TITLE) + PAD;
+    return { cells: [], dividers: [], placements };
+  }
   const sizes = new Map();
   function minimum(cell) {
     let size;
@@ -362,6 +387,13 @@ export function validateFrame(value, freshIds = false, empty = false) {
   if (color) result.color = color;
   if (value.fill === true) result.fill = true;
   if (value.lock === true) result.lock = true;
+  if (value.collapsed === true) result.collapsed = true;
+  // Meaningful only while collapsed: the nodes this frame folded shut. Nodes
+  // the user had already folded are excluded, so expanding never reopens one.
+  if (result.collapsed === true && Array.isArray(value.collapsedNodes)) {
+    const folded = [...new Set(value.collapsedNodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
+    if (folded.length) result.collapsedNodes = folded;
+  }
   const textColor = normalizeColor(value.textColor);
   if (textColor) result.textColor = textColor;
   const fontSize = normalizeFontSize(value.fontSize);
@@ -372,6 +404,8 @@ export function validateFrame(value, freshIds = false, empty = false) {
 
 export function exportTemplate(frame) {
   const emptyFrame = validateFrame(clone(frame), false, true);
+  // Folded ids reference nodes a template does not carry.
+  delete emptyFrame.collapsedNodes;
   layoutFrame(emptyFrame, new Map());
   return { kind: KIND, version: VERSION, frame: emptyFrame };
 }

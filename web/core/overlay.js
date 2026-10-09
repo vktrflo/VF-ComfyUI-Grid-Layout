@@ -7,7 +7,7 @@ const STYLE = `
 .clt-frame{border:2px solid #7197a5}
 .clt-frame-header{position:absolute;left:0;right:0;top:0;height:34px;background:var(--comfy-menu-bg,#20282c);display:flex;align-items:center;gap:8px;padding:0 8px;pointer-events:auto;cursor:move;border-radius:3px 3px 0 0;user-select:none}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji,.clt-lock{flex:none}
+.clt-emoji,.clt-lock,.clt-collapse{flex:none}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
@@ -349,10 +349,10 @@ export class LayoutOverlay {
     } else {
       actions.push(['Fill cell height', () => this.controller.edit(() => { frame.fill = true; })]);
     }
-    if (frame.lock === true) {
-      actions.push(['Unlock frame', () => this.controller.edit(() => { delete frame.lock; })]);
+    if (frame.collapsed === true) {
+      actions.push(['Expand grid', () => this.toggleCollapse(frame.id)]);
     } else {
-      actions.push(['Lock frame', () => this.controller.edit(() => { frame.lock = true; })]);
+      actions.push(['Collapse grid', () => this.toggleCollapse(frame.id)]);
     }
     actions.push(['Export empty template', () => {
         const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
@@ -362,6 +362,37 @@ export class LayoutOverlay {
       }]);
     actions.push(['Remove grid (keep nodes)', () => this.controller.remove(frame.id)]);
     this.showMenu(event, actions);
+  }
+  // Both toggles edit through the controller so the change lands in the
+  // workflow's undo history like every other frame edit.
+  toggleLock(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(frame => frame.id === frameId);
+      if (!frame) return;
+      if (frame.lock === true) delete frame.lock; else frame.lock = true;
+    }));
+  }
+  toggleCollapse(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(frame => frame.id === frameId);
+      if (!frame) return;
+      if (frame.collapsed === true) this.expandFrame(frame); else this.collapseFrame(frame);
+    }));
+  }
+  collapseFrame(frame) {
+    const folded = [];
+    for (const cell of leaves(frame.root)) for (const id of cell.nodes) {
+      if (this.controller.adapter.fold(this.controller.graph.getNodeById(id))) folded.push(id);
+    }
+    frame.collapsed = true;
+    if (folded.length) frame.collapsedNodes = folded;
+  }
+  // Unfold inside the edit and before its reflow: a folded node measures zero
+  // height, so one still folded would shrink the frame we just reopened.
+  expandFrame(frame) {
+    for (const id of frame.collapsedNodes ?? []) this.controller.adapter.unfold(this.controller.graph.getNodeById(id));
+    delete frame.collapsedNodes;
+    delete frame.collapsed;
   }
   importAt(pos) {
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.grid.json,.layout.json,.json,application/json';
@@ -506,15 +537,22 @@ export class LayoutOverlay {
       badge.setAttribute('aria-hidden', 'true');
       header.append(badge);
       header.append(this.title(frame.label, frame.id));
-      if (frame.lock === true) {
-        header.style.cursor = 'default';
-        const lock = element('span', 'clt-lock', '🔒');
-        lock.title = 'Locked';
-        header.append(lock);
-      }
+      if (frame.lock === true) header.style.cursor = 'default';
+      const locked = frame.lock === true;
+      const lock = button(locked ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id), locked ? '🔒' : '🔓');
+      lock.classList.add('clt-lock');
+      lock.setAttribute('aria-pressed', String(locked));
+      header.append(lock);
+      const collapsed = frame.collapsed === true;
+      const collapse = button(collapsed ? 'Expand grid' : 'Collapse grid', () => this.toggleCollapse(frame.id), collapsed ? '▾' : '▴');
+      collapse.classList.add('clt-collapse');
+      collapse.setAttribute('aria-expanded', String(!collapsed));
+      header.append(collapse);
       header.append(button('Grid options', e => this.frameMenu(e, frame), '•••'));
       header.onpointerdown = e => this.startDrag(e, 'move', { frame, pos: [...frame.pos] });
       el.append(header);
+      // A collapsed frame is its header alone: no body chrome to hit-test.
+      if (collapsed) { fragment.append(el); continue; }
       for (const axis of ['x']) {
         const edge = element('div', `clt-resize-${axis}`);
         edge.title = axis === 'x' ? 'Drag to resize rightmost cells' : 'Drag to resize bottom cells';
