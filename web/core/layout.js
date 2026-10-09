@@ -300,7 +300,8 @@ export function layoutFrame(frame, metrics) {
   // header and border. Cells and dividers are omitted. Placements are emitted
   // at the header so nodes track frame movement during drag.
   if (frame.minimized === true) {
-    frame.size[1] = FRAME_TITLE;
+    const borderWidth = normalizeBorder(frame.border)?.width ?? 2;
+    frame.size[1] = 34 + borderWidth * 2;
     const placements = [];
     for (const cell of leaves(frame.root)) {
       for (const nodeId of cell.nodes) {
@@ -308,7 +309,7 @@ export function layoutFrame(frame, metrics) {
           placements.push({
             nodeId,
             x: frame.pos[0] + PAD,
-            y: frame.pos[1] + FRAME_TITLE,
+            y: frame.pos[1] + frame.size[1],
             width: frame.size[0] - PAD * 2,
             height: 0,
           });

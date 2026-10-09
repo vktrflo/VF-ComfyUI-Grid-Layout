@@ -6,6 +6,11 @@ const STYLE = `
 .clt-frame,.clt-cell{position:absolute;box-sizing:border-box;pointer-events:none;border:1px solid #5d7e89;border-radius:5px}
 .clt-frame{border:2px solid #7197a5}
 .clt-frame-header{position:absolute;left:0;right:0;top:0;height:34px;background:var(--comfy-menu-bg,#20282c);display:flex;align-items:center;gap:8px;padding:0 8px;pointer-events:auto;cursor:move;border-radius:3px 3px 0 0;user-select:none}
+.clt-frame.clt-minimized .clt-frame-header{position:absolute;left:0;right:0;top:0;bottom:0;height:auto;border-radius:3px}
+.clt-port{position:absolute;width:12px;height:12px;border-radius:50%;background:#70d8be;border:2px solid #20282c;box-shadow:0 0 5px #70d8beaa;z-index:10;pointer-events:auto;box-sizing:border-box;cursor:default;transition:transform .15s ease}
+.clt-port:hover{transform:scale(1.25);background:#a3f3df;box-shadow:0 0 8px #70d8bee0}
+.clt-port-in{left:-6px;top:calc(50% - 6px)}
+.clt-port-out{right:-6px;top:calc(50% - 6px)}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
 .clt-emoji,.clt-lock,.clt-collapse,.clt-minimize{flex:none}
 .lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
@@ -301,9 +306,21 @@ export class LayoutOverlay {
       };
       if (canvas.renderLink) {
         this.origRenderLink = canvas.renderLink;
-        canvas.renderLink = (a, b, c, link, ...rest) => {
-          if (link && (this.hiddenNodeIds.has(String(link.origin_id)) || this.hiddenNodeIds.has(String(link.target_id)))) return;
-          return this.origRenderLink?.call(canvas, a, b, c, link, ...rest);
+        canvas.renderLink = (ctx, startPos, endPos, link, ...rest) => {
+          if (link) {
+            const originFrame = this.getMinimizedFrameForNode(link.origin_id);
+            const targetFrame = this.getMinimizedFrameForNode(link.target_id);
+            if (originFrame && targetFrame) {
+              if (originFrame === targetFrame) return;
+              startPos = [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2];
+              endPos = [targetFrame.pos[0], targetFrame.pos[1] + targetFrame.size[1] / 2];
+            } else if (originFrame) {
+              startPos = [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2];
+            } else if (targetFrame) {
+              endPos = [targetFrame.pos[0], targetFrame.pos[1] + targetFrame.size[1] / 2];
+            }
+          }
+          return this.origRenderLink?.call(canvas, ctx, startPos, endPos, link, ...rest);
         };
       }
     }
@@ -886,6 +903,41 @@ export class LayoutOverlay {
     }
     return ids;
   }
+  getMinimizedFrameForNode(nodeId) {
+    if (nodeId == null) return null;
+    const id = String(nodeId);
+    for (const frame of this.controller.frames ?? []) {
+      if (frame.minimized === true) {
+        for (const cell of leaves(frame.root)) {
+          if (cell.nodes.some(n => String(n) === id)) return frame;
+        }
+      }
+    }
+    return null;
+  }
+  getExternalLinks(frame) {
+    const nodeIds = new Set();
+    for (const cell of leaves(frame.root)) {
+      for (const n of cell.nodes) nodeIds.add(String(n));
+    }
+    const inputs = [];
+    const outputs = [];
+    const links = this.controller.graph?.links;
+    if (links) {
+      const list = typeof links.values === 'function' ? links.values() : Object.values(links);
+      for (const link of list) {
+        if (!link) continue;
+        const originInside = nodeIds.has(String(link.origin_id));
+        const targetInside = nodeIds.has(String(link.target_id));
+        if (originInside && !targetInside) {
+          outputs.push(link);
+        } else if (!originInside && targetInside) {
+          inputs.push(link);
+        }
+      }
+    }
+    return { inputs, outputs, nodeIds };
+  }
   toggleMinimize(frameId) {
     this.safe(() => this.controller.edit(() => {
       const frame = this.controller.frames.find(frame => frame.id === frameId);
@@ -1116,8 +1168,34 @@ export class LayoutOverlay {
       el.append(header);
 
       // A minimized frame hides all child nodes, cells, and dividers, leaving
-      // just the container header and border.
+      // just the container header and border. External wires connect to consolidated ports.
       if (minimized) {
+        el.classList.add('clt-minimized');
+        const extLinks = this.getExternalLinks(frame);
+        const formatLink = (link) => {
+          const originNode = this.controller.graph?.getNodeById(link.origin_id);
+          const targetNode = this.controller.graph?.getNodeById(link.target_id);
+          const originTitle = originNode?.title || originNode?.type || `#${link.origin_id}`;
+          const targetTitle = targetNode?.title || targetNode?.type || `#${link.target_id}`;
+          const typeStr = link.type ? ` [${link.type}]` : '';
+          return `• ${originTitle} → ${targetTitle}${typeStr}`;
+        };
+        if (extLinks.inputs.length > 0) {
+          const inPort = element('div', 'clt-port clt-port-in');
+          const count = extLinks.inputs.length;
+          inPort.title = `Input (${count} wire${count > 1 ? 's' : ''}):\n` + extLinks.inputs.map(formatLink).join('\n');
+          inPort.setAttribute('aria-label', `Consolidated input port with ${count} connections`);
+          inPort.addEventListener('pointerdown', e => e.stopPropagation());
+          el.append(inPort);
+        }
+        if (extLinks.outputs.length > 0) {
+          const outPort = element('div', 'clt-port clt-port-out');
+          const count = extLinks.outputs.length;
+          outPort.title = `Output (${count} wire${count > 1 ? 's' : ''}):\n` + extLinks.outputs.map(formatLink).join('\n');
+          outPort.setAttribute('aria-label', `Consolidated output port with ${count} connections`);
+          outPort.addEventListener('pointerdown', e => e.stopPropagation());
+          el.append(outPort);
+        }
         fragment.append(el);
         continue;
       }

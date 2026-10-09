@@ -22,6 +22,32 @@ try {
 
   await page.waitForTimeout(1000);
 
+  // Add an external node connected to Node 1 inside the grid container to test external output wiring,
+  // and set a custom 6px border like in the user's screenshot.
+  await page.evaluate(() => {
+    const app = window.comfyAPI.app.app;
+    const LiteGraph = globalThis.LiteGraph ?? globalThis.comfyAPI?.litegraph?.LiteGraph;
+    const node1 = app.graph.getNodeById(1);
+    
+    // Create an external node outside the grid
+    const extNode = LiteGraph.createNode('SaveImage');
+    extNode.pos = [1050, 216];
+    app.graph.add(extNode);
+    
+    // Connect Node 1 (slot 0) to extNode (slot 0)
+    node1.connect(0, extNode, 0);
+
+    // Apply custom 6px dotted border to the frame
+    const ext = app.extensions.find(e => e.name === 'VF.ComfyUI.GridLayout');
+    const frame = ext.controller.frames[0];
+    if (frame) {
+      frame.border = { color: '#595f95', width: 6, style: 'dotted' };
+      ext.controller.reflow();
+    }
+  });
+
+  await page.waitForTimeout(500);
+
   // Locate the grid frame and minimize button
   const frameEl = page.locator('.clt-frame').first();
   await assert.ok(await frameEl.isVisible(), 'Grid frame should be visible');
@@ -41,8 +67,8 @@ try {
   assert.ok(initialCells > 0, 'Cells should exist initially');
 
   // Take screenshot of expanded state
-  await page.screenshot({ path: 'test-results/grid-expanded.png' });
-  console.log('Saved test-results/grid-expanded.png');
+  await page.screenshot({ path: 'test-results/grid-expanded-with-ext-node.png' });
+  console.log('Saved test-results/grid-expanded-with-ext-node.png');
 
   // Click minimize
   console.log('Clicking minimize button...');
@@ -52,8 +78,8 @@ try {
   // Verify minimized state
   const minimizedBox = await frameEl.boundingBox();
   console.log('Minimized frame height:', minimizedBox.height);
-  // Header is 34px, border is 2px top + 2px bottom = 38px, or FRAME_TITLE 36px
-  assert.ok(minimizedBox.height <= 40, `Minimized height should be <= 40px, got ${minimizedBox.height}`);
+  // With 6px border: 34 + 6*2 = 46px (scaled by canvas zoom 0.8 => ~36.8px)
+  assert.ok(minimizedBox.height >= 30 && minimizedBox.height <= 55, `Minimized height should fit 46px border box, got ${minimizedBox.height}`);
 
   assert.equal(await minimizeBtn.textContent(), '◻');
   assert.equal(await minimizeBtn.getAttribute('title'), 'Restore grid');
@@ -68,6 +94,14 @@ try {
   const collapseStyle = await collapseBtn.getAttribute('style');
   assert.ok(collapseStyle.includes('pointer-events: none'), 'Collapse button should be disabled when minimized');
 
+  // Verify consolidated port is rendered!
+  const outPort = frameEl.locator('.clt-port-out');
+  await assert.ok(await outPort.isVisible(), 'Consolidated output port should be visible');
+  const outPortTitle = await outPort.getAttribute('title');
+  console.log('Output port title:', outPortTitle);
+  assert.ok(outPortTitle.includes('Output'), 'Output port title should mention Output');
+  assert.ok(outPortTitle.includes('Empty Image') || outPortTitle.includes('EmptyImage'), 'Output port should list Empty Image');
+
   // Verify hiddenNodeIds and frame minimized state
   const hiddenInfo = await page.evaluate(() => {
     const ext = window.comfyAPI.app.app.extensions.find(e => e.name === 'VF.ComfyUI.GridLayout');
@@ -81,11 +115,11 @@ try {
   });
   console.log('Hidden info:', hiddenInfo);
   assert.ok(hiddenInfo.minimized, 'Frame should have minimized = true');
-  assert.ok(hiddenInfo.hiddenSize > 0 || hiddenInfo.minimizedNodes > 0, 'Contained nodes should be marked hidden');
+  assert.equal(hiddenInfo.minimizedNodes, 2, 'Two contained nodes should be recorded');
 
-  // Take screenshot of minimized state
-  await page.screenshot({ path: 'test-results/minimize-verification.png' });
-  console.log('Saved test-results/minimize-verification.png');
+  // Take screenshot of minimized state with ports and custom border
+  await page.screenshot({ path: 'test-results/minimized-with-ports-and-custom-border.png' });
+  console.log('Saved test-results/minimized-with-ports-and-custom-border.png');
 
   // Click restore (the minimize button again)
   console.log('Clicking restore button...');
@@ -104,6 +138,9 @@ try {
   console.log('Restored cell count:', restoredCells);
   assert.equal(restoredCells, initialCells, 'Cells should be restored');
 
+  // Output port should no longer be present
+  assert.equal(await frameEl.locator('.clt-port-out').count(), 0, 'Port dots should disappear when restored');
+
   const restoredInfo = await page.evaluate(() => {
     const ext = window.comfyAPI.app.app.extensions.find(e => e.name === 'VF.ComfyUI.GridLayout');
     const hiddenSize = ext?.overlay?.hiddenNodeIds?.size ?? 0;
@@ -118,10 +155,10 @@ try {
   assert.equal(restoredInfo.hiddenSize, 0, 'No nodes should be hidden after restore');
 
   // Take screenshot of restored state
-  await page.screenshot({ path: 'test-results/restore-verification.png' });
-  console.log('Saved test-results/restore-verification.png');
+  await page.screenshot({ path: 'test-results/restored-with-ext-node.png' });
+  console.log('Saved test-results/restored-with-ext-node.png');
 
-  console.log('ALL MINIMIZE/RESTORE CHECKS PASSED SUCCESSFULLY!');
+  console.log('ALL MINIMIZE, BORDER AND PORT CHECKS PASSED SUCCESSFULLY!');
 } finally {
   await browser.close();
 }

@@ -50,44 +50,50 @@ test('minimizedNodes survives only while minimized and never ships in a template
   assert.equal('minimized' in template.frame, false, 'a template does not ship minimized state');
 });
 
-test('a minimized frame reduces size to FRAME_TITLE, returns empty cells and dividers, and emits placements at the header', () => {
+test('a minimized frame reduces size to header height plus borders, returns empty cells and dividers, and emits placements at the header', () => {
   const frame = populated();
   const expanded = engine.layoutFrame(frame, metrics);
   assert.equal(expanded.placements.length, 2, 'expanded grid has geometry');
-  assert.ok(frame.size[1] > engine.FRAME_TITLE, 'expanded frame height is larger than FRAME_TITLE');
+  assert.ok(frame.size[1] > 38, 'expanded frame height is larger than header + border');
 
   frame.minimized = true;
   const minimized = engine.layoutFrame(frame, metrics);
-  assert.equal(frame.size[1], engine.FRAME_TITLE, 'minimized frame size is clamped to FRAME_TITLE (header height)');
+  // Default border is 2px, so height = 34 (header) + 2*2 = 38px
+  assert.equal(frame.size[1], 38, 'minimized frame size is clamped to header height + 2*2 default borders');
   assert.deepEqual(minimized.cells, [], 'a minimized frame offers no drop targets / cells');
   assert.deepEqual(minimized.dividers, [], 'a minimized frame has no dividers');
   assert.equal(minimized.placements.length, 2, 'contained nodes still have placements tracking the header');
 
   for (const placement of minimized.placements) {
     assert.equal(placement.x, frame.pos[0] + engine.PAD, 'placement x aligns with frame header');
-    assert.equal(placement.y, frame.pos[1] + engine.FRAME_TITLE, 'placement y sits at frame header');
+    assert.equal(placement.y, frame.pos[1] + 38, 'placement y sits at frame bottom');
     assert.equal(placement.height, 0, 'placement height is 0');
   }
+
+  // Custom border width (e.g. 6px width): height = 34 + 6*2 = 46px
+  frame.border = { color: '#ff0000', width: 6, style: 'dotted' };
+  engine.layoutFrame(frame, metrics);
+  assert.equal(frame.size[1], 46, 'minimized frame size accounts for custom 6px border width');
 
   // An empty minimized frame
   const bare = engine.createFrame([0, 0]);
   bare.minimized = true;
   assert.deepEqual(engine.layoutFrame(bare, metrics).placements, []);
-  assert.equal(bare.size[1], engine.FRAME_TITLE);
+  assert.equal(bare.size[1], 38);
 });
 
 test('restoring from minimize restores full geometry and content-derived height', () => {
   const frame = populated();
   frame.minimized = true;
   engine.layoutFrame(frame, metrics);
-  assert.equal(frame.size[1], engine.FRAME_TITLE);
+  assert.equal(frame.size[1], 38);
 
   delete frame.minimized;
   const { cells, dividers, placements } = engine.layoutFrame(frame, metrics);
   assert.equal(cells.length, 2);
   assert.equal(dividers.length, 1);
   assert.equal(placements.length, 2);
-  assert.ok(frame.size[1] > engine.FRAME_TITLE, 'the frame grows back to fit its content');
+  assert.ok(frame.size[1] > 38, 'the frame grows back to fit its content');
   assert.ok(placements[0].height > 0);
   assert.ok(placements[1].height > 0);
 });
