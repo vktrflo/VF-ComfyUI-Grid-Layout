@@ -8,6 +8,9 @@ export const PAD = 12;
 export const GAP = 12;
 export const CELL_TITLE = 26;
 export const FRAME_TITLE = 36;
+// Height of a collapsed frame holding no nodes; with nodes it grows by one
+// title bar each, and the border wraps the stack.
+export const COLLAPSED_TITLE = FRAME_TITLE + PAD;
 let fallbackId = 0;
 function id() {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
@@ -64,6 +67,41 @@ export function normalizeBorder(value) {
   const width = Number(value.width);
   if (!color || !Number.isInteger(width) || width < 1 || width > 8 || !['solid','dashed','dotted'].includes(value.style)) return undefined;
   return {color, width, style:value.style};
+}
+
+export const PATTERNS = ['none', 'dots', 'grid', 'diagonal', 'hexagons', 'carbon'];
+
+export function normalizePattern(value) {
+  if (typeof value !== 'string') return undefined;
+  const lower = value.toLowerCase();
+  return PATTERNS.includes(lower) && lower !== 'none' ? lower : undefined;
+}
+
+export function normalizeOpacity(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return undefined;
+  return Math.min(1, Math.max(0, Math.round(num * 100) / 100));
+}
+
+export function normalizeImage(value) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('data:image/') || /^https?:\/\//i.test(trimmed)) && trimmed.length <= 2 * 1024 * 1024) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+export function normalizeImageMode(value) {
+  if (typeof value !== 'string') return undefined;
+  const lower = value.toLowerCase();
+  return ['repeat', 'cover'].includes(lower) ? lower : undefined;
+}
+
+export function normalizeContainerMode(value) {
+  if (typeof value !== 'string') return undefined;
+  const lower = value.toLowerCase();
+  return ['color', 'image'].includes(lower) ? lower : undefined;
 }
 
 export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Grid', pos: [...pos], size: [620, 500], root: createCell() });
@@ -236,6 +274,8 @@ function resizeBoundary(frame, delta, metrics, left) {
 }
 
 export function addBottomRow(frame) {
+  if (frame.minimized === true) throw new Error('Restore the grid before adding a bottom row.');
+  if (frame.collapsed === true) throw new Error('Expand the grid before adding a bottom row.');
   if (leaves(frame.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
   const height = 200;
   const root = frame.root;
@@ -256,6 +296,123 @@ export function addBottomRow(frame) {
 }
 
 export function layoutFrame(frame, metrics) {
+  // A minimized frame hides all child nodes, leaving just the container
+  // header and border. Cells and dividers are omitted. Placements are emitted
+  // at the header so nodes track frame movement during drag.
+  if (frame.minimized === true) {
+    const borderWidth = normalizeBorder(frame.border)?.width ?? 2;
+    frame.size[1] = 34 + borderWidth * 2;
+    const placements = [];
+    for (const cell of leaves(frame.root)) {
+      for (const nodeId of cell.nodes) {
+        if (metrics.has(nodeId)) {
+          placements.push({
+            nodeId,
+            x: frame.pos[0] + PAD,
+            y: frame.pos[1] + frame.size[1],
+            width: frame.size[0] - PAD * 2,
+            height: 0,
+          });
+        }
+      }
+    }
+    return { cells: [], dividers: [], placements };
+  }
+
+  // A collapsed frame folds its nodes to their title bars and stacks those
+  // within their respective columns flush under the header, with the frame
+  // border wrapping the tallest column. Cells are omitted (no drop targets),
+  // but column dividers and placements are emitted to maintain the grid
+  // column structure.
+  if (frame.collapsed === true) {
+    function layoutCollapsed(cell, x, width, y) {
+      if (!cell.children) {
+        let currentY = y;
+        const placements = [];
+        const cellNodes = cell.nodes.filter(n => metrics.has(n));
+        for (const nodeId of cellNodes) {
+          const metric = metrics.get(nodeId);
+          const title = metric.titleHeight;
+          placements.push({
+            nodeId,
+            x: x + PAD,
+            y: currentY + title,
+            width: width - PAD * 2,
+            height: 0,
+          });
+          currentY += title;
+        }
+        return {
+          placements,
+          height: currentY - y,
+          dividers: [],
+        };
+      }
+
+      if (cell.axis === 'y') {
+        let currentY = y;
+        const placements = [];
+        const dividers = [];
+        cell.children.forEach(child => {
+          const res = layoutCollapsed(child, x, width, currentY);
+          placements.push(...res.placements);
+          dividers.push(...res.dividers);
+          currentY += res.height;
+        });
+        return {
+          placements,
+          height: currentY - y,
+          dividers,
+        };
+      }
+
+      // cell.axis === 'x'
+      const available = width - GAP * (cell.children.length - 1);
+      const weights = ratios(cell);
+      let offset = x;
+      const placements = [];
+      const dividers = [];
+      const childResults = [];
+      cell.children.forEach((child, i) => {
+        const childWidth = available * weights[i];
+        const res = layoutCollapsed(child, offset, childWidth, y);
+        placements.push(...res.placements);
+        dividers.push(...res.dividers);
+        childResults.push({ offset, width: childWidth, res });
+        offset += childWidth + GAP;
+      });
+
+      const height = Math.max(0, ...childResults.map(c => c.res.height));
+
+      // Emit column dividers between adjacent children
+      childResults.forEach((c, i) => {
+        if (i < childResults.length - 1) {
+          dividers.push({
+            cell,
+            index: i,
+            rect: [c.offset + c.width, y, GAP, height],
+            available,
+          });
+        }
+      });
+
+      return {
+        placements,
+        height,
+        dividers,
+      };
+    }
+
+    const { placements, height, dividers } = layoutCollapsed(
+      frame.root,
+      frame.pos[0] + PAD,
+      frame.size[0] - PAD * 2,
+      frame.pos[1] + FRAME_TITLE
+    );
+
+    frame.size[1] = FRAME_TITLE + height + PAD;
+    return { cells: [], dividers, placements };
+  }
   const sizes = new Map();
   function minimum(cell) {
     let size;
@@ -362,16 +519,44 @@ export function validateFrame(value, freshIds = false, empty = false) {
   if (color) result.color = color;
   if (value.fill === true) result.fill = true;
   if (value.lock === true) result.lock = true;
+  if (value.collapsed === true) result.collapsed = true;
+  // Meaningful only while collapsed: the nodes this frame folded shut. Nodes
+  // the user had already folded are excluded, so expanding never reopens one.
+  if (result.collapsed === true && Array.isArray(value.collapsedNodes)) {
+    const folded = [...new Set(value.collapsedNodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
+    if (folded.length) result.collapsedNodes = folded;
+  }
+  if (value.minimized === true) result.minimized = true;
+  if (result.minimized === true && Array.isArray(value.minimizedNodes)) {
+    const folded = [...new Set(value.minimizedNodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
+    if (folded.length) result.minimizedNodes = folded;
+  }
   const textColor = normalizeColor(value.textColor);
   if (textColor) result.textColor = textColor;
   const fontSize = normalizeFontSize(value.fontSize);
   if (fontSize !== undefined) result.fontSize = fontSize;
   const border = normalizeBorder(value.border); if (border) result.border = border;
+  const containerColor = normalizeColor(value.containerColor);
+  if (containerColor) result.containerColor = containerColor;
+  const containerOpacity = normalizeOpacity(value.containerOpacity);
+  if (containerOpacity !== undefined) result.containerOpacity = containerOpacity;
+  const containerPattern = normalizePattern(value.containerPattern);
+  if (containerPattern) result.containerPattern = containerPattern;
+  const containerImage = normalizeImage(value.containerImage);
+  if (containerImage) result.containerImage = containerImage;
+  const containerImageMode = normalizeImageMode(value.containerImageMode);
+  if (containerImageMode) result.containerImageMode = containerImageMode;
+  const containerMode = normalizeContainerMode(value.containerMode);
+  if (containerMode) result.containerMode = containerMode;
   return result;
 }
 
 export function exportTemplate(frame) {
   const emptyFrame = validateFrame(clone(frame), false, true);
+  // Folded ids reference nodes a template does not carry.
+  delete emptyFrame.collapsedNodes;
+  delete emptyFrame.minimizedNodes;
+  delete emptyFrame.minimized;
   layoutFrame(emptyFrame, new Map());
   return { kind: KIND, version: VERSION, frame: emptyFrame };
 }

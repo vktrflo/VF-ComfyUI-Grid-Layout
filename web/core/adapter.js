@@ -67,6 +67,22 @@ export class NodeAdapter {
     }
     node.setDirtyCanvas?.(true, true);
   }
+  // Neither renderer honors flags.hidden, so folding a node down to its title
+  // bar is the only supported way to take one out of the visual flow. Both
+  // drawNode and the Nodes 2.0 path branch on flags.collapsed.
+  fold(node) {
+    if (!node || node.flags?.collapsed) return false;
+    node.flags ??= {};
+    node.flags.collapsed = true;
+    node.setDirtyCanvas?.(true, true);
+    return true;
+  }
+  unfold(node) {
+    if (!node?.flags?.collapsed) return false;
+    delete node.flags.collapsed;
+    node.setDirtyCanvas?.(true, true);
+    return true;
+  }
   releaseFill(node) {
     const key = this.trackKey(node);
     const applied = this.appliedHeights.get(key);

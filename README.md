@@ -48,7 +48,8 @@ Then restart ComfyUI and use **Ctrl+F5** to clear the old extension from the bro
 - **Inline organization** — Add full-width bottom rows, rename frames and cells inline, move a frame by its header, and transfer or release individual nodes between cells. Frame and row heights auto-fit their content and shrink as content is removed.
 - **Header and border styling** — Set the title-bar background, text color (with automatic contrast pick), and font size frame-wide or per cell. Control border color, 1–8 px thickness, and solid, dashed, or dotted style with a live preview.
 - **Fill cell height** — Stretch the bottom node of every cell flush with its cell floor; **Undo Fill cell height** releases them again.
-- **Lock frame** — Freeze a frame's position and size behind a 🔒 in its header; menu commands keep working while it is locked.
+- **Lock frame** — Toggle 🔒 / 🔓 in a frame's header to freeze its position and size; menu commands keep working while it is locked.
+- **Collapse frame** — Toggle ▴ / ▾ in a frame's header to fold it shut. Its nodes collapse to title bars, stacked flush under the header in reading order with no gaps, and the frame border wraps the whole stack. Dragging a folded frame carries its children along; expanding restores the full layout, except nodes you had already folded yourself, which stay folded.
 - **Reusable layouts** — Frame structure is stored in the workflow's `extra.comfyui_grid_layout` metadata (with backward compatibility for `comfyui_layout_templates`), so layouts survive save and reload. Export an empty template to reuse a shape without bringing its nodes along.
 
 ## Use
@@ -106,7 +107,8 @@ Drag dividers or the frame's edges to resize. **••• → Shrink grid to con
 - Click **•••** → **Border configuration…** for border color, thickness (1–8 px), and solid/dashed/dotted style with a live preview. Cells inherit the frame's border; a cell's **+** menu can override it.
 - Click **•••** → **Change appearance → Reset appearance configuration** to clear all header and border overrides on the frame.
 - Click **•••** on a frame → **Fill cell height** to stretch every cell's bottom node flush with its cell (short cells fill up to taller neighbors); **Undo Fill cell height** returns the nodes to their pre-fill heights. A filled frame owns its node heights — manual height drags are overridden while filling is on.
-- Click **•••** on a frame → **Lock frame** to freeze its position and size — a 🔒 appears in its header; **Unlock frame** re-enables dragging. Locked frames ignore header, edge, and divider drags; menu commands still work.
+- Click the 🔓 in a frame's header to **lock** it — the icon turns 🔒 and header, edge, and divider drags are ignored; click 🔒 again to unlock. Menu commands still work while locked.
+- Click the ▴ in a frame's header to **collapse** it. Its nodes fold down to their title bars, stacked flush under the header in reading order, and the frame border wraps the stack; dragging the folded frame carries them along. Click ▾ to expand and everything returns to its cell. A node you had already folded yourself stays folded. **••• → Collapse grid / Expand grid** does the same thing. Add bottom row is unavailable until the grid is expanded again.
 - Select nodes, then right-click the canvas or a selected node → **Create grid layout from selected nodes → Preserve columns** or **Single stack** to wrap your selection in a new frame. The floating selection toolbar's **Grid** button (under **More Options**) offers the same two options.
 - Right-click the canvas → **🌀 Import Grid Template…** to place a saved empty layout. Accepts both `.grid.json` and legacy `.layout.json` files.
 - Use ComfyUI's normal **Ctrl+Z / Ctrl+Shift+Z** shortcuts for undo/redo.

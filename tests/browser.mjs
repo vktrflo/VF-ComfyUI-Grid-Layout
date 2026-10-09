@@ -480,12 +480,12 @@ try {
     await page.screenshot({ path: `test-results/fill-${vue ? 'nodes-2' : 'classic'}.png` });
     console.log(`Fill cell height checks passed (${vue ? 'Nodes 2.0' : 'Classic'})`);
 
-    // Lock scenario: the frame gains a lock icon, ignores header drags, and moves again after unlocking.
-    await openFrameMenu();
-    await page.getByRole('menuitem', { name: 'Lock frame', exact: true }).click();
+    // Lock scenario: the header lock button locks the frame, which then ignores
+    // header drags, and unlocks again from the same button.
+    await page.getByRole('button', { name: 'Lock frame', exact: true }).click();
     await settle();
-    await page.locator('.clt-lock').waitFor({ state: 'attached', timeout: 3000 });
-    assert.equal(await page.locator('.clt-lock').textContent(), '🔒', 'lock icon appears in the frame header');
+    assert.equal(await page.locator('.clt-lock').textContent(), '🔒', 'lock icon shows the locked state');
+    assert.equal(await page.getByRole('button', { name: 'Unlock frame', exact: true }).count(), 1, 'the button flips to unlock');
     const lockedPos = await page.evaluate(() => [...window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].pos]);
     const headerBox = await page.locator('.clt-frame-header').first().boundingBox();
     await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2);
@@ -498,10 +498,9 @@ try {
     await page.evaluate(() => window.comfyAPI.app.app.canvas.setDirty(true, true));
     await page.waitForTimeout(400);
     await page.screenshot({ path: `test-results/lock-${vue ? 'nodes-2' : 'classic'}.png` });
-    await openFrameMenu();
-    await page.getByRole('menuitem', { name: 'Unlock frame', exact: true }).click();
+    await page.getByRole('button', { name: 'Unlock frame', exact: true }).click();
     await settle();
-    assert.equal(await page.locator('.clt-lock').count(), 0, 'lock icon disappears after unlocking');
+    assert.equal(await page.locator('.clt-lock').textContent(), '🔓', 'lock icon shows the unlocked state');
     await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(headerBox.x + headerBox.width / 2 + 60, headerBox.y + headerBox.height / 2 + 40, { steps: 5 });
