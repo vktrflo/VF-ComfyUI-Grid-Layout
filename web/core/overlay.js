@@ -7,7 +7,8 @@ const STYLE = `
 .clt-frame{border:2px solid #7197a5}
 .clt-frame-header{position:absolute;left:0;right:0;top:0;height:34px;background:var(--comfy-menu-bg,#20282c);display:flex;align-items:center;gap:8px;padding:0 8px;pointer-events:auto;cursor:move;border-radius:3px 3px 0 0;user-select:none}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji,.clt-lock,.clt-collapse{flex:none}
+.clt-emoji,.clt-lock,.clt-collapse,.clt-minimize{flex:none}
+.lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
@@ -293,6 +294,18 @@ export class LayoutOverlay {
         this.origOnDrawBackground?.call(canvas, ctx, visible_area);
         this.drawCanvasBackgrounds(ctx);
       };
+      this.origDrawNode = canvas.drawNode;
+      canvas.drawNode = (node, ctx) => {
+        if (this.hiddenNodeIds.has(String(node.id))) return;
+        return this.origDrawNode?.call(canvas, node, ctx);
+      };
+      if (canvas.renderLink) {
+        this.origRenderLink = canvas.renderLink;
+        canvas.renderLink = (a, b, c, link, ...rest) => {
+          if (link && (this.hiddenNodeIds.has(String(link.origin_id)) || this.hiddenNodeIds.has(String(link.target_id)))) return;
+          return this.origRenderLink?.call(canvas, a, b, c, link, ...rest);
+        };
+      }
     }
     this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null;
     const options = { capture: true, signal: this.abort.signal };
@@ -859,10 +872,48 @@ export class LayoutOverlay {
       if (frame.lock === true) delete frame.lock; else frame.lock = true;
     }));
   }
-  toggleCollapse(frameId) {
+  get hiddenNodeIds() {
+    const ids = new Set();
+    const frames = this.controller.frames;
+    if (frames) {
+      for (const frame of frames) {
+        if (frame.minimized === true) {
+          for (const cell of leaves(frame.root)) {
+            for (const n of cell.nodes) ids.add(String(n));
+          }
+        }
+      }
+    }
+    return ids;
+  }
+  toggleMinimize(frameId) {
     this.safe(() => this.controller.edit(() => {
       const frame = this.controller.frames.find(frame => frame.id === frameId);
       if (!frame) return;
+      if (frame.minimized === true) this.restoreFrame(frame); else this.minimizeFrame(frame);
+    }));
+    this.app.canvas?.setDirty(true, true);
+  }
+  minimizeFrame(frame) {
+    if (frame.collapsed === true) {
+      this.expandFrame(frame);
+    }
+    const folded = [];
+    for (const cell of leaves(frame.root)) for (const id of cell.nodes) {
+      if (this.controller.adapter.fold(this.controller.graph.getNodeById(id))) folded.push(id);
+    }
+    frame.minimized = true;
+    if (folded.length) frame.minimizedNodes = folded;
+  }
+  restoreFrame(frame) {
+    for (const id of frame.minimizedNodes ?? []) this.controller.adapter.unfold(this.controller.graph.getNodeById(id));
+    delete frame.minimizedNodes;
+    delete frame.minimized;
+  }
+  toggleCollapse(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(frame => frame.id === frameId);
+      if (!frame || frame.minimized === true) return;
       if (frame.collapsed === true) this.expandFrame(frame); else this.collapseFrame(frame);
     }));
   }
@@ -1010,6 +1061,17 @@ export class LayoutOverlay {
     this.animation = requestAnimationFrame(this.tick);
   }
   render(layouts) {
+    const hidden = this.hiddenNodeIds;
+    if (typeof document !== 'undefined') {
+      for (const el of document.querySelectorAll('.lg-node')) {
+        const id = el.dataset?.nodeId || el.getAttribute('data-node-id');
+        if (id && hidden.has(String(id))) {
+          el.classList.add('clt-node-hidden');
+        } else {
+          el.classList.remove('clt-node-hidden');
+        }
+      }
+    }
     const fragment = document.createDocumentFragment();
     for (const layout of layouts) {
       const { frame } = layout;
@@ -1032,14 +1094,33 @@ export class LayoutOverlay {
       lock.classList.add('clt-lock');
       lock.setAttribute('aria-pressed', String(locked));
       header.append(lock);
+
+      const minimized = frame.minimized === true;
+      const minimize = button(minimized ? 'Restore grid' : 'Minimize grid', () => this.toggleMinimize(frame.id), minimized ? '◻' : '−');
+      minimize.classList.add('clt-minimize');
+      minimize.setAttribute('aria-expanded', String(!minimized));
+      header.append(minimize);
+
       const collapsed = frame.collapsed === true;
       const collapse = button(collapsed ? 'Expand grid' : 'Collapse grid', () => this.toggleCollapse(frame.id), collapsed ? '▾' : '▴');
       collapse.classList.add('clt-collapse');
       collapse.setAttribute('aria-expanded', String(!collapsed));
+      if (minimized) {
+        collapse.style.opacity = '0.35';
+        collapse.style.pointerEvents = 'none';
+      }
       header.append(collapse);
+
       header.append(button('Grid options', e => this.frameMenu(e, frame), '•••'));
       header.onpointerdown = e => this.startDrag(e, 'move', { frame, pos: [...frame.pos] });
       el.append(header);
+
+      // A minimized frame hides all child nodes, cells, and dividers, leaving
+      // just the container header and border.
+      if (minimized) {
+        fragment.append(el);
+        continue;
+      }
       // A collapsed frame hides cells and edge resize handles, but retains
       // column dividers between columns.
       if (collapsed) {
@@ -1100,8 +1181,16 @@ export class LayoutOverlay {
     this.app.canvas?.setDirty(true, true);
   }
   dispose() {
-    if (this.app.canvas && this.origOnDrawBackground !== undefined) {
-      this.app.canvas.onDrawBackground = this.origOnDrawBackground;
+    if (this.app.canvas) {
+      if (this.origOnDrawBackground !== undefined) {
+        this.app.canvas.onDrawBackground = this.origOnDrawBackground;
+      }
+      if (this.origDrawNode !== undefined) {
+        this.app.canvas.drawNode = this.origDrawNode;
+      }
+      if (this.origRenderLink !== undefined) {
+        this.app.canvas.renderLink = this.origRenderLink;
+      }
     }
     this.editing?.cancel(); this.up(null, true); this.abort.abort(); cancelAnimationFrame(this.animation);
     this.closeMenu(); this.root.remove(); this.style.remove();

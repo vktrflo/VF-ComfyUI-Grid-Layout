@@ -274,6 +274,7 @@ function resizeBoundary(frame, delta, metrics, left) {
 }
 
 export function addBottomRow(frame) {
+  if (frame.minimized === true) throw new Error('Restore the grid before adding a bottom row.');
   if (frame.collapsed === true) throw new Error('Expand the grid before adding a bottom row.');
   if (leaves(frame.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
   const height = 200;
@@ -295,6 +296,28 @@ export function addBottomRow(frame) {
 }
 
 export function layoutFrame(frame, metrics) {
+  // A minimized frame hides all child nodes, leaving just the container
+  // header and border. Cells and dividers are omitted. Placements are emitted
+  // at the header so nodes track frame movement during drag.
+  if (frame.minimized === true) {
+    frame.size[1] = FRAME_TITLE;
+    const placements = [];
+    for (const cell of leaves(frame.root)) {
+      for (const nodeId of cell.nodes) {
+        if (metrics.has(nodeId)) {
+          placements.push({
+            nodeId,
+            x: frame.pos[0] + PAD,
+            y: frame.pos[1] + FRAME_TITLE,
+            width: frame.size[0] - PAD * 2,
+            height: 0,
+          });
+        }
+      }
+    }
+    return { cells: [], dividers: [], placements };
+  }
+
   // A collapsed frame folds its nodes to their title bars and stacks those
   // within their respective columns flush under the header, with the frame
   // border wrapping the tallest column. Cells are omitted (no drop targets),
@@ -502,6 +525,11 @@ export function validateFrame(value, freshIds = false, empty = false) {
     const folded = [...new Set(value.collapsedNodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
     if (folded.length) result.collapsedNodes = folded;
   }
+  if (value.minimized === true) result.minimized = true;
+  if (result.minimized === true && Array.isArray(value.minimizedNodes)) {
+    const folded = [...new Set(value.minimizedNodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
+    if (folded.length) result.minimizedNodes = folded;
+  }
   const textColor = normalizeColor(value.textColor);
   if (textColor) result.textColor = textColor;
   const fontSize = normalizeFontSize(value.fontSize);
@@ -526,6 +554,8 @@ export function exportTemplate(frame) {
   const emptyFrame = validateFrame(clone(frame), false, true);
   // Folded ids reference nodes a template does not carry.
   delete emptyFrame.collapsedNodes;
+  delete emptyFrame.minimizedNodes;
+  delete emptyFrame.minimized;
   layoutFrame(emptyFrame, new Map());
   return { kind: KIND, version: VERSION, frame: emptyFrame };
 }
