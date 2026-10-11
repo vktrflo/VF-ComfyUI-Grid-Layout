@@ -88,8 +88,8 @@ app.registerExtension({
       const entries = original?.apply(this, args) ?? [];
       const point = [...(this.graph_mouse ?? [0, 0])];
       entries.push(null, selectionEntry(),
-        { content: '🌀 Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
-        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) });
+        { content: 'Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
+        { content: 'Import Grid Template…', callback: () => overlay.importAt(point) });
       return entries;
     };
   },
