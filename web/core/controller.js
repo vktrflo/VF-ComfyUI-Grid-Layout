@@ -1,6 +1,14 @@
 import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
+// Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
+// reuses string values, so embedded background images aren't re-encoded.
+function copy(value) {
+  if (Array.isArray(value)) return value.map(copy);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)]));
+  return value;
+}
+
 export class LayoutController {
   constructor(app, options) {
     this.app = app;
@@ -33,7 +41,7 @@ export class LayoutController {
     if (this.transaction) return false;
     this.ensureData();
     const graph = this.graph;
-    this.transaction = { graph, extra: JSON.parse(JSON.stringify(graph.extra)), nodes: this.snapshot() };
+    this.transaction = { graph, extra: copy(graph.extra), nodes: this.snapshot() };
     this.app.canvas.emitBeforeChange?.();
     return true;
   }

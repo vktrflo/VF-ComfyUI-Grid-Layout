@@ -12,6 +12,14 @@ app.registerExtension({
     icon: 'icon-[lucide--panels-top-left]',
     function: () => active?.openSelectionMenu(),
   }],
+  // Current frontends collect menu items through these hooks. setup() falls
+  // back to wrapping the canvas methods only when they are unavailable.
+  getCanvasMenuItems(canvas) {
+    return active ? active.canvasMenuItems(canvas) : [];
+  },
+  getNodeMenuItems() {
+    return active ? [null, active.selectionEntry()] : [];
+  },
   getSelectionToolboxCommands(item) {
     return item && active?.controller.graph.getNodeById(item.id) === item ? ['VF.GridLayout.CreateFromSelection'] : [];
   },
@@ -78,20 +86,27 @@ app.registerExtension({
         { content: 'Single stack', callback: () => overlay.safe(() => controller.createFromNodes(ids, 'stack')) },
       ] } };
     };
-    const originalNodeMenu = canvas.getNodeMenuOptions;
-    canvas.getNodeMenuOptions = function (...args) {
-      const entries = originalNodeMenu?.apply(this,args) ?? [];
-      entries.push(null, selectionEntry());return entries;
-    };
-    const original = canvas.getCanvasMenuOptions;
-    canvas.getCanvasMenuOptions = function (...args) {
-      const entries = original?.apply(this, args) ?? [];
-      const point = [...(this.graph_mouse ?? [0, 0])];
-      entries.push(null, selectionEntry(),
+    const canvasMenuItems = target => {
+      const point = [...(target?.graph_mouse ?? canvas.graph_mouse ?? [0, 0])];
+      return [null, selectionEntry(),
         { content: '🌀 Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
-        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) });
-      return entries;
+        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) }];
     };
+    active.selectionEntry = selectionEntry;
+    active.canvasMenuItems = canvasMenuItems;
+    if (typeof app.collectCanvasMenuItems !== 'function') {
+      const originalNodeMenu = canvas.getNodeMenuOptions;
+      canvas.getNodeMenuOptions = function (...args) {
+        const entries = originalNodeMenu?.apply(this,args) ?? [];
+        entries.push(null, selectionEntry());return entries;
+      };
+      const original = canvas.getCanvasMenuOptions;
+      canvas.getCanvasMenuOptions = function (...args) {
+        const entries = original?.apply(this, args) ?? [];
+        entries.push(...canvasMenuItems(this));
+        return entries;
+      };
+    }
   },
   nodeCreated(node) {
     if (!active || app.configuringGraph) return;

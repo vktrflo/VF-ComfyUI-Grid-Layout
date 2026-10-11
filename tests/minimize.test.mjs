@@ -66,7 +66,7 @@ test('a minimized frame reduces size to header height plus borders, returns empt
 
   for (const placement of minimized.placements) {
     assert.equal(placement.x, frame.pos[0] + engine.PAD, 'placement x aligns with frame header');
-    assert.equal(placement.y, frame.pos[1] + 38, 'placement y sits at frame bottom');
+    assert.equal(placement.y, frame.pos[1] + 2 + 30, 'folded title bar sits under the header, inside the border');
     assert.equal(placement.height, 0, 'placement height is 0');
   }
 
@@ -102,4 +102,14 @@ test('a minimized frame refuses operations that need a body', () => {
   const frame = populated();
   frame.minimized = true;
   assert.throws(() => engine.addBottomRow(frame), /Restore the grid before adding a bottom row\./);
+});
+
+test('restoreCollapsed survives only while minimized and never ships in a template', () => {
+  const frame = populated();
+  frame.minimized = true;
+  frame.restoreCollapsed = true;
+  assert.equal(engine.validateFrame(frame).restoreCollapsed, true);
+  assert.equal('restoreCollapsed' in engine.validateFrame({ ...frame, minimized: false }), false);
+  assert.equal('restoreCollapsed' in engine.validateFrame({ ...frame, restoreCollapsed: 'yes' }), false);
+  assert.equal('restoreCollapsed' in engine.exportTemplate(frame).frame, false);
 });
