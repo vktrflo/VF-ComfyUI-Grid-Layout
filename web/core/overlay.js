@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, leaves, pickCell, KEY, LEGACY_KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, KEY, LEGACY_KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -88,6 +88,17 @@ function hexToRgba(hex, opacity = 1) {
   if (isNaN(n) || clean.length !== 6) return undefined;
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+// Change-detection key for the overlay. Layout entries repeat each cell
+// subtree that the frame already carries, and a background image can be
+// megabytes long, so both are reduced to short stand-ins.
+function signatureOf(value) {
+  return JSON.stringify(value, function (key, item) {
+    if (key === 'cell' && item && typeof item === 'object' && !Array.isArray(this)) return item.id;
+    if (key === 'containerImage' && typeof item === 'string') return `${item.length}:${item.slice(0, 64)}:${item.slice(-64)}`;
+    return item;
+  });
 }
 
 const IMAGE_CACHE = new Map();
@@ -301,15 +312,15 @@ export class LayoutOverlay {
       };
       this.origDrawNode = canvas.drawNode;
       canvas.drawNode = (node, ctx) => {
-        if (this.hiddenNodeIds.has(String(node.id))) return;
+        if (this.hidden.ids.has(String(node.id))) return;
         return this.origDrawNode?.call(canvas, node, ctx);
       };
       if (canvas.renderLink) {
         this.origRenderLink = canvas.renderLink;
         canvas.renderLink = (ctx, startPos, endPos, link, ...rest) => {
           if (link) {
-            const originFrame = this.getMinimizedFrameForNode(link.origin_id);
-            const targetFrame = this.getMinimizedFrameForNode(link.target_id);
+            const originFrame = this.hidden.frames.get(String(link.origin_id));
+            const targetFrame = this.hidden.frames.get(String(link.target_id));
             if (originFrame && targetFrame) {
               if (originFrame === targetFrame) return;
               startPos = [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2];
@@ -324,6 +335,7 @@ export class LayoutOverlay {
         };
       }
     }
+    this.hidden = { ids: new Set(), frames: new Map() };
     this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null;
     const options = { capture: true, signal: this.abort.signal };
     document.addEventListener('pointerdown', e => this.nativeDown(e), options);
@@ -647,13 +659,20 @@ export class LayoutOverlay {
       fileInput.onchange = () => {
         const file = fileInput.files?.[0];
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) {
+        if (file.size > MAX_IMAGE_BYTES) {
           alert('Background image must be smaller than 2 MB.');
           fileInput.value = '';
           return;
         }
         const reader = new FileReader();
         reader.onload = e => {
+          // Check the encoded value with the same rule used when saving, so
+          // the preview never shows an image that OK would discard.
+          if (!normalizeImage(e.target.result)) {
+            alert('This image could not be used as a background.');
+            fileInput.value = '';
+            return;
+          }
           values.containerImage = e.target.result;
           imageStatus.textContent = 'Image uploaded';
           removeImageBtn.style.display = 'inline-block';
@@ -832,8 +851,6 @@ export class LayoutOverlay {
         }, values => edit((targetFrame, targetCell) => applyHeaderConfig(targetCell, values)));
       }],
     ];
-    const frame = this.controller.frames.find(f => f.id === frameId);
-    const cell = frame && findCell(frame.root, cellId);
     this.showMenu(event, actions);
   }
   frameMenu(event, frame) {
@@ -889,31 +906,28 @@ export class LayoutOverlay {
       if (frame.lock === true) delete frame.lock; else frame.lock = true;
     }));
   }
-  get hiddenNodeIds() {
-    const ids = new Set();
-    const frames = this.controller.frames;
-    if (frames) {
-      for (const frame of frames) {
-        if (frame.minimized === true) {
-          for (const cell of leaves(frame.root)) {
-            for (const n of cell.nodes) ids.add(String(n));
-          }
-        }
-      }
-    }
-    return ids;
-  }
-  getMinimizedFrameForNode(nodeId) {
-    if (nodeId == null) return null;
-    const id = String(nodeId);
+  // Node draws and link draws consult this per item, so it is rebuilt once
+  // per animation frame (and right after minimize toggles), not per lookup.
+  refreshHidden() {
+    const ids = new Set(), frames = new Map();
     for (const frame of this.controller.frames ?? []) {
-      if (frame.minimized === true) {
-        for (const cell of leaves(frame.root)) {
-          if (cell.nodes.some(n => String(n) === id)) return frame;
-        }
-      }
+      if (frame.minimized !== true) continue;
+      for (const cell of leaves(frame.root)) for (const n of cell.nodes) { ids.add(String(n)); frames.set(String(n), frame); }
     }
-    return null;
+    this.hidden = { ids, frames };
+    return this.hidden;
+  }
+  get hiddenNodeIds() { return this.hidden.ids; }
+  getMinimizedFrameForNode(nodeId) {
+    return nodeId == null ? null : this.hidden.frames.get(String(nodeId)) ?? null;
+  }
+  // A box selection can still reach nodes parked under a minimized header.
+  deselectHidden() {
+    const canvas = this.app.canvas;
+    if (!this.hidden.ids.size || !canvas) return;
+    for (const node of this.controller.selectedNodes()) {
+      if (this.hidden.ids.has(String(node.id))) canvas.deselect?.(node);
+    }
   }
   getExternalLinks(frame) {
     const nodeIds = new Set();
@@ -944,23 +958,27 @@ export class LayoutOverlay {
       if (!frame) return;
       if (frame.minimized === true) this.restoreFrame(frame); else this.minimizeFrame(frame);
     }));
+    this.refreshHidden();
     this.app.canvas?.setDirty(true, true);
   }
   minimizeFrame(frame) {
-    if (frame.collapsed === true) {
-      this.expandFrame(frame);
-    }
+    const wasCollapsed = frame.collapsed === true;
+    if (wasCollapsed) this.expandFrame(frame);
     const folded = [];
     for (const cell of leaves(frame.root)) for (const id of cell.nodes) {
       if (this.controller.adapter.fold(this.controller.graph.getNodeById(id))) folded.push(id);
     }
     frame.minimized = true;
     if (folded.length) frame.minimizedNodes = folded;
+    if (wasCollapsed) frame.restoreCollapsed = true;
   }
   restoreFrame(frame) {
     for (const id of frame.minimizedNodes ?? []) this.controller.adapter.unfold(this.controller.graph.getNodeById(id));
     delete frame.minimizedNodes;
     delete frame.minimized;
+    const collapse = frame.restoreCollapsed === true;
+    delete frame.restoreCollapsed;
+    if (collapse) this.collapseFrame(frame);
   }
   toggleCollapse(frameId) {
     this.safe(() => this.controller.edit(() => {
@@ -1090,7 +1108,9 @@ export class LayoutOverlay {
       try {
         const layouts = this.controller.geometry();
         const { ds } = this.app.canvas;
-        const signature = JSON.stringify([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover]);
+        this.refreshHidden();
+        this.deselectHidden();
+        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
           const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
@@ -1219,13 +1239,11 @@ export class LayoutOverlay {
         }
         continue;
       }
-      for (const axis of ['x']) {
-        const edge = element('div', `clt-resize-${axis}`);
-        edge.title = axis === 'x' ? 'Drag to resize rightmost cells' : 'Drag to resize bottom cells';
-        edge.setAttribute('aria-label', axis === 'x' ? 'Resize grid width' : 'Resize grid height');
-        edge.onpointerdown = e => this.startDrag(e, `resize-${axis}`, { frame });
-        el.append(edge);
-      }
+      const rightEdge = element('div', 'clt-resize-x');
+      rightEdge.title = 'Drag to resize rightmost cells';
+      rightEdge.setAttribute('aria-label', 'Resize grid width');
+      rightEdge.onpointerdown = event => this.startDrag(event, 'resize-x', {frame});
+      el.append(rightEdge);
       const leftEdge = element('div', 'clt-resize-left');
       leftEdge.title = 'Drag to resize leftmost cells';
       leftEdge.setAttribute('aria-label', 'Resize grid from left');

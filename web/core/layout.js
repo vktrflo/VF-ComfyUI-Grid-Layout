@@ -83,10 +83,17 @@ export function normalizeOpacity(value) {
   return Math.min(1, Math.max(0, Math.round(num * 100) / 100));
 }
 
+// Upload limit for frame background images, in file bytes. Images are stored
+// as base64 data URLs, which are about 4/3 the file size plus a short prefix.
+export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_CHARS = Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 256;
+
+// Only embedded images are accepted: a remote URL in a shared workflow would
+// make every viewer's browser fetch it.
 export function normalizeImage(value) {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  if ((trimmed.startsWith('data:image/') || /^https?:\/\//i.test(trimmed)) && trimmed.length <= 2 * 1024 * 1024) {
+  if (trimmed.startsWith('data:image/') && trimmed.length <= MAX_IMAGE_CHARS) {
     return trimmed;
   }
   return undefined;
@@ -306,10 +313,12 @@ export function layoutFrame(frame, metrics) {
     for (const cell of leaves(frame.root)) {
       for (const nodeId of cell.nodes) {
         if (metrics.has(nodeId)) {
+          // Park each folded title bar under the header, which sits above the
+          // canvas and swallows pointer events, so hidden nodes can't be hit.
           placements.push({
             nodeId,
             x: frame.pos[0] + PAD,
-            y: frame.pos[1] + frame.size[1],
+            y: frame.pos[1] + borderWidth + Math.min(metrics.get(nodeId).titleHeight, 34),
             width: frame.size[0] - PAD * 2,
             height: 0,
           });
@@ -531,6 +540,8 @@ export function validateFrame(value, freshIds = false, empty = false) {
     const folded = [...new Set(value.minimizedNodes.filter(n => typeof n === 'string' || (typeof n === 'number' && Number.isFinite(n))))];
     if (folded.length) result.minimizedNodes = folded;
   }
+  // A frame minimized while collapsed collapses again when restored.
+  if (result.minimized === true && value.restoreCollapsed === true) result.restoreCollapsed = true;
   const textColor = normalizeColor(value.textColor);
   if (textColor) result.textColor = textColor;
   const fontSize = normalizeFontSize(value.fontSize);
@@ -557,6 +568,7 @@ export function exportTemplate(frame) {
   delete emptyFrame.collapsedNodes;
   delete emptyFrame.minimizedNodes;
   delete emptyFrame.minimized;
+  delete emptyFrame.restoreCollapsed;
   layoutFrame(emptyFrame, new Map());
   return { kind: KIND, version: VERSION, frame: emptyFrame };
 }

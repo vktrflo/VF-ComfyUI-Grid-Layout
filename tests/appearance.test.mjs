@@ -83,7 +83,7 @@ test('appearance normalization helpers sanitize inputs correctly', () => {
 
   // normalizeImage
   assert.equal(engine.normalizeImage('  data:image/png;base64,abc  '), 'data:image/png;base64,abc');
-  assert.equal(engine.normalizeImage('https://example.com/test.png'), 'https://example.com/test.png');
+  assert.equal(engine.normalizeImage('https://example.com/test.png'), undefined, 'remote images are not fetched');
   assert.equal(engine.normalizeImage('ftp://example.com/test.png'), undefined);
   assert.equal(engine.normalizeImage('not-an-image'), undefined);
 
@@ -110,4 +110,12 @@ test('containerMode validates and round-trips correctly', () => {
 
   const restored = engine.importTemplate(template, [10, 20]);
   assert.equal(restored.containerMode, 'image');
+});
+
+test('a background image at the upload limit survives saving', () => {
+  const base64Length = n => Math.ceil(n / 3) * 4;
+  const atLimit = `data:image/png;base64,${'A'.repeat(base64Length(engine.MAX_IMAGE_BYTES))}`;
+  assert.equal(engine.normalizeImage(atLimit), atLimit, 'a 2 MB file encodes to a value that is kept');
+  const tooBig = `data:image/png;base64,${'A'.repeat(base64Length(engine.MAX_IMAGE_BYTES) + 1024)}`;
+  assert.equal(engine.normalizeImage(tooBig), undefined);
 });
