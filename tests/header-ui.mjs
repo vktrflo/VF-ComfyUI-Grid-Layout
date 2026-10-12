@@ -82,6 +82,7 @@ try {
     await page.getByRole('button',{name:'Grid options',exact:true}).click();
     assert.match(await page.getByRole('menuitem').first().textContent(),/Change Appearance/);
     await page.getByRole('menuitem',{name:/Change Appearance/}).click();
+    await page.getByRole('button',{name:'Border',exact:true}).click();
     await page.getByRole('slider',{name:'Border thickness',exact:true}).evaluate(el=>{el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.getByLabel('Border style',{exact:true}).selectOption('dashed');
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-frame')).borderLeftWidth==='5px');
@@ -90,6 +91,7 @@ try {
     await page.getByRole('button',{name:'Cell options',exact:true}).first().click();
     assert.match(await page.getByRole('menuitem').first().textContent(),/Change Appearance/);
     await page.getByRole('menuitem',{name:/Change Appearance/}).click();
+    await page.getByRole('button',{name:'Border',exact:true}).click();
     await page.getByRole('slider',{name:'Border thickness',exact:true}).evaluate(el=>{el.value='3';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.locator('dialog').last().getByRole('button',{name:'OK',exact:true}).click();
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-cell')).borderLeftWidth==='3px');
@@ -98,16 +100,16 @@ try {
     const before=await page.locator('.clt-frame-header').evaluate(el=>getComputedStyle(el).fontSize);
     await page.getByRole('button',{name:'Grid options',exact:true}).click();
     await page.getByRole('menuitem',{name:/Change Appearance/}).click();
-    const panel=page.locator('dialog').last(); const slider=panel.getByRole('slider',{name:'Font size',exact:true});
+    const panel=page.locator('dialog').last(); const slider=panel.getByRole('slider',{name:'Title font size',exact:true});
     assert.equal(await slider.getAttribute('min'),'12');assert.equal(await slider.getAttribute('max'),'24');
     await slider.evaluate(el=>{el.value='24';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-frame-header')).fontSize==='24px');
-    await panel.getByLabel('Background color',{exact:true}).evaluate(el=>{el.value='#ff0000';el.dispatchEvent(new Event('input',{bubbles:true}));});
+    await panel.getByLabel('Title bar background color',{exact:true}).evaluate(el=>{el.value='#ff0000';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor==='rgb(255, 0, 0)');
     await panel.getByRole('button',{name:'Cancel',exact:true}).click();
     await page.waitForFunction(size=>getComputedStyle(document.querySelector('.clt-frame-header')).fontSize===size,before);
     await page.getByRole('button',{name:'Grid options',exact:true}).click();await page.getByRole('menuitem',{name:/Change Appearance/}).click();
-    await page.getByRole('slider',{name:'Font size',exact:true}).evaluate(el=>{el.value='20';el.dispatchEvent(new Event('input',{bubbles:true}));});
+    await page.getByRole('slider',{name:'Title font size',exact:true}).evaluate(el=>{el.value='20';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.locator('dialog').last().getByRole('button',{name:'OK',exact:true}).click();
     await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fontSize===20);
     await page.getByRole('button',{name:'Grid options',exact:true}).click();

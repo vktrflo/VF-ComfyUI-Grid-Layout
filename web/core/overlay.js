@@ -53,6 +53,30 @@ const STYLE = `
 .clt-dialog footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:18px}
 .clt-dialog footer .clt-reset-btn{margin-right:auto}
 .clt-dialog button{padding:6px 12px;color:inherit;background:#345361;border:1px solid #7197a5;border-radius:3px;cursor:pointer}
+.clt-dialog.clt-appearance-dialog{width:520px;min-width:0;max-width:calc(100vw - 32px);max-height:90vh;padding:0;overflow:hidden;background:#181820;color:#e2e2ea;border:1px solid #3c3c4c;border-radius:8px;box-shadow:0 12px 36px rgba(0,0,0,.65);font-size:13px}
+.clt-appearance-dialog[open]{display:flex;flex-direction:column}
+.clt-appearance-dialog::backdrop{background:rgba(0,0,0,.65);backdrop-filter:blur(4px)}
+.clt-appearance-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:#25252e;border-bottom:1px solid #333340;flex-shrink:0}
+.clt-appearance-header h3{display:flex;align-items:center;margin:0;font-size:14px;font-weight:600}
+.clt-appearance-dialog .clt-close{background:none;border:0;color:#aaa;font-size:18px;padding:0 4px;line-height:24px}
+.clt-appearance-body{overflow-y:auto;min-height:0;padding:14px 16px 18px}
+.clt-appearance-dialog .clt-tabs{gap:6px;margin:0 0 16px;border:0}
+.clt-appearance-dialog .clt-tab{background:#2a2a36;border:1px solid #444;border-radius:4px;color:#ccc;padding:8px 12px;line-height:1.3;margin:0}
+.clt-appearance-dialog .clt-tab.active{background:#0066cc;border-color:#0088ff;color:#fff;margin:0}
+.clt-appearance-dialog .clt-tab:hover{background:#353544;color:#fff}
+.clt-appearance-dialog .clt-tab.active:hover{background:#0074dc}
+.clt-appearance-dialog label{display:grid;grid-template-columns:minmax(0,1fr) minmax(100px,180px);gap:16px;align-items:center;margin:12px 0;min-height:30px;font-size:12px}
+.clt-appearance-dialog input,.clt-appearance-dialog select{box-sizing:border-box;max-width:100%;background:#16161c;border:1px solid #444;color:#eee;border-radius:4px}
+.clt-appearance-dialog input[type=color]{width:100%;height:32px;border-color:#444;border-radius:4px;padding:3px}
+.clt-appearance-dialog input[type=range]{width:100%;padding:0;accent-color:#0088ff}
+.clt-appearance-dialog input[type=checkbox]{justify-self:end;accent-color:#0088ff}
+.clt-appearance-dialog input:disabled{opacity:.45}
+.clt-appearance-dialog .clt-child-tabs{background:#202028;border-color:#333340}
+.clt-appearance-dialog .clt-child-tab.active{background:#0066cc;color:#fff;box-shadow:none}
+.clt-appearance-dialog footer{margin:0;padding:12px 16px;background:#202028;border-top:1px solid #333340;flex-shrink:0;flex-wrap:wrap;gap:8px}
+.clt-appearance-dialog footer button{background:#2a2a36;border:1px solid #444;color:#eee;border-radius:4px;font-size:12px;padding:6px 12px}
+.clt-appearance-dialog footer .clt-primary{background:#0066cc;border-color:#0088ff;color:#fff}
+.clt-appearance-dialog button:focus-visible,.clt-appearance-dialog input:focus-visible,.clt-appearance-dialog select:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -428,8 +452,18 @@ export class LayoutOverlay {
     dialog.showModal();
   }
   headerConfigDialog(defaults, submit) {
-    const dialog = element('dialog', 'clt-dialog');
-    dialog.append(element('h3', '', 'Change Appearance'));
+    const dialog = element('dialog', 'clt-dialog clt-appearance-dialog');
+    const header = element('header', 'clt-appearance-header');
+    const heading = element('h3', '', 'Change Appearance');
+    heading.id = 'clt-appearance-title';
+    dialog.setAttribute('aria-labelledby', heading.id);
+    const close = element('button', 'clt-close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close appearance settings');
+    close.onclick = () => dialog.close();
+    header.append(heading, close);
+    const content = element('div', 'clt-appearance-body');
+    dialog.append(header, content);
     const values = {
       ...defaults,
       fontSize: Math.max(12, Math.min(24, defaults.fontSize ?? 13)),
@@ -467,7 +501,7 @@ export class LayoutOverlay {
 
     // --- Tab Bar ---
     const tabsContainer = element('div', 'clt-tabs');
-    dialog.append(tabsContainer);
+    content.append(tabsContainer);
 
     const titlePanel = element('div', 'clt-tab-panel active');
     const borderPanel = element('div', 'clt-tab-panel');
@@ -504,8 +538,8 @@ export class LayoutOverlay {
       tabsContainer.append(btn);
     }
 
-    dialog.append(titlePanel, borderPanel);
-    if (containerPanel) dialog.append(containerPanel);
+    content.append(titlePanel, borderPanel);
+    if (containerPanel) content.append(containerPanel);
 
     // --- Section 1: Title Bar ---
     const background = colorButton(titlePanel, 'color', 'Title bar background color');
@@ -724,6 +758,7 @@ export class LayoutOverlay {
 
     const footer = element('footer', '');
     const cancel = element('button', '', 'Cancel'), ok = element('button', '', 'OK');
+    ok.classList.add('clt-primary');
     cancel.onclick = () => dialog.close();
     ok.onclick = () => { this.safe(() => submit(values)); dialog.close(); };
     const reset = element('button', 'clt-reset-btn', 'Reset appearance configuration');
