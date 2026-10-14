@@ -2,6 +2,7 @@ import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
+.clt-overlay.clt-ghost,.clt-overlay.clt-ghost *{pointer-events:none !important}
 .clt-plane{position:absolute;inset:0;transform-origin:0 0;pointer-events:none}
 .clt-frame,.clt-cell{position:absolute;box-sizing:border-box;pointer-events:none;border:1px solid #5d7e89;border-radius:5px}
 .clt-frame{border:2px solid #7197a5}
@@ -361,6 +362,7 @@ export class LayoutOverlay {
     }
     this.hidden = { ids: new Set(), frames: new Map() };
     this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null;
+    this.ghostNodeId = null; this.ghostHandled = new Set();
     const options = { capture: true, signal: this.abort.signal };
     document.addEventListener('pointerdown', e => this.nativeDown(e), options);
     document.addEventListener('pointermove', e => this.move(e), options);
@@ -368,7 +370,41 @@ export class LayoutOverlay {
     document.addEventListener('pointercancel', e => this.up(e, true), options);
     window.addEventListener('blur', () => this.up(null, true), { signal: this.abort.signal });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') { this.closeMenu(); this.up(null, true); } }, { signal: this.abort.signal });
+    this.app.canvas?.canvas?.addEventListener?.('litegraph:ghost-placement', e => {
+      if (e.detail?.active) {
+        this.ghostNodeId = e.detail.nodeId;
+        if (e.detail.nodeId != null) this.ghostHandled.add(String(e.detail.nodeId));
+        this.root.classList.add('clt-ghost');
+      } else {
+        this.finalizeGhost(e.detail?.nodeId ?? this.ghostNodeId);
+      }
+    }, { signal: this.abort.signal });
     this.tick = this.tick.bind(this); this.animation = requestAnimationFrame(this.tick);
+  }
+  isGhostActive() {
+    return this.ghostNodeId != null || this.app.canvas?.state?.ghostNodeId != null;
+  }
+  getGhostNode() {
+    const id = this.ghostNodeId ?? this.app.canvas?.state?.ghostNodeId;
+    return id != null ? this.controller.graph?.getNodeById(id) ?? null : null;
+  }
+  finalizeGhost(nodeId) {
+    this.ghostNodeId = null;
+    this.root.classList.remove('clt-ghost');
+    this.hover = null;
+    if (nodeId == null) return;
+    const graph = this.controller.graph;
+    requestAnimationFrame(() => {
+      this.ghostHandled.delete(String(nodeId));
+      if (this.app.configuringGraph || this.controller.graph !== graph || !this.controller.frames.length) return;
+      const node = graph?.getNodeById(nodeId);
+      if (!node || node.graph !== graph || node.flags?.ghost) return;
+      const target = this.controller.targetNode(node, { ghost: true });
+      if (target) {
+        const point = [node.pos[0] + node.size[0] / 2, node.pos[1] + node.size[1] / 2];
+        this.safe(() => this.controller.drop([node.id], point, target));
+      }
+    });
   }
   safe(action) {
     try { return action(); } catch (error) { this.message(error.message); }
@@ -869,9 +905,9 @@ export class LayoutOverlay {
     });
     const actions = [
       ['Delete cell (keep nodes)', () => edit(frame => deleteCell(frame, cellId))],
-      ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x'))],
-      ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y'))],
-      ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns)))],
+      ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x', this.controller.metrics()))],
+      ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y', this.controller.metrics()))],
+      ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns, this.controller.metrics())))],
       ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', optional: true, value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
       ['Change Appearance…', () => {
         const frame = this.controller.frames.find(f => f.id === frameId);
@@ -1071,6 +1107,7 @@ export class LayoutOverlay {
   }
   nativeDown(event) {
     if (this.menu && !this.menu.contains(event.target)) this.closeMenu();
+    if (this.isGhostActive()) return;
     if (event.button !== 0 || this.drag || event.target.closest?.('.clt-overlay,.clt-menu,.clt-dialog,input,textarea,button,select,[contenteditable="true"]')) return;
     const container = this.app.canvas.canvas.parentElement;
     if (!container.contains(event.target) || this.app.configuringGraph) return;
@@ -1113,6 +1150,10 @@ export class LayoutOverlay {
           throw error;
         }
       });
+    } else if (this.isGhostActive()) {
+      const node = this.getGhostNode();
+      const target = node && this.controller.frames.length ? this.controller.targetNode(node, { ghost: true }) : null;
+      this.hover = target?.cell.id ?? null;
     } else if (this.nativeDrag) {
       const pointer = this.controller.adapter.point(event);
       const node = this.nativeNode && this.controller.graph.getNodeById(this.nativeNode.id);
@@ -1154,7 +1195,7 @@ export class LayoutOverlay {
         if (!this.editing && (signature !== this.signature || data !== this.renderedData)) {
           // Content can grow asynchronously (previews, conditional widgets,
           // Nodes 2.0 DOM measurement). Keep the attached stack coherent.
-          if (!this.drag && !this.nativeDrag && this.controller.frames.length) this.controller.reflow();
+          if (!this.drag && !this.nativeDrag && !this.isGhostActive() && this.controller.frames.length) this.controller.reflow();
           this.signature = signature; this.renderedData = data; this.render(layouts);
         }
         this.previewHeader();

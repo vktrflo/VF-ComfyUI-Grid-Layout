@@ -202,11 +202,12 @@ test('LayoutController migrates legacy comfyui_layout_templates to comfyui_grid_
 });
 
 test('targetCellForNode errs on caution and avoids aggressive grabs near controls or borders', () => {
-  // Cell at [100, 100, 200, 200].
+  // Cell 1 at [100, 100, 200, 200], Cell 2 at [306, 100, 200, 200] (with 6px divider gap 300..306).
   // Cell header spans y: 100..126 (CELL_TITLE = 26).
   // Content area spans x: 100..300, y: 126..300.
-  const cell = { cell: { id: 'c1' }, rect: [100, 100, 200, 200] };
-  const layouts = [{ frame: { id: 'f1' }, cells: [cell] }];
+  const cell1 = { cell: { id: 'c1' }, rect: [100, 100, 200, 200] };
+  const cell2 = { cell: { id: 'c2' }, rect: [306, 100, 200, 200] };
+  const layouts = [{ frame: { id: 'f1' }, cells: [cell1, cell2] }];
   const nodeSize = [150, 80];
 
   // 1. Clearly inside cell content area attaches cleanly
@@ -218,7 +219,7 @@ test('targetCellForNode errs on caution and avoids aggressive grabs near control
   assert.equal(engine.targetCellForNode(layouts, leftNode), null, 'node placed outside left is not grabbed');
 
   // 3. Placed to the right outside the cell
-  const rightNode = { pos: [310, 150], size: nodeSize };
+  const rightNode = { pos: [520, 150], size: nodeSize };
   assert.equal(engine.targetCellForNode(layouts, rightNode), null, 'node placed outside right is not grabbed');
 
   // 4. Placed above cell / near frame header
@@ -229,22 +230,46 @@ test('targetCellForNode errs on caution and avoids aggressive grabs near control
   const headerNode = { pos: [120, 110], size: nodeSize };
   assert.equal(engine.targetCellForNode(layouts, headerNode), null, 'node placed in cell header is not grabbed');
 
-  // 6. Placed too close to the left border (within inset: x=102 < 100 + 4)
-  const nearBorderNode = { pos: [102, 150], size: nodeSize };
-  assert.equal(engine.targetCellForNode(layouts, nearBorderNode), null, 'node placed on border is not grabbed');
+  // 6. Placed below the cell (y=320 > 100 + 200)
+  const belowNode = { pos: [120, 320], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, belowNode), null, 'node placed below cell is not grabbed');
 
-  // 7. Placed near right edge so majority of width hangs outside (pos x=250, center x=250+75=325 > 300)
-  const hangingRightNode = { pos: [250, 150], size: nodeSize };
-  assert.equal(engine.targetCellForNode(layouts, hangingRightNode), null, 'node hanging predominantly outside is not grabbed');
+  // 7. Placed in divider gap between cell 1 and cell 2 (x=302 in 300..306)
+  const dividerNode = { pos: [302, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, dividerNode), null, 'node placed in divider gap is not grabbed');
 
-  // 8. Locked frame is never targeted
-  const lockedLayouts = [{ frame: { id: 'f1', lock: true }, cells: [cell] }];
-  assert.equal(engine.targetCellForNode(lockedLayouts, insideNode), null, 'locked frame is ignored');
+  // 8. Node placed in column 2 attaches to column 2
+  const col2Node = { pos: [350, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, col2Node)?.cell.id, 'c2', 'node in column 2 attaches to c2');
 
-  // 9. Tall node placed cleanly in cell attaches even if taller than cell
+  // 9. Wide node (e.g. CLIPTextEncode 422px wide in a 200px cell) attaches cleanly
+  const wideNode = { pos: [220, 150], size: [422, 164] };
+  assert.equal(engine.targetCellForNode(layouts, wideNode)?.cell.id, 'c1', 'wide node placed in cell attaches');
+
+  // 10. Tall node placed cleanly in cell attaches even if taller than cell
   const tallNode = { pos: [120, 140], size: [150, 300] };
   assert.equal(engine.targetCellForNode(layouts, tallNode)?.cell.id, 'c1', 'tall node placed in cell attaches');
 
-  // 10. pickCell also ignores locked frames
+  // 11. Ghost placement uses horizontal center (x + width / 2) as cursor anchor:
+  // A 400px wide node centered on cursorX = 200 in cell 1 ([100, 100, 200, 200]) has x = 0 (< 100),
+  // which attaches in ghost mode because cursorX = 200 is inside c1's content area.
+  const ghostWideInC1 = { pos: [0, 150], size: [400, 200], flags: { ghost: true } };
+  assert.equal(engine.targetCellForNode(layouts, ghostWideInC1)?.cell.id, 'c1', 'ghost wide node centered in c1 attaches to c1');
+
+  // 12. A 315px node finalized after ghost placement in cell 2 (cursorX = 360 -> x = 202.5)
+  // attaches to cell 2 (not cell 1, even though x = 202.5 falls inside cell 1).
+  const ghostInC2 = { pos: [202.5, 150], size: [315, 200] };
+  assert.equal(engine.targetCellForNode(layouts, ghostInC2, { ghost: true })?.cell.id, 'c2', 'ghost node centered in c2 attaches to c2');
+
+  // 13. A ghost node whose cursor is outside the frame to the right (cursorX = 530 -> x = 330, overlapping c2)
+  // is not grabbed because its cursor anchor is outside c2.
+  const ghostOutsideRight = { pos: [330, 150], size: [400, 200] };
+  assert.equal(engine.targetCellForNode(layouts, ghostOutsideRight, { ghost: true }), null, 'ghost node with cursor outside right is not grabbed');
+
+  // 14. Locked frame is never targeted
+  const lockedLayouts = [{ frame: { id: 'f1', lock: true }, cells: [cell1] }];
+  assert.equal(engine.targetCellForNode(lockedLayouts, insideNode), null, 'locked frame is ignored');
+
+  // 15. pickCell also ignores locked frames
   assert.equal(engine.pickCell(lockedLayouts, [120, 150, 50, 50]), null, 'pickCell ignores locked frame');
 });

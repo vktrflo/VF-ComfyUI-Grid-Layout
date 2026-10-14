@@ -108,3 +108,38 @@ test('border settings validate, survive reload/template reuse and transfer on sp
  const restored=engine.importTemplate(engine.exportTemplate(f),[0,0]);assert.deepEqual(restored.border,f.border);assert.deepEqual(restored.root.children[0].border,f.root.children[0].border);
  assert.equal(engine.normalizeBorder({color:'#fff',width:99,style:'solid'}),undefined);
 });
+
+test('splitting a column left/right or into a sub-grid preserves sibling column and node widths', () => {
+ const f = engine.createFrame();
+ engine.gridCell(f, f.root.id, 1, 6);
+ const cols = engine.leaves(f.root);
+ cols.forEach((col, i) => { col.nodes = [i + 1]; });
+ const m = new Map([
+  [1, { minWidth: 220, height: 120, titleHeight: 30 }],
+  [2, { minWidth: 260, height: 90, titleHeight: 30 }],
+  [3, { minWidth: 300, height: 140, titleHeight: 30 }],
+  [4, { minWidth: 240, height: 180, titleHeight: 30 }],
+  [5, { minWidth: 240, height: 160, titleHeight: 30 }],
+  [6, { minWidth: 200, height: 110, titleHeight: 30 }],
+ ]);
+ engine.shrinkFrame(f, m);
+ engine.addBottomRow(f);
+ const before = engine.layoutFrame(f, m);
+ const beforeWidths = new Map(before.placements.map(p => [p.nodeId, p.width]));
+
+ // Split column 4 (node 4) into left/right
+ engine.splitCell(f, cols[3].id, 'x', m);
+ const afterSplit = engine.layoutFrame(f, m);
+ for (const p of afterSplit.placements) {
+  close(p.width, beforeWidths.get(p.nodeId));
+ }
+
+ // Nested split inside the right half of column 4 also keeps all existing nodes at their widths
+ const rightHalfId = cols[3].children[1].id;
+ engine.gridCell(f, rightHalfId, 2, 2, m);
+ const afterGrid = engine.layoutFrame(f, m);
+ for (const p of afterGrid.placements) {
+  close(p.width, beforeWidths.get(p.nodeId));
+ }
+});
+

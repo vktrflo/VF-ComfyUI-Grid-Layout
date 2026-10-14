@@ -48,45 +48,34 @@ export function pickCell(layouts, rect) {
 }
 
 // Target a cell for a newly added node. Errs on the side of caution:
-// does not grab nodes placed near frame headers, cell headers, dividers, or outer borders,
-// and ensures the node's position and majority of width/height are well within the cell body.
-export function targetCellForNode(layouts, node) {
+// ensures the node's placement anchor falls within the cell's inner content area
+// (below cell header + padding, and within cell horizontal padding). In ghost
+// placement mode, ComfyUI centers the node horizontally on the cursor
+// (x = cursorX - width / 2, y = cursorY + 10), so the horizontal center is the
+// placement anchor. Nodes placed on frame headers, cell headers, dividers, outer
+// borders, or locked frames are never captured.
+export function targetCellForNode(layouts, node, options = {}) {
   if (!node || !layouts) return null;
   const rect = Array.isArray(node) ? node : (node.pos && node.size ? [node.pos[0], node.pos[1], node.size[0], node.size[1]] : null);
   if (!rect || rect.some(n => typeof n !== 'number' || !Number.isFinite(n))) return null;
   const [x, y, width, height] = rect;
   if (width <= 0 || height <= 0) return null;
-  const centerX = x + width / 2;
-  const centerY = y + height / 2;
-  const INSET = 4;
+
+  const isGhost = Boolean(options?.ghost || (!Array.isArray(node) && node?.flags?.ghost));
+  const anchorX = isGhost ? x + width / 2 : x;
+  const anchorY = y;
 
   for (const layout of [...layouts].reverse()) {
     if (layout.frame?.lock === true) continue;
     for (const cell of layout.cells) {
       const [cx, cy, cw, ch] = cell.rect;
-      // 1. Insertion position (top-left) must be inside the cell's content area
-      // (below the cell header title/controls, and within edge insets)
-      const contentTop = cy + CELL_TITLE;
-      if (x < cx + INSET || x > cx + cw - INSET || y < contentTop || y > cy + ch - INSET) {
-        continue;
+      const left = cx + PAD;
+      const right = cx + cw - PAD;
+      const top = cy + CELL_TITLE + PAD;
+      const bottom = cy + ch - PAD;
+      if (right >= left && bottom >= top && anchorX >= left && anchorX <= right && anchorY >= top && anchorY <= bottom) {
+        return { frame: layout.frame, ...cell };
       }
-      // 2. Horizontal center must be within cell horizontal boundaries
-      // so the node does not extend predominantly outside the cell to the right
-      if (centerX < cx || centerX > cx + cw) {
-        continue;
-      }
-      // 3. Vertical bounds: if the node fits inside the cell body, its vertical center
-      // must be inside the cell. If the node is taller than the cell, it must cover
-      // a significant portion of the cell body.
-      const bodyHeight = ch - CELL_TITLE;
-      if (height <= bodyHeight) {
-        if (centerY > cy + ch) continue;
-      } else {
-        const overlapY = Math.min(y + height, cy + ch) - Math.max(y, contentTop);
-        if (overlapY < bodyHeight / 2) continue;
-      }
-
-      return { frame: layout.frame, ...cell };
     }
   }
   return null;
@@ -181,20 +170,56 @@ function carryHeaderConfig(target, source) {
   }
 }
 
-export function splitCell(frame, cellId, axis) {
+function containsCell(cell, targetId) {
+  if (cell.id === targetId) return true;
+  return Boolean(cell.children?.some(child => containsCell(child, targetId)));
+}
+
+function preserveSplitWidths(frame, cellId, metrics, initialInnerWidth) {
+  function adjust(cell, currentWidth) {
+    const minWidth = contentMinimumWidth(cell, metrics);
+    if (cell.id === cellId || !cell.children || !containsCell(cell, cellId)) {
+      return Math.max(currentWidth, minWidth);
+    }
+    if (cell.axis === 'y') {
+      let nextWidth = currentWidth;
+      for (const child of cell.children) {
+        nextWidth = Math.max(nextWidth, containsCell(child, cellId) ? adjust(child, currentWidth) : contentMinimumWidth(child, metrics));
+      }
+      return nextWidth;
+    }
+    const gaps = GAP * (cell.children.length - 1);
+    const available = Math.max(0, currentWidth - gaps);
+    const weights = ratios(cell);
+    const widths = cell.children.map((child, index) => (
+      containsCell(child, cellId)
+        ? adjust(child, available * weights[index])
+        : Math.max(available * weights[index], contentMinimumWidth(child, metrics))
+    ));
+    const total = widths.reduce((sum, width) => sum + width, 0);
+    if (total > 0) cell.ratios = widths.map(width => width / total);
+    return total + gaps;
+  }
+  const nextInnerWidth = adjust(frame.root, initialInnerWidth);
+  frame.size[0] = Math.max(frame.size[0], nextInnerWidth + PAD * 2);
+}
+
+export function splitCell(frame, cellId, axis, metrics) {
   if (!['x', 'y'].includes(axis)) throw new Error('Choose a horizontal or vertical split.');
   const cell = findCell(frame.root, cellId);
   if (!cell || cell.children) throw new Error('Only an unsplit cell can be split.');
   if (cellDepth(frame.root, cellId) >= 16) throw new Error('Layouts support up to 16 nested split levels.');
   if (leaves(frame.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
+  const initialInnerWidth = axis === 'x' && metrics ? Math.max(contentMinimumWidth(frame.root, metrics), frame.size[0] - PAD * 2) : 0;
   const first = createCell(cell.label), second = createCell();
   first.nodes = cell.nodes;
   delete cell.nodes;
   carryHeaderConfig(first, cell);
   Object.assign(cell, { axis, ratios: [0.5, 0.5], children: [first, second] });
+  if (axis === 'x' && metrics) preserveSplitWidths(frame, cellId, metrics, initialInnerWidth);
 }
 
-export function gridCell(frame, cellId, rows, columns) {
+export function gridCell(frame, cellId, rows, columns, metrics) {
   if (![rows, columns].every(n => Number.isInteger(n) && n >= 1 && n <= 16) || rows * columns > 256) {
     throw new Error('Use 1–16 rows and columns, up to 256 cells.');
   }
@@ -203,6 +228,7 @@ export function gridCell(frame, cellId, rows, columns) {
   if (cellDepth(frame.root, cellId) + Number(rows > 1) + Number(columns > 1) > 16) throw new Error('Layouts support up to 16 nested split levels.');
   if (leaves(frame.root).length - 1 + rows * columns > 256) throw new Error('A layout supports up to 256 cells.');
   if (rows === 1 && columns === 1) return;
+  const initialInnerWidth = columns > 1 && metrics ? Math.max(contentMinimumWidth(frame.root, metrics), frame.size[0] - PAD * 2) : 0;
   const nodes = cell.nodes;
   const makeRow = () => {
     if (columns === 1) return createCell();
@@ -214,6 +240,7 @@ export function gridCell(frame, cellId, rows, columns) {
   const first = leaves(cell)[0];
   first.nodes = nodes;
   carryHeaderConfig(first, cell);
+  if (columns > 1 && metrics) preserveSplitWidths(frame, cellId, metrics, initialInnerWidth);
 }
 
 export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity) {

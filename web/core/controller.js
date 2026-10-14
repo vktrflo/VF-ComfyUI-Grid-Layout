@@ -144,8 +144,8 @@ export class LayoutController {
     }
     return null;
   }
-  targetNode(node) {
-    return targetCellForNode(this.geometry(), node);
+  targetNode(node, options) {
+    return targetCellForNode(this.geometry(), node, options);
   }
   drop(nodeIds, point, target) {
     return this.edit(() => {

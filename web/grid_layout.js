@@ -110,11 +110,14 @@ app.registerExtension({
   },
   nodeCreated(node) {
     if (!active || app.configuringGraph) return;
+    if (node.flags?.ghost || app.canvas?.state?.ghostNodeId != null) return;
     // Creation hooks run before the editor assigns the drop position. Wait
-    // for placement and DOM sizing, while skipping workflow/history loads.
+    // for placement and DOM sizing, while skipping workflow/history loads
+    // and ghost-placement nodes that are still following the cursor.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const { controller, overlay } = active;
       if (app.configuringGraph || node.graph !== controller.graph || !controller.frames.length) return;
+      if (node.flags?.ghost || overlay.isGhostActive?.() || overlay.ghostHandled?.has(String(node.id))) return;
       const target = controller.targetNode(node);
       if (target) {
         const point = [node.pos[0] + node.size[0] / 2, node.pos[1] + node.size[1] / 2];
