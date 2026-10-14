@@ -75,6 +75,16 @@ export class LayoutController {
     const values = selection instanceof Map ? [...selection.values()] : selection instanceof Set ? [...selection] : Object.values(selection);
     return values.filter(node => node && this.graph.getNodeById(node.id) === node);
   }
+  selectedFrame() {
+    const selectedIds = new Set(this.selectedNodes().map(node => String(node.id)));
+    if (!selectedIds.size) return null;
+    for (const frame of [...this.frames].reverse()) {
+      for (const cell of leaves(frame.root)) {
+        if (cell.nodes.some(id => selectedIds.has(String(id)))) return frame;
+      }
+    }
+    return null;
+  }
   createFromNodes(ids, arrangement = 'columns') {
     if (!['columns','stack'].includes(arrangement)) throw new Error('Choose columns or a single stack.');
     const nodes = [...new Set(ids.map(String))].map(id => this.graph.getNodeById(id)).filter(Boolean);
@@ -156,7 +166,16 @@ export class LayoutController {
         const node = this.graph.getNodeById(id);
         return node && point[1] < node.pos[1] + node.size[1] / 2;
       });
-      dropNodes(this.frames, resolved?.frame.id ?? null, resolved?.cell.id ?? null, nodeIds, index === -1 ? others.length : index);
+      const metrics = this.metrics();
+      for (const id of nodeIds) {
+        const node = this.graph.getNodeById(id);
+        if (node) {
+          const metric = this.adapter.measure(node);
+          metrics.set(id, metric);
+          metrics.set(node.id, metric);
+        }
+      }
+      dropNodes(this.frames, resolved?.frame.id ?? null, resolved?.cell.id ?? null, nodeIds, index === -1 ? others.length : index, metrics);
     });
   }
   snapshot() {

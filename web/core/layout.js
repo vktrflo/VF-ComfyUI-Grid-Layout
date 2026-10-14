@@ -165,7 +165,7 @@ function cellDepth(cell, cellId, depth = 0) {
 }
 
 function carryHeaderConfig(target, source) {
-  for (const key of ['color', 'textColor', 'fontSize', 'border']) {
+  for (const key of ['color', 'textColor', 'fontSize', 'headerOpacity', 'border']) {
     if (source[key] !== undefined) { target[key] = source[key]; delete source[key]; }
   }
 }
@@ -243,16 +243,20 @@ export function gridCell(frame, cellId, rows, columns, metrics) {
   if (columns > 1 && metrics) preserveSplitWidths(frame, cellId, metrics, initialInnerWidth);
 }
 
-export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity) {
+export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity, metrics) {
   const target = frames.find(f => f.id === frameId);
   const cell = target && findCell(target.root, cellId);
   if (frameId != null && (!cell || cell.children)) throw new Error('Drop into an unsplit cell.');
+  const initialInnerWidth = target && metrics ? Math.max(contentMinimumWidth(target.root, metrics), target.size[0] - PAD * 2) : 0;
   const ids = [...new Set(nodeIds)];
   const moving = new Set(ids.map(String));
   for (const frame of frames) for (const leaf of leaves(frame.root)) {
     leaf.nodes = leaf.nodes.filter(n => !moving.has(String(n)));
   }
-  if (cell) cell.nodes.splice(Math.min(Math.max(0, index), cell.nodes.length), 0, ...ids);
+  if (cell) {
+    cell.nodes.splice(Math.min(Math.max(0, index), cell.nodes.length), 0, ...ids);
+    if (metrics) preserveSplitWidths(target, cellId, metrics, initialInnerWidth);
+  }
 }
 
 function ratios(cell) {
@@ -589,6 +593,8 @@ export function validateFrame(value, freshIds = false, empty = false) {
       if (textColor) result.textColor = textColor;
       const fontSize = normalizeFontSize(cell.fontSize);
       if (fontSize !== undefined) result.fontSize = fontSize;
+      const headerOpacity = normalizeOpacity(cell.headerOpacity);
+      if (headerOpacity !== undefined) result.headerOpacity = headerOpacity;
       const border = normalizeBorder(cell.border); if (border) result.border = border;
     }
     return result;
@@ -601,6 +607,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
   if (color) result.color = color;
   if (value.fill === true) result.fill = true;
   if (value.lock === true) result.lock = true;
+  if (value.autohide === true) result.autohide = true;
   if (value.collapsed === true) result.collapsed = true;
   // Meaningful only while collapsed: the nodes this frame folded shut. Nodes
   // the user had already folded are excluded, so expanding never reopens one.
@@ -619,6 +626,8 @@ export function validateFrame(value, freshIds = false, empty = false) {
   if (textColor) result.textColor = textColor;
   const fontSize = normalizeFontSize(value.fontSize);
   if (fontSize !== undefined) result.fontSize = fontSize;
+  const headerOpacity = normalizeOpacity(value.headerOpacity);
+  if (headerOpacity !== undefined) result.headerOpacity = headerOpacity;
   const border = normalizeBorder(value.border); if (border) result.border = border;
   const containerColor = normalizeColor(value.containerColor);
   if (containerColor) result.containerColor = containerColor;
@@ -642,6 +651,7 @@ export function exportTemplate(frame) {
   delete emptyFrame.minimizedNodes;
   delete emptyFrame.minimized;
   delete emptyFrame.restoreCollapsed;
+  delete emptyFrame.autohide;
   layoutFrame(emptyFrame, new Map());
   return { kind: KIND, version: VERSION, frame: emptyFrame };
 }

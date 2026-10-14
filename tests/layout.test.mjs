@@ -273,3 +273,38 @@ test('targetCellForNode errs on caution and avoids aggressive grabs near control
   // 15. pickCell also ignores locked frames
   assert.equal(engine.pickCell(lockedLayouts, [120, 150, 50, 50]), null, 'pickCell ignores locked frame');
 });
+
+test('dropNodes with metrics preserves container and sibling column widths unless target column must grow for node minWidth', () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
+  const frame = engine.createFrame([0, 0]);
+  frame.size[0] = 684;
+  engine.gridCell(frame, frame.root.id, 1, 2);
+  // Set Column 0 = 224px (inner 200), Column 1 = 424px (inner 400); total inner = 224 + 424 + 12 = 660; frame = 684
+  frame.root.ratios = [224 / 648, 424 / 648];
+  const [col0, col1] = frame.root.children;
+  col0.nodes = [1];
+  col1.nodes = [2];
+  const metrics = new Map([
+    [1, { minWidth: 180, height: 80, titleHeight: 30 }],
+    [2, { minWidth: 200, height: 80, titleHeight: 30 }],
+    [3, { minWidth: 200, height: 80, titleHeight: 30 }],
+    [4, { minWidth: 260, height: 80, titleHeight: 30 }],
+  ]);
+  engine.layoutFrame(frame, metrics);
+  close(frame.size[0], 684);
+
+  // Dropping node 3 (minWidth 200 -> cell minWidth 224) into col0 (width 224) keeps container at 684
+  engine.dropNodes([frame], frame.id, col0.id, [3], Infinity, metrics);
+  const afterFit = engine.layoutFrame(frame, metrics);
+  close(frame.size[0], 684);
+  close(afterFit.cells[0].rect[2], 224);
+  close(afterFit.cells[1].rect[2], 424);
+
+  // Dropping node 4 (minWidth 260 -> cell minWidth 284) into col0 grows col0 by 60px (224 -> 284) and keeps col1 at 424px
+  engine.dropNodes([frame], frame.id, col0.id, [4], Infinity, metrics);
+  const afterGrow = engine.layoutFrame(frame, metrics);
+  close(afterGrow.cells[0].rect[2], 284);
+  close(afterGrow.cells[1].rect[2], 424);
+  close(frame.size[0], 744);
+});
+

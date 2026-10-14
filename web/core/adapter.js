@@ -59,9 +59,9 @@ export class NodeAdapter {
     if (placement.fill) this.appliedHeights.set(this.trackKey(node), placement.height);
     // ComfyUI's setters update the shared layout store used by Nodes 2.0.
     // setSize also invokes custom nodes' resize callbacks in classic mode.
+    if (!node.flags?.collapsed) this.imposedWidths.set(node, placement.width);
     if (!node.flags?.collapsed && (Math.abs(node.size[0] - placement.width) > 0.1 || Math.abs(node.size[1] - placement.height) > 0.1)) {
       const size = [placement.width, placement.height];
-      this.imposedWidths.set(node, placement.width);
       if (node.setSize) node.setSize(size);
       else { node.size = size; node.onResize?.(size); }
     }
