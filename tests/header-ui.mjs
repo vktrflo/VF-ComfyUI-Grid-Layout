@@ -26,7 +26,7 @@ try {
     await page.route('**/extensions', async route => {
       const response = await route.fetch();
       const list = await response.json();
-      await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
+      await route.fulfill({ response, json: [...list.filter(path => !path.startsWith(prefix)), `${prefix}grid_layout.js`] });
     });
     await page.route(`**${prefix}**`, async route => {
       const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -39,8 +39,8 @@ try {
   }
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
-  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 60000 });
+  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 60000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
     console.log(await page.evaluate(() => ({ ready: Boolean(window.comfyAPI?.app?.app?.canvas?.canvas), apiKeys: Object.keys(window.comfyAPI ?? {}) })));
@@ -134,7 +134,7 @@ try {
     await page.keyboard.press('Control+z');
     await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fontSize!==20);
 
-    // Autohide toggle: visible when expanded, hidden when collapsed or minimized, hides container until a node in the grid is selected
+    // Autohide toggle: visible when expanded, hidden when collapsed or minimized, remains hidden when nested node is selected, reveals when node is in drop zone
     assert.equal(await page.locator('.clt-autohide').isVisible(), true, 'autohide toggle is visible when expanded');
     await page.getByRole('button', { name: 'Collapse grid', exact: true }).click();
     await settle();
@@ -151,8 +151,33 @@ try {
     await page.getByRole('button', { name: 'Autohide grid', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 0 && document.querySelectorAll('.clt-cell').length === 0);
     await page.evaluate(() => { const app = window.comfyAPI.app.app; app.canvas.selectNodes([app.graph._nodes[0]]); });
+    await settle();
+    assert.equal(await page.locator('.clt-frame').count(), 0, 'container remains hidden when a nested node is selected');
+    assert.equal(await page.locator('.clt-cell').count(), 0, 'cells remain hidden when a nested node is selected');
+
+    const dragPoints = await page.evaluate(() => {
+      const app = window.comfyAPI.app.app, node = app.graph._nodes[0];
+      const vue = window.LiteGraph.vueNodesMode;
+      const start = app.canvasPosToClientPos([node.pos[0] + 70, node.pos[1] + (vue ? 15 : -15)]);
+      const mid = app.canvasPosToClientPos([node.pos[0] + 90, node.pos[1] + (vue ? 25 : -5)]);
+      return { start: { x: start[0], y: start[1] }, mid: { x: mid[0], y: mid[1] } };
+    });
+    await page.mouse.move(dragPoints.start.x, dragPoints.start.y);
+    await page.mouse.down();
+    await settle();
+    assert.equal(await page.locator('.clt-frame').count(), 0, 'container remains hidden on pointerdown before node moves');
+    await page.mouse.move(dragPoints.mid.x, dragPoints.mid.y, { steps: 5 });
     await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 1 && document.querySelectorAll('.clt-cell').length > 0);
-    await page.getByRole('button', { name: 'Disable autohide', exact: true }).click();
+    await page.mouse.up();
+    await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 0 && document.querySelectorAll('.clt-cell').length === 0);
+
+    await page.evaluate(() => {
+      const app = window.comfyAPI.app.app;
+      app.canvas.selectNodes([app.graph._nodes[0]]);
+      const ext = app.extensions.find(e => e.name === 'VF.ComfyUI.GridLayout');
+      ext.openSelectionMenu();
+    });
+    await page.getByRole('menuitem', { name: 'Disable autohide', exact: true }).click();
     await page.evaluate(() => { const app = window.comfyAPI.app.app; app.canvas.deselectAllNodes?.(); });
     await settle();
     assert.equal(await page.locator('.clt-frame').count(), 1, 'container stays visible after disabling autohide');

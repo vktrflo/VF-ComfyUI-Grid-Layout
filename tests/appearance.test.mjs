@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as engine from '../web/core/layout.js';
-import { applyHeaderStyle, applyHeaderConfig, LayoutOverlay } from '../web/core/overlay.js';
+import { applyHeaderStyle, applyHeaderConfig, LayoutOverlay, LOGO_PURPLE, syncSelectionMenuDom } from '../web/core/overlay.js';
 
 
 test('validateFrame validates container appearance properties on frames', () => {
@@ -206,28 +206,30 @@ test('applyHeaderStyle and applyHeaderConfig handle headerOpacity for default an
   assert.equal('headerOpacity' in frameTarget, false);
 });
 
-test('autohide hides only fully expanded frames with no selected nodes and deselects frame nodes on enable', () => {
+test('autohide hides expanded frames even when nested nodes are selected and only reveals for drop zone activity', () => {
   const frame = engine.createFrame([0, 0]);
   engine.gridCell(frame, frame.root.id, 1, 2);
   const [first, second] = engine.leaves(frame.root);
   first.nodes = [10];
   second.nodes = [20];
 
-  const node10 = { id: 10, is_selected: true };
-  const node99 = { id: 99, is_selected: true };
+  const node10 = { id: 10, pos: [20, 80], size: [200, 100], is_selected: true };
+  const node99 = { id: 99, pos: [800, 800], size: [200, 100], is_selected: true };
   let selected = [node10, node99];
-  const deselected = [];
 
   const fakeOverlay = Object.create(LayoutOverlay.prototype);
   fakeOverlay.editing = null;
   fakeOverlay.drag = null;
   fakeOverlay.headerPreview = null;
+  fakeOverlay.hover = null;
+  fakeOverlay.nativeDrag = null;
+  fakeOverlay.nativeNode = null;
+  fakeOverlay.ghostNodeId = null;
   fakeOverlay.safe = fn => fn();
   fakeOverlay.app = {
     canvas: {
       selected_nodes: { 10: node10, 99: node99 },
       deselect(n) {
-        deselected.push(n.id);
         selected = selected.filter(item => item.id !== n.id);
       },
       setDirty() {},
@@ -237,23 +239,30 @@ test('autohide hides only fully expanded frames with no selected nodes and desel
     frames: [frame],
     selectedNodes: () => selected,
     edit: fn => fn(),
+    graph: {
+      getNodeById: id => [node10, node99].find(n => String(n.id) === String(id)) ?? null,
+    },
   };
 
   assert.equal(fakeOverlay.isFrameAutohidden(frame), false, 'not autohidden when autohide is off');
 
-  // Toggling autohide ON while node 10 is selected deselects node 10 (leaving external node 99 selected) and hides the frame
   fakeOverlay.toggleAutohide(frame.id);
   assert.equal(frame.autohide, true);
-  assert.deepEqual(deselected, [10], 'contained selected node is deselected when enabling autohide');
-  assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'frame is now autohidden because only external node 99 is selected');
+  assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'frame is autohidden');
 
-  // Selecting node 20 inside the frame makes the grid container appear
-  selected.push({ id: 20 });
-  assert.equal(fakeOverlay.isFrameAutohidden(frame), false, 'frame appears when a contained node is selected');
+  // Selecting nested node 10 or 20 inside the frame continues to hide the grid container
+  selected = [node10, { id: 20 }];
+  assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'frame continues to hide when nested nodes are selected');
 
-  // Deselecting node 20 hides it again
-  selected = [node99];
-  assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'frame hides when no contained node is selected');
+  // Merely pressing pointerdown on nested node 10 without moving it keeps the frame hidden
+  fakeOverlay.nativeNode = node10;
+  fakeOverlay.nativeDrag = {
+    before: new Map([[10, { pos: [20, 80], size: [200, 100] }]]),
+    pointer: [50, 100],
+  };
+  assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'unmoved nested node click keeps frame hidden');
+  fakeOverlay.nativeDrag = null;
+  fakeOverlay.nativeNode = null;
 
   // Collapsed or minimized frames are never autohidden
   frame.collapsed = true;
@@ -263,7 +272,7 @@ test('autohide hides only fully expanded frames with no selected nodes and desel
   assert.equal(fakeOverlay.isFrameAutohidden(frame), false, 'minimized frame is never autohidden');
   delete frame.minimized;
 
-  // drawCanvasBackgrounds skips autohidden frames
+  // drawCanvasBackgrounds skips autohidden frames even when a nested node is selected
   frame.containerColor = '#182024';
   let drawn = 0;
   const ctx = {
@@ -275,12 +284,14 @@ test('autohide hides only fully expanded frames with no selected nodes and desel
     fillRect() { drawn++; },
     restore() {},
   };
+  selected = [node10];
   fakeOverlay.drawCanvasBackgrounds(ctx);
-  assert.equal(drawn, 0, 'autohidden frame does not draw canvas background');
+  assert.equal(drawn, 0, 'autohidden frame with selected nested node does not draw canvas background');
 
-  selected = [{ id: 10 }];
+  // Entering a cell drop zone reveals the frame and draws its canvas background
+  fakeOverlay.hover = first.id;
   fakeOverlay.drawCanvasBackgrounds(ctx);
-  assert.equal(drawn, 1, 'visible frame with selected node draws canvas background');
+  assert.equal(drawn, 1, 'frame draws canvas background when a node is in its drop zone');
 });
 
 test('render hides autohide toggle when collapsed or minimized and omits container DOM when autohidden', () => {
@@ -394,10 +405,15 @@ test('render hides autohide toggle when collapsed or minimized and omits contain
     fakeOverlay.render(layouts);
     assert.equal(fakeOverlay.plane.children.length, 0, 'grid container DOM is completely omitted when autohidden');
 
-    // 5. Expanded with autohide = true and node 1 selected: container appears
+    // 5. Expanded with autohide = true and node 1 selected: container remains hidden
     selected = [{ id: 1 }];
     fakeOverlay.render(layouts);
-    assert.ok(fakeOverlay.plane.children.length > 0, 'grid container DOM appears when a contained node is selected');
+    assert.equal(fakeOverlay.plane.children.length, 0, 'grid container DOM remains omitted when a contained node is selected');
+
+    // 6. Expanded with autohide = true and a node in its drop zone: container appears
+    fakeOverlay.hover = first.id;
+    fakeOverlay.render(layouts);
+    assert.ok(fakeOverlay.plane.children.length > 0, 'grid container DOM appears when a node is in its drop zone');
     autohideBtns = fakeOverlay.plane.findAll(el => el.classList.contains('clt-autohide'));
     assert.equal(autohideBtns[0].getAttribute('aria-pressed'), 'true');
   } finally {
@@ -532,6 +548,199 @@ test('autohide reveals the grid container when an external or ghost node is drag
 
   ghostNode.pos = [800, 800];
   assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'hidden when ghost node is outside the grid container');
+});
+
+test('syncSelectionMenuDom colors top toolbox icon purple when in grid, adds VF logo to hamburger menu item, deduplicates, and hides menu item when in grid', () => {
+  assert.equal(LOGO_PURPLE, '#8b5cf6');
+
+  const makeEl = (tag, className = '', text = '') => {
+    const el = {
+      tagName: tag.toUpperCase(),
+      className,
+      textContent: text,
+      style: {},
+      dataset: {},
+      attributes: new Map(),
+      children: [],
+      parent: null,
+      classList: {
+        contains(cls) { return el.className.split(/\s+/).filter(Boolean).includes(cls); },
+        add(...classes) {
+          const set = new Set(el.className.split(/\s+/).filter(Boolean));
+          for (const c of classes) set.add(c);
+          el.className = [...set].join(' ');
+        },
+        remove(...classes) {
+          const set = new Set(el.className.split(/\s+/).filter(Boolean));
+          for (const c of classes) set.delete(c);
+          el.className = [...set].join(' ');
+        },
+        toggle(cls, force) {
+          const has = this.contains(cls);
+          const next = force === undefined ? !has : Boolean(force);
+          if (next) this.add(cls); else this.remove(cls);
+          return next;
+        },
+      },
+      setAttribute(k, v) { this.attributes.set(k, String(v)); },
+      getAttribute(k) { return this.attributes.get(k) ?? null; },
+      removeAttribute(k) { this.attributes.delete(k); },
+      append(...nodes) {
+        for (const n of nodes) {
+          if (typeof n === 'object' && n) n.parent = this;
+          this.children.push(n);
+        }
+      },
+      prepend(...nodes) {
+        for (const n of nodes) {
+          if (typeof n === 'object' && n) n.parent = this;
+        }
+        this.children.unshift(...nodes);
+      },
+      replaceChildren(...nodes) {
+        this.children = [];
+        this.append(...nodes);
+      },
+      remove() {
+        if (this.parent) {
+          this.parent.children = this.parent.children.filter(c => c !== this);
+          this.parent = null;
+        }
+      },
+      closest(sel) {
+        let cur = this;
+        while (cur) {
+          if (sel === 'button' && cur.tagName === 'BUTTON') return cur;
+          cur = cur.parent;
+        }
+        return null;
+      },
+      getBoundingClientRect() { return { left: 10, top: 10, right: 110, bottom: 40, width: 100, height: 30 }; },
+      cloneNode() {
+        const cloneTree = node => {
+          const copy = makeEl(node.tagName.toLowerCase(), node.className, node.textContent);
+          for (const [k, v] of node.attributes) copy.setAttribute(k, v);
+          for (const child of node.children) copy.append(cloneTree(child));
+          return copy;
+        };
+        return cloneTree(this);
+      },
+      get fullText() {
+        if (!this.children.length) return this.textContent || '';
+        return (this.textContent || '') + this.children.map(c => c.fullText ?? c.textContent ?? '').join('');
+      },
+      matchesSelector(sel) {
+        if (sel === '.selection-toolbox [class~="icon-[lucide--panels-top-left]"]') {
+          return this.classList.contains('icon-[lucide--panels-top-left]');
+        }
+        if (sel === '.p-contextmenu-root-list') return this.classList.contains('p-contextmenu-root-list');
+        if (sel === '.p-contextmenu-item') return this.classList.contains('p-contextmenu-item');
+        if (sel === 'a' || sel === '.p-contextmenu-item-link') return this.tagName === 'A' || this.classList.contains('p-contextmenu-item-link');
+        if (sel === '.vf-brand-link') return this.classList.contains('vf-brand-link');
+        if (sel === 'img') return this.tagName === 'IMG';
+        return false;
+      },
+      querySelectorAll(sel) {
+        const out = [];
+        const visit = n => {
+          for (const c of n.children || []) {
+            if (c.matchesSelector?.(sel)) out.push(c);
+            visit(c);
+          }
+        };
+        visit(this);
+        return out;
+      },
+      querySelector(sel) {
+        return this.querySelectorAll(sel)[0] ?? null;
+      },
+    };
+    return el;
+  };
+
+  const fakeDoc = {
+    createElement: tag => makeEl(tag),
+    createTextNode: text => ({ textContent: text, fullText: text, children: [] }),
+  };
+
+  const root = makeEl('div', 'root');
+  const toolbox = makeEl('div', 'selection-toolbox');
+  const button = makeEl('button');
+  const icon = makeEl('i', 'icon-[lucide--panels-top-left]');
+  button.append(icon);
+  toolbox.append(button);
+  root.append(toolbox);
+
+  const list = makeEl('ul', 'p-contextmenu-root-list');
+  const deleteItem = makeEl('li', 'p-contextmenu-item');
+  deleteItem.setAttribute('aria-label', 'Delete');
+  const deleteLink = makeEl('a', 'p-contextmenu-item-link');
+  deleteLink.append(makeEl('span', 'p-contextmenu-item-label', 'Delete'));
+  deleteItem.append(deleteLink);
+  list.append(deleteItem);
+  root.append(list);
+
+  // 1. Not in grid, menuPending = true (multi-select where PrimeVue did not add the item):
+  //    - toolbox icon has default color ('')
+  //    - hamburger menu adds 1 "Create grid layout from selected nodes" item with VF logo (.vf-brand-link > img)
+  let pending = syncSelectionMenuDom(root, {
+    doc: fakeDoc,
+    inGrid: false,
+    selectionCount: 2,
+    menuPending: true,
+    onActivate() {},
+  });
+  assert.equal(pending, false, 'menuPending is consumed after populating menu');
+  assert.equal(icon.style.color, '', 'toolbox icon is default color when selected node is not in grid');
+  assert.equal(button.classList.contains('clt-in-grid'), false);
+
+  let createItems = list.querySelectorAll('.p-contextmenu-item').filter(
+    el => el.getAttribute('aria-label') === 'Create grid layout from selected nodes' || el.fullText.trim() === 'Create grid layout from selected nodes'
+  );
+  assert.equal(createItems.length, 1, 'creates exactly one menu item');
+  assert.ok(createItems[0].querySelector('.vf-brand-link'), 'menu item includes VF logo badge');
+  assert.ok(createItems[0].querySelector('img')?.src?.startsWith('data:image/svg+xml,'), 'VF logo badge contains inline SVG data URI');
+
+  // 2. Single-node selection where PrimeVue ALREADY rendered the item from getNodeMenuItems(), plus menuPending = true:
+  //    must NOT duplicate the item, and must ensure the existing item has the VF logo badge
+  const primeVueItem = makeEl('li', 'p-contextmenu-item');
+  primeVueItem.setAttribute('aria-label', 'Create grid layout from selected nodes');
+  const primeVueLink = makeEl('a', 'p-contextmenu-item-link');
+  primeVueLink.append(makeEl('span', 'p-contextmenu-item-label', 'Create grid layout from selected nodes'));
+  primeVueItem.append(primeVueLink);
+  list.replaceChildren(primeVueItem, deleteItem);
+
+  pending = syncSelectionMenuDom(root, {
+    doc: fakeDoc,
+    inGrid: false,
+    selectionCount: 1,
+    menuPending: true,
+    onActivate() {},
+  });
+  assert.equal(pending, false);
+  createItems = list.querySelectorAll('.p-contextmenu-item').filter(
+    el => el.getAttribute('aria-label') === 'Create grid layout from selected nodes' || el.fullText.trim() === 'Create grid layout from selected nodes'
+  );
+  assert.equal(createItems.length, 1, 'does not duplicate existing menu item from getNodeMenuItems');
+  assert.ok(primeVueLink.querySelector('.vf-brand-link'), 'prepends VF logo badge to existing menu item');
+
+  // 3. Selected node IS contained in a grid container (inGrid = true):
+  //    - top toolbox icon turns purple (#8b5cf6)
+  //    - "Create grid layout from selected nodes" menu item is hidden/removed from the hamburger menu
+  pending = syncSelectionMenuDom(root, {
+    doc: fakeDoc,
+    inGrid: true,
+    selectionCount: 1,
+    menuPending: true,
+    onActivate() {},
+  });
+  assert.equal(pending, false);
+  assert.equal(icon.style.color, LOGO_PURPLE, 'top toolbox icon turns logo purple when selected node is in grid');
+  assert.equal(button.classList.contains('clt-in-grid'), true);
+  createItems = list.querySelectorAll('.p-contextmenu-item').filter(
+    el => el.getAttribute('aria-label') === 'Create grid layout from selected nodes' || el.fullText.trim() === 'Create grid layout from selected nodes'
+  );
+  assert.equal(createItems.length, 0, 'does not show Create grid layout from selected nodes menu item when node is already in grid');
 });
 
 

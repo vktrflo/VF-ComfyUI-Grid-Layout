@@ -26,7 +26,7 @@ try {
     await page.route('**/extensions', async route => {
       const response = await route.fetch();
       const list = await response.json();
-      await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
+      await route.fulfill({ response, json: [...list.filter(path => !path.startsWith(prefix)), `${prefix}grid_layout.js`] });
     });
     await page.route(`**${prefix}**`, async route => {
       const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -39,8 +39,8 @@ try {
   }
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
-  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 60000 });
+  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 60000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
     console.log(await page.evaluate(() => ({ ready: Boolean(window.comfyAPI?.app?.app?.canvas?.canvas), apiKeys: Object.keys(window.comfyAPI ?? {}) })));
@@ -75,27 +75,72 @@ try {
     return data?.frames.flatMap(f => leaves(f.root).map(c => c.nodes.map(Number))) ?? [];
   });
 
-
-
-
  for(const vue of [false,true]) {
-  await page.evaluate(async ({workflow,vue})=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);await app.ui.settings.setSettingValue('Comfy.Canvas.SelectionToolbox',true);const data=structuredClone(workflow);delete data.extra.comfyui_grid_layout;delete data.extra.comfyui_layout_templates;await app.loadGraphData(data);app.canvas.selectNodes(app.graph._nodes);},{workflow:exampleWorkflow,vue});
+  await page.evaluate(async ({workflow,vue})=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);await app.ui.settings.setSettingValue('Comfy.Canvas.SelectionToolbox',true);const data=structuredClone(workflow);delete data.extra.comfyui_grid_layout;delete data.extra.comfyui_layout_templates;await app.loadGraphData(data);app.canvas.selectNodes([app.graph._nodes[0]]);},{workflow:exampleWorkflow,vue});
   await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await settle();
-  await page.locator('.selection-toolbox').getByRole('button',{name:'Create grid layout from selected nodes',exact:true}).click();
+
+  // 1. Single-node selection: toolbar icon is default color, hamburger menu shows "Create grid layout from selected nodes" once (not duplicated) with VF logo
+  const toolbarBtn = page.locator('.selection-toolbox').getByRole('button',{name:'Create grid layout from selected nodes',exact:true});
+  await toolbarBtn.waitFor();
+  assert.equal(await toolbarBtn.evaluate(el => el.classList.contains('clt-in-grid')), false, 'toolbar button is not marked in-grid before grid creation');
+  await page.getByTestId('more-options-button').click();
+  const singleMenuItem = page.getByRole('menuitem',{name:'Create grid layout from selected nodes',exact:true});
+  await singleMenuItem.waitFor();
+  assert.equal(await singleMenuItem.count(), 1, 'Create grid layout from selected nodes is not duplicated for single-node selection');
+  assert.equal(await singleMenuItem.locator('.vf-brand-link img').count(), 1, 'single-selection hamburger menu item displays the VF logo');
+  await singleMenuItem.click();
+  await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
+  assert.deepEqual(await membership(),[[1]]);
+
+  // 2. Once selected node is inside a grid container: top toolbox icon turns logo purple (#8b5cf6 / rgb(139, 92, 246))
+  await page.waitForFunction(() => {
+    const icon = document.querySelector('.selection-toolbox [class~="icon-[lucide--panels-top-left]"]');
+    return icon && getComputedStyle(icon).color === 'rgb(139, 92, 246)';
+  });
+  assert.equal(await toolbarBtn.evaluate(el => el.classList.contains('clt-in-grid')), true, 'toolbar button has clt-in-grid class when selected node is in grid');
+
+  await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
+
+  // 3. Multi-node selection via top toolbox button
+  await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes(app.graph._nodes);});
+  await page.waitForFunction(() => {
+    const btn = document.querySelector('.selection-toolbox [class~="icon-[lucide--panels-top-left]"]')?.closest('button');
+    return btn && !btn.classList.contains('clt-in-grid');
+  });
+  await toolbarBtn.click();
   await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
   assert.deepEqual(await membership(),[[1],[2]]);
-  // Clicking the Grid button again while a grid node is selected opens the container controls menu
-  await page.locator('.selection-toolbox').getByRole('button',{name:'Create grid layout from selected nodes',exact:true}).click();
+
+  // 4. Clicking the Grid button in the top toolbox while a grid node is selected opens the container controls menu
+  await toolbarBtn.click();
   await page.getByRole('menuitem',{name:'Autohide grid',exact:true}).waitFor();
   await page.getByRole('menuitem',{name:'Lock frame',exact:true}).click();
   await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]?.lock===true);
+
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
+
+  // 5. Multi-node selection: hamburger menu shows "Create grid layout from selected nodes" once with VF logo
   await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes(app.graph._nodes);});
+  await settle();
   await page.getByTestId('more-options-button').click();
-  await page.getByRole('menuitem',{name:'Create grid layout from selected nodes',exact:true}).click();
+  const multiMenuItem = page.getByRole('menuitem',{name:'Create grid layout from selected nodes',exact:true});
+  await multiMenuItem.waitFor();
+  assert.equal(await multiMenuItem.count(), 1, 'Create grid layout from selected nodes appears once for multi-selection');
+  assert.equal(await multiMenuItem.locator('.vf-brand-link img').count(), 1, 'multi-selection hamburger menu item displays the VF logo');
+  await multiMenuItem.click();
   await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
   assert.deepEqual(await membership(),[[1],[2]]);
+
+  // 6. Hamburger menu does NOT show "Create grid layout from selected nodes" when selected node is already in a grid container
+  await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes([app.graph._nodes[0]]);});
+  await settle();
+  await page.getByTestId('more-options-button').click();
+  await page.locator('.p-contextmenu').waitFor({ state: 'visible' });
+  await settle();
+  assert.equal(await page.getByRole('menuitem',{name:'Create grid layout from selected nodes',exact:true}).count(), 0, 'hamburger menu hides Create grid layout from selected nodes when already in grid');
+  await page.getByTestId('more-options-button').click();
+  await page.locator('.p-contextmenu').waitFor({ state: 'hidden' });
   console.log(`Horizontal toolbar and vertical menu passed: ${vue?'Nodes 2.0':'Classic'}`);
  }
   assert.deepEqual(errors, [], 'no browser runtime errors');

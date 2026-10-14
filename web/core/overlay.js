@@ -1,5 +1,7 @@
 import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, contains, KEY, LEGACY_KEY } from './layout.js';
 
+import { LinkEffects } from './link-effects.js';
+
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
 .clt-overlay.clt-ghost,.clt-overlay.clt-ghost *{pointer-events:none !important}
@@ -78,6 +80,7 @@ const STYLE = `
 .clt-appearance-dialog footer button{background:#2a2a36;border:1px solid #444;color:#eee;border-radius:4px;font-size:12px;padding:6px 12px}
 .clt-appearance-dialog footer .clt-primary{background:#0066cc;border-color:#0088ff;color:#fff}
 .clt-appearance-dialog button:focus-visible,.clt-appearance-dialog input:focus-visible,.clt-appearance-dialog select:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
+.selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"]{color:#8b5cf6 !important}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -326,6 +329,131 @@ function button(label, action, text = label) {
   return el;
 }
 
+export const LOGO_PURPLE = '#8b5cf6';
+const SELECTION_ACTION_LABEL = 'Create grid layout from selected nodes';
+export const VF_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="VKTRFLO"><defs><linearGradient id="ring" x1="9" y1="8" x2="119" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#52d1a5"/><stop offset="0.34" stop-color="#78d7bd"/><stop offset="0.64" stop-color="#8b5cf6"/><stop offset="1" stop-color="#c084fc"/></linearGradient><filter id="shadow" x="-8" y="-8" width="144" height="144" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.32"/><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000000" flood-opacity="0.5"/></filter></defs><rect x="9" y="9" width="110" height="110" rx="29" fill="none" stroke="url(#ring)" stroke-width="15" filter="url(#shadow)"/></svg>')}`;
+
+export function createLogoBadge(doc = document) {
+  const badge = doc.createElement('span');
+  badge.className = 'vf-brand-link';
+  badge.setAttribute('aria-hidden', 'true');
+  Object.assign(badge.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: '0',
+    width: '15px',
+    height: '15px',
+    marginRight: '8px',
+    verticalAlign: 'middle',
+  });
+  const img = doc.createElement('img');
+  img.src = VF_LOGO_DATA_URI;
+  img.alt = '';
+  img.width = 15;
+  img.height = 15;
+  img.draggable = false;
+  badge.append(img);
+  return badge;
+}
+
+function isSelectionMenuItem(el) {
+  const text = (el.fullText ?? el.textContent ?? '').trim();
+  return (
+    el.dataset?.cltSelectionAction === 'true' ||
+    el.getAttribute?.('aria-label') === SELECTION_ACTION_LABEL ||
+    text === SELECTION_ACTION_LABEL
+  );
+}
+
+export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid = false, selectionCount = 0, menuPending = false, onActivate } = {}) {
+  if (!root || !doc) return menuPending;
+  const icon = root.querySelector('.selection-toolbox [class~="icon-[lucide--panels-top-left]"]');
+  const toolbarButton = icon?.closest?.('button');
+  if (toolbarButton) {
+    if (toolbarButton.getAttribute('aria-label') !== SELECTION_ACTION_LABEL) {
+      toolbarButton.setAttribute('aria-label', SELECTION_ACTION_LABEL);
+      toolbarButton.title = SELECTION_ACTION_LABEL;
+      const label = doc.createElement('span');
+      label.textContent = 'Grid';
+      toolbarButton.append(label);
+    }
+    toolbarButton.classList.toggle('clt-in-grid', Boolean(inGrid));
+    icon.style.color = inGrid ? LOGO_PURPLE : '';
+  }
+
+  for (const entry of root.querySelectorAll?.('.litemenu-entry') ?? []) {
+    if ((entry.fullText ?? entry.textContent ?? '').trim() !== SELECTION_ACTION_LABEL) continue;
+    if (inGrid) {
+      entry.remove();
+    } else if (!entry.querySelector('.vf-brand-link')) {
+      entry.prepend(createLogoBadge(doc));
+    }
+  }
+
+  const list = [...(root.querySelectorAll?.('.p-contextmenu-root-list') ?? [])].find(l => l.getBoundingClientRect().width > 0);
+  if (!list) return inGrid ? false : menuPending;
+
+  const existing = [...list.querySelectorAll('.p-contextmenu-item')].filter(isSelectionMenuItem);
+  if (inGrid) {
+    for (const item of existing) item.remove();
+    return false;
+  }
+
+  if (existing.length > 0) {
+    for (let i = 1; i < existing.length; i++) existing[i].remove();
+    const link = existing[0].querySelector('a') ?? existing[0];
+    if (link && !link.querySelector('.vf-brand-link')) {
+      link.prepend(createLogoBadge(doc));
+    }
+    return false;
+  }
+
+  if (!menuPending || !selectionCount) return menuPending;
+  const example = list.querySelector('.p-contextmenu-item');
+  if (!example) return menuPending;
+  const item = example.cloneNode(true);
+  item.removeAttribute('id');
+  item.removeAttribute('aria-posinset');
+  item.removeAttribute('aria-setsize');
+  item.setAttribute('aria-label', SELECTION_ACTION_LABEL);
+  item.dataset.cltSelectionAction = 'true';
+  const link = item.querySelector('a');
+  if (!link) return menuPending;
+  const labelSpan = doc.createElement('span');
+  labelSpan.className = 'p-contextmenu-item-label';
+  labelSpan.textContent = SELECTION_ACTION_LABEL;
+  link.replaceChildren(createLogoBadge(doc), labelSpan);
+  link.tabIndex = 0;
+  const activate = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const box = item.getBoundingClientRect();
+    if (typeof KeyboardEvent !== 'undefined') {
+      list.dispatchEvent?.(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    }
+    doc.body?.click?.();
+    onActivate?.({ clientX: box.right, clientY: box.top });
+  };
+  link.onclick = activate;
+  link.onkeydown = event => {
+    if (event.key === 'Enter' || event.key === ' ') activate(event);
+  };
+  list.append(item);
+  return false;
+}
+
+export function routeMinimizedEndpoints(hidden, graph, link, startPos, endPos, extras = {}) {
+  if (!link) return [startPos, endPos];
+  const origin = hidden.frames.get(String(link.origin_id));
+  const target = hidden.frames.get(String(link.target_id));
+  if (origin && origin === target) return null;
+  // Intermediate segments must retain their reroute positions and controls.
+  const startsAtReroute = extras.startControl || graph?.getReroute?.(extras.reroute?.parentId);
+  if (origin && !startsAtReroute) startPos = [origin.pos[0] + origin.size[0], origin.pos[1] + origin.size[1] / 2];
+  if (target && !extras.reroute) endPos = [target.pos[0], target.pos[1] + target.size[1] / 2];
+  return [startPos, endPos];
+}
+
 export class LayoutOverlay {
   constructor(controller) {
     this.controller = controller;
@@ -338,6 +466,7 @@ export class LayoutOverlay {
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.append(this.root);
     const canvas = this.app.canvas;
+    this.linkEffects = new LinkEffects(controller);
     if (canvas) {
       this.origOnDrawBackground = canvas.onDrawBackground;
       canvas.onDrawBackground = (ctx, visible_area) => {
@@ -347,25 +476,26 @@ export class LayoutOverlay {
       this.origDrawNode = canvas.drawNode;
       canvas.drawNode = (node, ctx) => {
         if (this.hidden.ids.has(String(node.id))) return;
-        return this.origDrawNode?.call(canvas, node, ctx);
+        const result = this.linkEffects.renderNode(ctx, node, () => this.origDrawNode?.call(canvas, node, ctx));
+        this.linkEffects.drawNodeBorder(node, ctx);
+        return result;
       };
+      if (canvas.drawConnections) {
+        this.hadOwnDrawConnections = Object.hasOwn(canvas, 'drawConnections');
+        this.origDrawConnections = canvas.drawConnections;
+        canvas.drawConnections = (ctx, ...rest) => {
+          const baseDraw = (!this.hadOwnDrawConnections && Object.getPrototypeOf(canvas)?.drawConnections) || this.origDrawConnections;
+          return this.linkEffects.drawConnections(ctx, () => baseDraw?.call(canvas, ctx, ...rest));
+        };
+      }
       if (canvas.renderLink) {
         this.origRenderLink = canvas.renderLink;
         canvas.renderLink = (ctx, startPos, endPos, link, ...rest) => {
-          if (link) {
-            const originFrame = this.hidden.frames.get(String(link.origin_id));
-            const targetFrame = this.hidden.frames.get(String(link.target_id));
-            if (originFrame && targetFrame) {
-              if (originFrame === targetFrame) return;
-              startPos = [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2];
-              endPos = [targetFrame.pos[0], targetFrame.pos[1] + targetFrame.size[1] / 2];
-            } else if (originFrame) {
-              startPos = [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2];
-            } else if (targetFrame) {
-              endPos = [targetFrame.pos[0], targetFrame.pos[1] + targetFrame.size[1] / 2];
-            }
-          }
-          return this.origRenderLink?.call(canvas, ctx, startPos, endPos, link, ...rest);
+          const extras = rest[5];
+          const endpoints = routeMinimizedEndpoints(this.hidden, this.controller.graph, link, startPos, endPos, extras);
+          if (!endpoints) return;
+          [startPos, endPos] = endpoints;
+          return this.linkEffects.renderLink(ctx, link, () => this.origRenderLink?.call(canvas, ctx, startPos, endPos, link, ...rest), extras?.reroute);
         };
       }
     }
@@ -1039,22 +1169,12 @@ export class LayoutOverlay {
         }
       }
     }
-    if (!moved.length && this.nativeNode && this.nativeDrag.pointer) {
-      const current = this.controller.graph?.getNodeById(this.nativeNode.id) ?? this.nativeNode;
-      if (current?.pos && current?.size) moved.push(current);
-    }
     return moved;
   }
   isFrameAutohidden(frame, selectedIds, dragged) {
     if (!frame || frame.autohide !== true) return false;
     if (frame.collapsed === true || frame.minimized === true) return false;
     if (this.editing?.frameId === frame.id || this.drag?.frame?.id === frame.id || this.headerPreview?.frameId === frame.id) return false;
-    const ids = selectedIds ?? new Set(this.controller.selectedNodes().map(n => String(n.id)));
-    for (const cell of leaves(frame.root)) {
-      for (const id of cell.nodes) {
-        if (ids.has(String(id))) return false;
-      }
-    }
     if (this.hover && findCell(frame.root, this.hover)) return false;
     const activeNodes = dragged ?? this.draggedNodes();
     if (activeNodes.length) {
@@ -1283,9 +1403,11 @@ export class LayoutOverlay {
       const pointer = this.controller.adapter.point(event);
       this.nativeDrag.pointer = pointer;
       const dragged = this.draggedNodes();
-      const node = (this.nativeNode && this.controller.graph.getNodeById(this.nativeNode.id)) || dragged[0] || null;
+      const node = (this.nativeNode && dragged.some(n => String(n.id) === String(this.nativeNode.id))
+        ? this.controller.graph.getNodeById(this.nativeNode.id)
+        : dragged[0]) || null;
       const pick = node ? pickCell(this.controller.geometry(), [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
-      this.hover = node ? (pick?.cell.id ?? this.controller.target(pointer)?.cell.id ?? null) : null;
+      this.hover = node ? (pick?.cell.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null) : null;
     }
   }
   up(event, cancelled = false) {
@@ -1313,8 +1435,17 @@ export class LayoutOverlay {
         const { ds } = this.app.canvas;
         this.refreshHidden();
         this.deselectHidden();
+        this.linkEffects.update();
         const selectedIds = new Set(this.controller.selectedNodes().map(n => String(n.id)));
         const dragged = this.draggedNodes();
+        if (this.nativeDrag && !this.nativeDrag.finishing) {
+          const pointer = this.nativeDrag.pointer;
+          const node = (this.nativeNode && dragged.some(n => String(n.id) === String(this.nativeNode.id))
+            ? this.controller.graph.getNodeById(this.nativeNode.id)
+            : dragged[0]) || null;
+          const pick = node ? pickCell(layouts, [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
+          this.hover = node ? (pick?.cell.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null) : null;
+        }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
         const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, autohidden]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
@@ -1331,6 +1462,7 @@ export class LayoutOverlay {
         this.previewHeader();
         this.previewBorder();
         this.previewContainer();
+        this.onTick?.();
         this.plane.style.transform = `translate(${ds.offset[0] * ds.scale}px,${ds.offset[1] * ds.scale}px) scale(${ds.scale})`;
       } catch (error) {
         if (!this.reportedError) { console.error('[Grid Layout]', error); this.reportedError = true; }
@@ -1499,12 +1631,17 @@ export class LayoutOverlay {
     this.app.canvas?.setDirty(true, true);
   }
   dispose() {
+    this.linkEffects.dispose();
     if (this.app.canvas) {
       if (this.origOnDrawBackground !== undefined) {
         this.app.canvas.onDrawBackground = this.origOnDrawBackground;
       }
       if (this.origDrawNode !== undefined) {
         this.app.canvas.drawNode = this.origDrawNode;
+      }
+      if (this.origDrawConnections !== undefined) {
+        if (this.hadOwnDrawConnections) this.app.canvas.drawConnections = this.origDrawConnections;
+        else delete this.app.canvas.drawConnections;
       }
       if (this.origRenderLink !== undefined) {
         this.app.canvas.renderLink = this.origRenderLink;

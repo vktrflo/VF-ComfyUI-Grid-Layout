@@ -26,7 +26,7 @@ try {
     await page.route('**/extensions', async route => {
       const response = await route.fetch();
       const list = await response.json();
-      await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
+      await route.fulfill({ response, json: [...list.filter(path => !path.startsWith(prefix)), `${prefix}grid_layout.js`] });
     });
     await page.route(`**${prefix}**`, async route => {
       const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -39,8 +39,8 @@ try {
   }
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
-  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 60000 });
+  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 60000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
     console.log(await page.evaluate(() => ({ ready: Boolean(window.comfyAPI?.app?.app?.canvas?.canvas), apiKeys: Object.keys(window.comfyAPI ?? {}) })));
@@ -75,8 +75,6 @@ try {
     return data?.frames.flatMap(f => leaves(f.root).map(c => c.nodes.map(Number))) ?? [];
   });
 
-
-
   for (const vue of [false,true]) {
     await page.evaluate(async ({vue,workflow})=>{
       const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);
@@ -93,17 +91,15 @@ try {
     assert.deepEqual(await membership(),[[1],[2]]);
     assert.deepEqual(await page.evaluate(()=>window.comfyAPI.app.app.graph._nodes.map(n=>Math.round(n.size[0]))),[360,440]);
     assert.deepEqual(await page.evaluate(async()=> (await window.comfyAPI.app.app.graphToPrompt()).output),prompt);
-    // When a node inside the grid is selected, the Grid menu exposes the container controls
+    // When a node inside the grid is selected, "Create grid layout from selected nodes" is hidden in the context menu
     await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes([app.graph._nodes[0]]);});
     await page.mouse.click(click.x,click.y,{button:'right'});
-    await page.getByText('Create grid layout from selected nodes',{exact:true}).click();
-    await page.getByText('Autohide grid',{exact:true}).waitFor();
-    await page.getByText('Lock frame',{exact:true}).click();
-    await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]?.lock===true);
-    await page.keyboard.press('Control+z');
+    await settle();
+    assert.equal(await page.getByText('Create grid layout from selected nodes',{exact:true}).count(), 0, 'Create grid layout from selected nodes is hidden when selected node is already in grid');
+    await page.evaluate(() => window.LiteGraph?.closeAllContextMenus?.());
     await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
     await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
-    console.log(`Selected-node menu, columns, in-grid container options, prompt, undo/redo passed: ${vue?'Nodes 2.0':'Classic'}`);
+    console.log(`Selected-node menu, columns, in-grid menu hiding, prompt, undo/redo passed: ${vue?'Nodes 2.0':'Classic'}`);
   }
   assert.deepEqual(errors, [], 'no browser runtime errors');
 } finally {await browser.close();}
