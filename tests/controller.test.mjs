@@ -194,8 +194,15 @@ test('controller targetNode respects cautious detection and target ignores locke
   const node = { id: 99, pos: [150, 200], size: [150, 80] };
   assert.ok(controller.targetNode(node), 'valid node inside cell is targeted');
 
+  const wideNode = { id: 97, pos: [220, 200], size: [422, 164] };
+  assert.ok(controller.targetNode(wideNode), 'wide node inside cell is targeted');
+
   const outsideNode = { id: 98, pos: [50, 200], size: [150, 80] };
   assert.equal(controller.targetNode(outsideNode), null, 'outside node is not targeted');
+
+  // Ghost placement centers node on cursor: cursor at x=250 with width=400 has pos[0]=50
+  const ghostCenteredNode = { id: 96, pos: [50, 200], size: [400, 160] };
+  assert.ok(controller.targetNode(ghostCenteredNode, { ghost: true }), 'ghost-centered wide node is targeted');
 
   frame.lock = true;
   assert.equal(controller.targetNode(node), null, 'locked frame is not targeted by targetNode');
