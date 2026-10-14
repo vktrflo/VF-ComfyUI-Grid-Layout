@@ -36,6 +36,7 @@ export function pickCell(layouts, rect) {
   const center = [x + width / 2, y + height / 2];
   let best = null, bestArea = 0;
   for (const layout of [...layouts].reverse()) {
+    if (layout.frame?.lock === true) continue;
     for (const cell of layout.cells) {
       const [cx, cy, cw, ch] = cell.rect;
       if (center[0] >= cx && center[0] <= cx + cw && center[1] >= cy && center[1] <= cy + ch) return { frame: layout.frame, ...cell };
@@ -44,6 +45,51 @@ export function pickCell(layouts, rect) {
     }
   }
   return best;
+}
+
+// Target a cell for a newly added node. Errs on the side of caution:
+// does not grab nodes placed near frame headers, cell headers, dividers, or outer borders,
+// and ensures the node's position and majority of width/height are well within the cell body.
+export function targetCellForNode(layouts, node) {
+  if (!node || !layouts) return null;
+  const rect = Array.isArray(node) ? node : (node.pos && node.size ? [node.pos[0], node.pos[1], node.size[0], node.size[1]] : null);
+  if (!rect || rect.some(n => typeof n !== 'number' || !Number.isFinite(n))) return null;
+  const [x, y, width, height] = rect;
+  if (width <= 0 || height <= 0) return null;
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const INSET = 4;
+
+  for (const layout of [...layouts].reverse()) {
+    if (layout.frame?.lock === true) continue;
+    for (const cell of layout.cells) {
+      const [cx, cy, cw, ch] = cell.rect;
+      // 1. Insertion position (top-left) must be inside the cell's content area
+      // (below the cell header title/controls, and within edge insets)
+      const contentTop = cy + CELL_TITLE;
+      if (x < cx + INSET || x > cx + cw - INSET || y < contentTop || y > cy + ch - INSET) {
+        continue;
+      }
+      // 2. Horizontal center must be within cell horizontal boundaries
+      // so the node does not extend predominantly outside the cell to the right
+      if (centerX < cx || centerX > cx + cw) {
+        continue;
+      }
+      // 3. Vertical bounds: if the node fits inside the cell body, its vertical center
+      // must be inside the cell. If the node is taller than the cell, it must cover
+      // a significant portion of the cell body.
+      const bodyHeight = ch - CELL_TITLE;
+      if (height <= bodyHeight) {
+        if (centerY > cy + ch) continue;
+      } else {
+        const overlapY = Math.min(y + height, cy + ch) - Math.max(y, contentTop);
+        if (overlapY < bodyHeight / 2) continue;
+      }
+
+      return { frame: layout.frame, ...cell };
+    }
+  }
+  return null;
 }
 
 export function normalizeColor(value) {

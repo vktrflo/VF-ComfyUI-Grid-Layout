@@ -187,3 +187,17 @@ test('Nodes 2.0 CSS minimum width overrides classic computation without affectin
  globalThis.LiteGraph.vueNodesMode=false;assert.equal(adapter.measure(node).minWidth,220);
  }finally{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
+
+test('controller targetNode respects cautious detection and target ignores locked frames', () => {
+  const { controller } = host();
+  const frame = controller.create([100, 100]);
+  const node = { id: 99, pos: [150, 200], size: [150, 80] };
+  assert.ok(controller.targetNode(node), 'valid node inside cell is targeted');
+
+  const outsideNode = { id: 98, pos: [50, 200], size: [150, 80] };
+  assert.equal(controller.targetNode(outsideNode), null, 'outside node is not targeted');
+
+  frame.lock = true;
+  assert.equal(controller.targetNode(node), null, 'locked frame is not targeted by targetNode');
+  assert.equal(controller.target([150, 200]), null, 'locked frame is not targeted by target');
+});
