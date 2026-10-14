@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { KEY, splitCell, exportTemplate } from '../web/core/layout.js';
+import { KEY, splitCell, shrinkFrame, exportTemplate } from '../web/core/layout.js';
 const { LayoutController } = await import('../web/core/controller.js').catch(() => ({}));
 const { NodeAdapter } = await import('../web/core/adapter.js').catch(() => ({}));
 
@@ -151,16 +151,30 @@ test('invalid drag updates roll back even within an already-open history gesture
  const cells=controller.geometry()[0].cells; assert.equal(cells[0].rect[2],cells[1].rect[2]);
  });
 
-test('selected nodes form minimum-width columns, preserve connections, and transfer membership',()=>{
+test('selected nodes size each column to its widest node, preserve connections, and transfer membership',()=>{
+ const close=(a,b)=>assert.ok(Math.abs(a-b)<1e-6,`${a} != ${b}`);
  const {controller,graph,node,events}=host();
- const other={...node,id:2,pos:[700,200],size:[300,100],inputs:[{link:8}],setSize(size){this.size=size;}};
- const third={...node,id:3,pos:[15,300],size:[300,100],setSize(size){this.size=size;}};
+ let otherResized=false,thirdResized=false;
+ const other={...node,id:2,pos:[700,200],size:[260,100],inputs:[{link:8}],setSize(size){otherResized=true;this.size=size;}};
+ const third={...node,id:3,pos:[15,300],size:[420,100],setSize(size){thirdResized=true;this.size=size;}};
  graph._nodes.push(other,third);graph.getNodeById=id=>graph._nodes.find(n=>String(n.id)===String(id));
  const f=controller.createFromNodes([3,2,1],'columns');
  assert.equal(f.root.children.length,2);assert.deepEqual(f.root.children.map(c=>c.nodes),[[1,3],[2]]);
+ close(node.size[0],420);assert.equal(third.size[0],420);assert.equal(other.size[0],260);
+ assert.equal(thirdResized,false,'widest node in column 1 is not resized');
+ assert.equal(otherResized,false,'widest node in column 2 is not resized');
+ const cells=controller.geometry()[0].cells;
+ close(cells[0].rect[2],420+24);
+ close(cells[1].rect[2],260+24);
  assert.equal(other.inputs[0].link,8);assert.deepEqual(events,['before','after']);
+ node.size=[310,100];other.size=[480,100];otherResized=false;
  const stacked=controller.createFromNodes([1,2],'stack');assert.deepEqual(stacked.root.nodes,[1,2]);
+ close(node.size[0],480);assert.equal(other.size[0],480);
+ assert.equal(otherResized,false,'widest node in single stack is not resized');
+ close(controller.geometry()[1].cells[0].rect[2],480+24);
  assert.deepEqual(f.root.children.map(c=>c.nodes),[[3],[]]);
+ controller.edit(()=>shrinkFrame(stacked,controller.metrics()));
+ close(node.size[0],220);close(other.size[0],220);
  assert.throws(()=>controller.createFromNodes([],'columns'),/Select/);
 });
 

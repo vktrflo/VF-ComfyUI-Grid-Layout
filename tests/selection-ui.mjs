@@ -81,7 +81,7 @@ try {
     await page.evaluate(async ({vue,workflow})=>{
       const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);
       const data=structuredClone(workflow);delete data.extra.comfyui_grid_layout;delete data.extra.comfyui_layout_templates;
-      await app.loadGraphData(data);app.graph._nodes[0].pos=[100,200];app.graph._nodes[1].pos=[600,200];
+      await app.loadGraphData(data);app.graph._nodes[0].pos=[100,200];app.graph._nodes[0].setSize([360,170]);app.graph._nodes[1].pos=[600,200];app.graph._nodes[1].setSize([440,100]);
       app.canvas.ds.scale=.8;app.canvas.ds.offset=[0,0];app.canvas.selectNodes(app.graph._nodes);
     },{vue,workflow:exampleWorkflow});
     await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await settle();
@@ -92,6 +92,7 @@ try {
     await page.getByText('Preserve columns',{exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
     assert.deepEqual(await membership(),[[1],[2]]);
+    assert.deepEqual(await page.evaluate(()=>window.comfyAPI.app.app.graph._nodes.map(n=>Math.round(n.size[0]))),[360,440]);
     assert.deepEqual(await page.evaluate(async()=> (await window.comfyAPI.app.app.graphToPrompt()).output),prompt);
     await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
     await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes(app.graph._nodes);});
@@ -100,6 +101,7 @@ try {
     await page.getByText('Single stack',{exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
     assert.deepEqual(await membership(),[[1,2]]);
+    assert.deepEqual(await page.evaluate(()=>window.comfyAPI.app.app.graph._nodes.map(n=>Math.round(n.size[0]))),[440,440]);
     await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
     await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
     console.log(`Selected-node menu, columns, stack, prompt, undo/redo passed: ${vue?'Nodes 2.0':'Classic'}`);

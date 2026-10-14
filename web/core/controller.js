@@ -82,7 +82,7 @@ export class LayoutController {
     const columns = [];
     for (const node of [...nodes].sort((a,b) => a.pos[0]-b.pos[0] || a.pos[1]-b.pos[1])) {
       const column = arrangement === 'stack' ? columns[0] : columns.find(column => Math.abs(node.pos[0]-column.x) <= Math.max(48, Math.min(node.size[0],column.width)*0.35));
-      if (column) column.nodes.push(node);
+      if (column) { column.width = Math.max(column.width, node.size[0]); column.nodes.push(node); }
       else columns.push({x:node.pos[0],width:node.size[0],nodes:[node]});
     }
     if (columns.length > 256) throw new Error('A grid supports up to 256 columns.');
@@ -98,7 +98,12 @@ export class LayoutController {
       const moving=new Set(nodes.map(node=>String(node.id)));
       for (const oldFrame of this.frames) for (const cell of leaves(oldFrame.root)) cell.nodes=cell.nodes.filter(id=>!moving.has(String(id)));
       frame.root=build(cells);this.ensureData().frames.push(frame);
-      shrinkFrame(frame,this.metrics());
+      const metrics = this.metrics();
+      for (const node of nodes) {
+        const metric = metrics.get(node.id);
+        if (metric) metrics.set(node.id, { ...metric, minWidth: Math.max(metric.minWidth, node.size?.[0] || 0) });
+      }
+      shrinkFrame(frame,metrics);
       return frame;
     });
   }
