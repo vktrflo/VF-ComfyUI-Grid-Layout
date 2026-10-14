@@ -1,11 +1,13 @@
 import { app } from '../../scripts/app.js';
 import { LayoutController } from './core/controller.js';
-import { LayoutOverlay } from './core/overlay.js';
+import { LayoutOverlay, syncSelectionMenuDom } from './core/overlay.js';
+import { createLinkEffectSettings } from './core/link-effects.js';
 
 let active;
 
 app.registerExtension({
   name: 'VF.ComfyUI.GridLayout',
+  settings: createLinkEffectSettings(app.ui.settings),
   commands: [{
     id: 'VF.GridLayout.CreateFromSelection',
     label: 'Create grid layout from selected nodes',
@@ -18,7 +20,8 @@ app.registerExtension({
     return active ? active.canvasMenuItems(canvas) : [];
   },
   getNodeMenuItems() {
-    return active ? [null, active.selectionEntry()] : [];
+    const entry = active?.selectionEntry();
+    return entry ? [null, entry] : [];
   },
   getSelectionToolboxCommands(item) {
     return item && active?.controller.graph.getNodeById(item.id) === item ? ['VF.GridLayout.CreateFromSelection'] : [];
@@ -43,60 +46,29 @@ app.registerExtension({
     this.overlay = overlay;
     this.openSelectionMenu = openSelectionMenu;
     // Multi-selection's Vue menu does not call the node-menu extension hook.
-    // Limit the additional item to the menu opened by the toolbox's More button.
+    // Limit the additional item to the menu opened by the toolbox's More button,
+    // deduplicating when single-selection already added it and omitting it when
+    // the selected node is already inside a grid container.
     let selectionMenuPending = false;
+    const syncMenus = () => {
+      selectionMenuPending = syncSelectionMenuDom(document.body, {
+        inGrid: Boolean(controller.selectedFrame()),
+        selectionCount: controller.selectedNodes().length,
+        menuPending: selectionMenuPending,
+        onActivate: openSelectionMenu,
+      });
+    };
+    overlay.onTick = syncMenus;
     document.addEventListener('click', event => {
       if (event.target.closest?.('[data-testid="more-options-button"]')) selectionMenuPending = true;
-    }, {capture:true,signal:overlay.abort.signal});
-    const observer = new MutationObserver(() => {
-      const toolbarButton = document.querySelector('.selection-toolbox [class~="icon-[lucide--panels-top-left]"]')?.closest('button');
-      if (toolbarButton && toolbarButton.getAttribute('aria-label') !== 'Create grid layout from selected nodes') {
-        toolbarButton.setAttribute('aria-label','Create grid layout from selected nodes');
-        toolbarButton.title='Create grid layout from selected nodes';
-        const label=document.createElement('span');label.textContent='Grid';toolbarButton.append(label);
-      }
-      if (!selectionMenuPending || !controller.selectedNodes().length) return;
-      const list = [...document.querySelectorAll('.p-contextmenu-root-list')].find(list => list.getBoundingClientRect().width > 0);
-      if (!list || list.querySelector('[data-clt-selection-action]')) return;
-      const example = list.querySelector('.p-contextmenu-item');
-      if (!example) return;
-      const item = example.cloneNode(true);
-      item.removeAttribute('id');item.removeAttribute('aria-posinset');item.removeAttribute('aria-setsize');
-      item.setAttribute('aria-label','Create grid layout from selected nodes');
-      item.dataset.cltSelectionAction = 'true';
-      const link = item.querySelector('a');
-      if (!link) return;
-      link.replaceChildren(document.createTextNode('Create grid layout from selected nodes'));
-      link.tabIndex=0;
-      const activate = event => {
-        event.preventDefault();event.stopPropagation();
-        const box=item.getBoundingClientRect();
-        document.body.click();
-        openSelectionMenu({clientX:box.right,clientY:box.top});
-      };
-      link.onclick=activate;
-      link.onkeydown=event=>{if(event.key==='Enter'||event.key===' ')activate(event);};
-      list.append(item);selectionMenuPending=false;
-    });
-    observer.observe(document.body,{childList:true,subtree:true});
-    overlay.abort.signal.addEventListener('abort',()=>observer.disconnect(),{once:true});
+    }, { capture: true, signal: overlay.abort.signal });
+    const observer = new MutationObserver(syncMenus);
+    observer.observe(document.body, { childList: true, subtree: true });
+    overlay.abort.signal.addEventListener('abort', () => observer.disconnect(), { once: true });
     const canvas = app.canvas;
     const selectionEntry = () => {
+      if (controller.selectedFrame()) return null;
       const ids = controller.selectedNodes().map(node => node.id);
-      const frame = controller.selectedFrame();
-      if (frame) {
-        const actions = overlay.frameActions(frame, { includeToggles: true });
-        return {
-          content: 'Create grid layout from selected nodes',
-          disabled: !actions.length,
-          submenu: {
-            options: actions.map(([ content, action ]) => ({
-              content,
-              callback: () => overlay.safe(action),
-            })),
-          },
-        };
-      }
       return {
         content: 'Create grid layout from selected nodes',
         disabled: !ids.length,
@@ -105,17 +77,23 @@ app.registerExtension({
     };
     const canvasMenuItems = target => {
       const point = [...(target?.graph_mouse ?? canvas.graph_mouse ?? [0, 0])];
-      return [null, selectionEntry(),
+      const entry = selectionEntry();
+      return [
+        null,
+        ...(entry ? [entry] : []),
         { content: '🌀 Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
-        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) }];
+        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) },
+      ];
     };
     active.selectionEntry = selectionEntry;
     active.canvasMenuItems = canvasMenuItems;
     if (typeof app.collectCanvasMenuItems !== 'function') {
       const originalNodeMenu = canvas.getNodeMenuOptions;
       canvas.getNodeMenuOptions = function (...args) {
-        const entries = originalNodeMenu?.apply(this,args) ?? [];
-        entries.push(null, selectionEntry());return entries;
+        const entries = originalNodeMenu?.apply(this, args) ?? [];
+        const entry = selectionEntry();
+        if (entry) entries.push(null, entry);
+        return entries;
       };
       const original = canvas.getCanvasMenuOptions;
       canvas.getCanvasMenuOptions = function (...args) {

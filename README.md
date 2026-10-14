@@ -34,6 +34,31 @@ After either install, check that `custom_nodes/VF-ComfyUI-Grid-Layout/__init__.p
 
 No extra Python packages, frontend build, or model downloads are required.
 
+## VF Link Effects
+
+In **Settings → Lite Graph → Graph**, enable **VF Link Effects** to reveal the
+effect selector and **Highlight connected nodes** toggle. **Electricity** sends
+bright pulses from output to input; **Neon Glow** gives the wires a steady halo.
+Both use the source output port's displayed color and apply to incoming and
+outgoing wires of every selected node. Directly connected, unselected nodes get
+a quieter border when highlighting is enabled.
+Unrelated nodes and links dim to 30% while nodes are selected; selected nodes,
+their immediate neighbors, and connected wires remain bright. When ComfyUI's
+native **Link Render Mode** is set to **Hidden** and both **VF Link Effects**
+and **Highlight connected nodes** are enabled, connected wires and nodes are
+shown while all other wires remain hidden. Clearing the selection restores
+brightness.
+
+The feature starts enabled with Electricity and remembers your effect and highlighting choices.
+Clearing the selection or disabling the feature restores normal rendering.
+Electricity remains stationary when your system requests reduced motion.
+
+Run `npm run test:links` against a running ComfyUI to check settings, rendering,
+reroutes, both node renderers, and cleanup. Set `COMFYUI_URL` for another server
+or `PLAYWRIGHT_MODULE` to an existing Playwright package directory if needed.
+The link-effects browser test isolates settings writes from the running user's
+preferences and loads this checkout's frontend assets.
+
 ### Updating
 
 - **Registry** — update the node from ComfyUI-Manager.
