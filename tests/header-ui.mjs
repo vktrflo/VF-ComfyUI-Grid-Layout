@@ -106,12 +106,17 @@ try {
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-frame-header')).fontSize==='24px');
     await panel.getByLabel('Title bar background color',{exact:true}).evaluate(el=>{el.value='#ff0000';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor==='rgb(255, 0, 0)');
+    const opacitySlider=panel.getByRole('slider',{name:'Title bar opacity',exact:true});
+    assert.equal(await opacitySlider.getAttribute('min'),'0');assert.equal(await opacitySlider.getAttribute('max'),'100');
+    await opacitySlider.evaluate(el=>{el.value='50';el.dispatchEvent(new Event('input',{bubbles:true}));});
+    await page.waitForFunction(()=>getComputedStyle(document.querySelector('.clt-frame-header')).backgroundColor==='rgba(255, 0, 0, 0.5)');
     await panel.getByRole('button',{name:'Cancel',exact:true}).click();
     await page.waitForFunction(size=>getComputedStyle(document.querySelector('.clt-frame-header')).fontSize===size,before);
     await page.getByRole('button',{name:'Grid options',exact:true}).click();await page.getByRole('menuitem',{name:/Change Appearance/}).click();
     await page.getByRole('slider',{name:'Title font size',exact:true}).evaluate(el=>{el.value='20';el.dispatchEvent(new Event('input',{bubbles:true}));});
+    await page.getByRole('slider',{name:'Title bar opacity',exact:true}).evaluate(el=>{el.value='40';el.dispatchEvent(new Event('input',{bubbles:true}));});
     await page.locator('dialog').last().getByRole('button',{name:'OK',exact:true}).click();
-    await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fontSize===20);
+    await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fontSize===20 && window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].headerOpacity===0.4);
     await page.getByRole('button',{name:'Grid options',exact:true}).click();
     assert.equal(await page.getByRole('menuitem',{name:/Reset header/}).count(),0);
     await page.getByRole('menuitem',{name:/Change Appearance/}).click();
@@ -123,11 +128,34 @@ try {
     await page.getByRole('menuitem',{name:/Change Appearance/}).click();
     await page.getByRole('button',{name:'Reset appearance configuration',exact:true}).click();
     await page.locator('dialog').last().getByRole('button',{name:'OK',exact:true}).click();
-    await page.waitForFunction(()=>!('fontSize' in window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]));
+    await page.waitForFunction(()=>!('fontSize' in window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]) && !('headerOpacity' in window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]));
     await page.keyboard.press('Control+z');
     await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fontSize===20);
     await page.keyboard.press('Control+z');
     await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].fontSize!==20);
+
+    // Autohide toggle: visible when expanded, hidden when collapsed or minimized, hides container until a node in the grid is selected
+    assert.equal(await page.locator('.clt-autohide').isVisible(), true, 'autohide toggle is visible when expanded');
+    await page.getByRole('button', { name: 'Collapse grid', exact: true }).click();
+    await settle();
+    assert.equal(await page.locator('.clt-autohide').isVisible(), false, 'autohide toggle is hidden when collapsed');
+    await page.getByRole('button', { name: 'Expand grid', exact: true }).click();
+    await settle();
+    await page.getByRole('button', { name: 'Minimize grid', exact: true }).click();
+    await settle();
+    assert.equal(await page.locator('.clt-autohide').isVisible(), false, 'autohide toggle is hidden when minimized');
+    await page.getByRole('button', { name: 'Restore grid', exact: true }).click();
+    await settle();
+    assert.equal(await page.locator('.clt-autohide').isVisible(), true, 'autohide toggle reappears when restored');
+
+    await page.getByRole('button', { name: 'Autohide grid', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 0 && document.querySelectorAll('.clt-cell').length === 0);
+    await page.evaluate(() => { const app = window.comfyAPI.app.app; app.canvas.selectNodes([app.graph._nodes[0]]); });
+    await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 1 && document.querySelectorAll('.clt-cell').length > 0);
+    await page.getByRole('button', { name: 'Disable autohide', exact: true }).click();
+    await page.evaluate(() => { const app = window.comfyAPI.app.app; app.canvas.deselectAllNodes?.(); });
+    await settle();
+    assert.equal(await page.locator('.clt-frame').count(), 1, 'container stays visible after disabling autohide');
     console.log(`Header live preview, cancellation, save and history passed: ${vue?'Nodes 2.0':'Classic'}`);
   }
   assert.deepEqual(errors, [], 'no browser runtime errors');

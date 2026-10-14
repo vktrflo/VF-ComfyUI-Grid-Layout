@@ -30,11 +30,13 @@ app.registerExtension({
     const openSelectionMenu = event => {
       const ids = controller.selectedNodes().map(node => node.id);
       if (!ids.length) return;
-      const box = document.querySelector('.selection-toolbox')?.getBoundingClientRect();
-      overlay.showMenu(event ?? {clientX:box?.left ?? 20,clientY:box?.bottom ?? 60}, [
-        ['Preserve columns', () => controller.createFromNodes(ids, 'columns')],
-        ['Single stack', () => controller.createFromNodes(ids, 'stack')],
-      ]);
+      const frame = controller.selectedFrame();
+      if (frame) {
+        const box = document.querySelector('.selection-toolbox')?.getBoundingClientRect();
+        overlay.frameMenu(event ?? { clientX: box?.left ?? 20, clientY: box?.bottom ?? 60 }, frame, { includeToggles: true });
+        return;
+      }
+      overlay.safe(() => controller.createFromNodes(ids, 'columns'));
     };
     active = { controller, overlay, openSelectionMenu };
     this.controller = controller;
@@ -81,10 +83,25 @@ app.registerExtension({
     const canvas = app.canvas;
     const selectionEntry = () => {
       const ids = controller.selectedNodes().map(node => node.id);
-      return { content: 'Create grid layout from selected nodes', disabled: !ids.length, submenu: { options: [
-        { content: 'Preserve columns', callback: () => overlay.safe(() => controller.createFromNodes(ids, 'columns')) },
-        { content: 'Single stack', callback: () => overlay.safe(() => controller.createFromNodes(ids, 'stack')) },
-      ] } };
+      const frame = controller.selectedFrame();
+      if (frame) {
+        const actions = overlay.frameActions(frame, { includeToggles: true });
+        return {
+          content: 'Create grid layout from selected nodes',
+          disabled: !actions.length,
+          submenu: {
+            options: actions.map(([ content, action ]) => ({
+              content,
+              callback: () => overlay.safe(action),
+            })),
+          },
+        };
+      }
+      return {
+        content: 'Create grid layout from selected nodes',
+        disabled: !ids.length,
+        callback: () => overlay.safe(() => controller.createFromNodes(ids, 'columns')),
+      };
     };
     const canvasMenuItems = target => {
       const point = [...(target?.graph_mouse ?? canvas.graph_mouse ?? [0, 0])];

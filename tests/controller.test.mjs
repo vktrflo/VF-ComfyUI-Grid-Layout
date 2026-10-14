@@ -208,3 +208,41 @@ test('controller targetNode respects cautious detection and target ignores locke
   assert.equal(controller.targetNode(node), null, 'locked frame is not targeted by targetNode');
   assert.equal(controller.target([150, 200]), null, 'locked frame is not targeted by target');
 });
+
+test('dropping a node maintains container width unless the target column must grow to fit the node minimum width', () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
+  const { app, graph } = host();
+  const n1 = { id: 1, pos: [100, 100], size: [200, 100], computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+  const n2 = { id: 2, pos: [500, 100], size: [400, 100], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+  const nFits = { id: 3, pos: [900, 100], size: [500, 100], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+  const nWideMin = { id: 4, pos: [900, 300], size: [500, 100], computeSize: () => [260, 80], setSize(s) { this.size = s; } };
+  graph._nodes = [n1, n2, nFits, nWideMin];
+  graph.getNodeById = id => graph._nodes.find(n => String(n.id) === String(id)) ?? null;
+
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1, 2], 'columns');
+  // Column 0 has width 200 + 24 = 224; Column 1 has width 400 + 24 = 424; frame width = 224 + 424 + 12 + 24 = 684
+  const initialFrameWidth = frame.size[0];
+  close(initialFrameWidth, 684);
+  const initialCells = controller.geometry()[0].cells;
+  close(initialCells[0].rect[2], 224);
+  close(initialCells[1].rect[2], 424);
+
+  // Dropping nFits (canvas width 500, minWidth 200 -> cell minWidth 224) into Column 0 (width 224):
+  // Column 0 already fits minWidth 200, so container width and both column widths are maintained!
+  controller.drop([3], [initialCells[0].rect[0] + 20, initialCells[0].rect[1] + 40]);
+  close(frame.size[0], initialFrameWidth);
+  const afterFitsCells = controller.geometry()[0].cells;
+  close(afterFitsCells[0].rect[2], 224);
+  close(afterFitsCells[1].rect[2], 424);
+  close(nFits.size[0], 200);
+
+  // Dropping nWideMin (minWidth 260 -> cell minWidth 284) into Column 0 (width 224):
+  // Column 0 must grow by 60px (224 -> 284), while Column 1 stays 424px, so container grows by only 60px (684 -> 744)
+  controller.drop([4], [afterFitsCells[0].rect[0] + 20, afterFitsCells[0].rect[1] + 40]);
+  const afterWideCells = controller.geometry()[0].cells;
+  close(afterWideCells[0].rect[2], 284);
+  close(afterWideCells[1].rect[2], 424);
+  close(frame.size[0], initialFrameWidth + 60);
+});
+

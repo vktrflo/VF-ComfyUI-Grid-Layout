@@ -82,15 +82,20 @@ try {
   await page.evaluate(async ({workflow,vue})=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);await app.ui.settings.setSettingValue('Comfy.Canvas.SelectionToolbox',true);const data=structuredClone(workflow);delete data.extra.comfyui_grid_layout;delete data.extra.comfyui_layout_templates;await app.loadGraphData(data);app.canvas.selectNodes(app.graph._nodes);},{workflow:exampleWorkflow,vue});
   await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await settle();
   await page.locator('.selection-toolbox').getByRole('button',{name:'Create grid layout from selected nodes',exact:true}).click();
-  await page.getByRole('menuitem',{name:'Preserve columns',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
+  assert.deepEqual(await membership(),[[1],[2]]);
+  // Clicking the Grid button again while a grid node is selected opens the container controls menu
+  await page.locator('.selection-toolbox').getByRole('button',{name:'Create grid layout from selected nodes',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Autohide grid',exact:true}).waitFor();
+  await page.getByRole('menuitem',{name:'Lock frame',exact:true}).click();
+  await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]?.lock===true);
+  await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
   await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes(app.graph._nodes);});
   await page.getByTestId('more-options-button').click();
   await page.getByRole('menuitem',{name:'Create grid layout from selected nodes',exact:true}).click();
-  await page.getByRole('menuitem',{name:'Single stack',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
-  assert.deepEqual(await membership(),[[1,2]]);
+  await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
+  assert.deepEqual(await membership(),[[1],[2]]);
   console.log(`Horizontal toolbar and vertical menu passed: ${vue?'Nodes 2.0':'Classic'}`);
  }
   assert.deepEqual(errors, [], 'no browser runtime errors');

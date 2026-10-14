@@ -89,22 +89,21 @@ try {
     const click=await worldPoint([1100,700]);
     await page.mouse.click(click.x,click.y,{button:'right'});
     await page.getByText('Create grid layout from selected nodes',{exact:true}).click();
-    await page.getByText('Preserve columns',{exact:true}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
     assert.deepEqual(await membership(),[[1],[2]]);
     assert.deepEqual(await page.evaluate(()=>window.comfyAPI.app.app.graph._nodes.map(n=>Math.round(n.size[0]))),[360,440]);
     assert.deepEqual(await page.evaluate(async()=> (await window.comfyAPI.app.app.graphToPrompt()).output),prompt);
-    await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
-    await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes(app.graph._nodes);});
+    // When a node inside the grid is selected, the Grid menu exposes the container controls
+    await page.evaluate(()=>{const app=window.comfyAPI.app.app;app.canvas.selectNodes([app.graph._nodes[0]]);});
     await page.mouse.click(click.x,click.y,{button:'right'});
     await page.getByText('Create grid layout from selected nodes',{exact:true}).click();
-    await page.getByText('Single stack',{exact:true}).click();
-    await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
-    assert.deepEqual(await membership(),[[1,2]]);
-    assert.deepEqual(await page.evaluate(()=>window.comfyAPI.app.app.graph._nodes.map(n=>Math.round(n.size[0]))),[440,440]);
+    await page.getByText('Autohide grid',{exact:true}).waitFor();
+    await page.getByText('Lock frame',{exact:true}).click();
+    await page.waitForFunction(()=>window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0]?.lock===true);
+    await page.keyboard.press('Control+z');
     await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
-    await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===1);
-    console.log(`Selected-node menu, columns, stack, prompt, undo/redo passed: ${vue?'Nodes 2.0':'Classic'}`);
+    await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
+    console.log(`Selected-node menu, columns, in-grid container options, prompt, undo/redo passed: ${vue?'Nodes 2.0':'Classic'}`);
   }
   assert.deepEqual(errors, [], 'no browser runtime errors');
 } finally {await browser.close();}

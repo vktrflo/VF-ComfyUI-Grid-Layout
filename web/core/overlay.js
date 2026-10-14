@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, KEY, LEGACY_KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, contains, KEY, LEGACY_KEY } from './layout.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -13,7 +13,7 @@ const STYLE = `
 .clt-port-in{left:-6px;top:calc(50% - 6px)}
 .clt-port-out{right:-6px;top:calc(50% - 6px)}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji,.clt-lock,.clt-collapse,.clt-minimize{flex:none}
+.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize{flex:none}
 .lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
@@ -260,18 +260,25 @@ function drawFrameBackground(ctx, frame, config, onDirty) {
   ctx.restore();
 }
 
-function applyHeaderStyle(el, { color, textColor, fontSize } = {}) {
-  if (color) {
-    el.classList.add('clt-custom-bg');
-    el.style.background = color;
+export function applyHeaderStyle(el, { color, textColor, fontSize, headerOpacity } = {}) {
+  const opacity = normalizeOpacity(headerOpacity);
+  if (color || (opacity !== undefined && opacity < 1)) {
+    const baseColor = color || '#20282c';
+    el.classList.toggle('clt-custom-bg', Boolean(color));
+    el.style.background = opacity !== undefined && opacity < 1 ? hexToRgba(baseColor, opacity) : baseColor;
+  } else {
+    el.classList.remove('clt-custom-bg');
+    el.style.background = '';
   }
   if (textColor) el.style.color = textColor;
   else if (color) el.style.color = contrastColor(color);
+  else el.style.color = '';
   if (fontSize) el.style.fontSize = `${fontSize}px`;
+  else el.style.fontSize = '';
 }
-function applyHeaderConfig(target, values) {
+export function applyHeaderConfig(target, values) {
   if (values.resetAppearance) {
-    for (const key of ['color','textColor','fontSize','border','containerColor','containerOpacity','containerPattern','containerImage','containerImageMode','containerMode']) delete target[key];
+    for (const key of ['color','textColor','fontSize','headerOpacity','border','containerColor','containerOpacity','containerPattern','containerImage','containerImageMode','containerMode']) delete target[key];
     return;
   }
   const border = normalizeBorder(values.border); if (border) target.border = border;
@@ -281,6 +288,8 @@ function applyHeaderConfig(target, values) {
   if (textColor) target.textColor = textColor; else delete target.textColor;
   const fontSize = values.fontSize == null ? undefined : normalizeFontSize(values.fontSize);
   if (fontSize === undefined) delete target.fontSize; else target.fontSize = fontSize;
+  const headerOpacity = values.headerOpacity == null ? undefined : normalizeOpacity(values.headerOpacity);
+  if (headerOpacity === undefined) delete target.headerOpacity; else target.headerOpacity = headerOpacity;
   if (!values.cellId) {
     const containerMode = normalizeContainerMode(values.containerMode);
     if (containerMode) target.containerMode = containerMode; else delete target.containerMode;
@@ -503,6 +512,7 @@ export class LayoutOverlay {
     const values = {
       ...defaults,
       fontSize: Math.max(12, Math.min(24, defaults.fontSize ?? 13)),
+      headerOpacity: normalizeOpacity(defaults.headerOpacity) ?? 1,
       containerMode: normalizeContainerMode(defaults.containerMode) ?? (defaults.containerImage ? 'image' : 'color'),
       hasContainerColor: defaults.hasContainerColor ?? Boolean(defaults.containerColor),
       containerColor: normalizeColor(defaults.containerColor) ?? '#182024',
@@ -587,6 +597,19 @@ export class LayoutOverlay {
     slider.setAttribute('aria-label', 'Title font size');
     const label = row(titlePanel, `Title font size: ${values.fontSize} px`, slider);
     slider.oninput = () => { values.fontSize = Number(slider.value); label.firstChild.textContent = `Title font size: ${values.fontSize} px`; preview(); };
+    const headerOpacitySlider = document.createElement('input');
+    headerOpacitySlider.type = 'range';
+    headerOpacitySlider.min = '0';
+    headerOpacitySlider.max = '100';
+    headerOpacitySlider.step = '1';
+    headerOpacitySlider.value = String(Math.round(values.headerOpacity * 100));
+    headerOpacitySlider.setAttribute('aria-label', 'Title bar opacity');
+    const headerOpacityLabel = row(titlePanel, `Title bar opacity: ${headerOpacitySlider.value}%`, headerOpacitySlider);
+    headerOpacitySlider.oninput = () => {
+      values.headerOpacity = Number(headerOpacitySlider.value) / 100;
+      headerOpacityLabel.firstChild.textContent = `Title bar opacity: ${headerOpacitySlider.value}%`;
+      preview();
+    };
 
     // --- Section 2: Border ---
     const borderColor = document.createElement('input'); borderColor.type = 'color'; borderColor.value = values.border.color;
@@ -805,9 +828,13 @@ export class LayoutOverlay {
       values.auto = !normalizeColor(inherited?.textColor);
       values.textColor = normalizeColor(inherited?.textColor) ?? contrastColor(values.color);
       values.fontSize = normalizeFontSize(inherited?.fontSize) ?? 13;
+      values.headerOpacity = normalizeOpacity(inherited?.headerOpacity) ?? 1;
       values.border = {color:defaults.cellId ? '#5d7e89' : '#7197a5',width:defaults.cellId ? 1 : 2,style:'solid'};
       background.value=values.color;auto.checked=values.auto;text.value=values.textColor;text.disabled=values.auto;
       slider.value=values.fontSize;label.firstChild.textContent=`Title font size: ${values.fontSize} px`;
+      const headerOpacityPct = String(Math.round(values.headerOpacity * 100));
+      headerOpacitySlider.value = headerOpacityPct;
+      headerOpacityLabel.firstChild.textContent = `Title bar opacity: ${headerOpacityPct}%`;
       borderColor.value=values.border.color;thickness.value=values.border.width;thicknessLabel.firstChild.textContent=`Border thickness: ${values.border.width} px`;style.value=values.border.style;
 
       if (!defaults.cellId) {
@@ -856,10 +883,10 @@ export class LayoutOverlay {
     if (!frame) return;
     const color = values.color, textColor = values.auto ? contrastColor(color) : values.textColor;
     const selectors = values.cellId ? `[data-cell-id="${values.cellId}"] .clt-cell-header` : `[data-frame-id="${values.frameId}"] .clt-frame-header`;
-    for (const header of this.plane.querySelectorAll(selectors)) applyHeaderStyle(header, {color,textColor,fontSize:values.fontSize});
+    for (const header of this.plane.querySelectorAll(selectors)) applyHeaderStyle(header, {color,textColor,fontSize:values.fontSize,headerOpacity:values.headerOpacity});
     if (!values.cellId) for (const cell of leaves(frame.root)) {
       const header = this.plane.querySelector(`[data-cell-id="${cell.id}"] .clt-cell-header`);
-      if (header) applyHeaderStyle(header, {color:cell.color ?? color,textColor:cell.textColor ?? (values.auto ? contrastColor(cell.color ?? color) : textColor),fontSize:cell.fontSize ?? values.fontSize});
+      if (header) applyHeaderStyle(header, {color:cell.color ?? color,textColor:cell.textColor ?? (values.auto ? contrastColor(cell.color ?? color) : textColor),fontSize:cell.fontSize ?? values.fontSize,headerOpacity:normalizeOpacity(cell.headerOpacity) ?? values.headerOpacity});
     }
   }
   previewBorder() {
@@ -875,7 +902,10 @@ export class LayoutOverlay {
     const frames = this.controller.frames;
     if (!frames || !frames.length) return;
     const onDirty = () => this.app.canvas?.setDirty(true, true);
+    const selectedIds = new Set(this.controller.selectedNodes().map(n => String(n.id)));
+    const dragged = this.draggedNodes();
     for (const frame of frames) {
+      if (this.isFrameAutohidden(frame, selectedIds, dragged)) continue;
       const config = (this.containerPreview && this.containerPreview.frameId === frame.id)
         ? this.containerPreview
         : frame;
@@ -919,17 +949,16 @@ export class LayoutOverlay {
           textColor: normalizeColor(cell.textColor) ?? normalizeColor(frame.textColor) ?? contrastColor(color),
           auto: !normalizeColor(cell.textColor),
           fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
+          headerOpacity: normalizeOpacity(cell.headerOpacity) ?? normalizeOpacity(frame.headerOpacity) ?? 1,
         }, values => edit((targetFrame, targetCell) => applyHeaderConfig(targetCell, values)));
       }],
     ];
     this.showMenu(event, actions);
   }
-  frameMenu(event, frame) {
-    frame = this.controller.frames.find(f => f.id === frame.id);
-    if (!frame) return;
+  frameActions(frame, { includeToggles = false } = {}) {
+    frame = this.controller.frames.find(f => f.id === frame?.id);
+    if (!frame) return [];
     const actions = [
-      ['Shrink grid to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
-      ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
       ['Change Appearance…', () => {
         const color = normalizeColor(frame.color) ?? '#20282c';
         this.headerConfigDialog({
@@ -937,6 +966,7 @@ export class LayoutOverlay {
           textColor: normalizeColor(frame.textColor) ?? contrastColor(color),
           auto: !normalizeColor(frame.textColor),
           fontSize: normalizeFontSize(frame.fontSize),
+          headerOpacity: normalizeOpacity(frame.headerOpacity) ?? 1,
           containerMode: frame.containerMode ?? (frame.containerImage ? 'image' : 'color'),
           hasContainerColor: Boolean(normalizeColor(frame.containerColor)),
           containerColor: normalizeColor(frame.containerColor) ?? '#182024',
@@ -946,6 +976,8 @@ export class LayoutOverlay {
           containerImageMode: frame.containerImageMode ?? 'repeat',
         }, values => this.controller.edit(() => applyHeaderConfig(frame, values)));
       }],
+      ['Shrink grid to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
+      ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
     ];
     if (frame.fill === true) {
       actions.push(['Undo Fill cell height', () => this.controller.edit(() => {
@@ -959,14 +991,28 @@ export class LayoutOverlay {
     } else {
       actions.push(['Fill cell height', () => this.controller.edit(() => { frame.fill = true; })]);
     }
+    if (includeToggles) {
+      actions.push([frame.lock === true ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id)]);
+      if (frame.minimized !== true && frame.collapsed !== true) {
+        actions.push([frame.autohide === true ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id)]);
+      }
+      actions.push([frame.minimized === true ? 'Restore grid' : 'Minimize grid', () => this.toggleMinimize(frame.id)]);
+      if (frame.minimized !== true) {
+        actions.push([frame.collapsed === true ? 'Expand grid' : 'Collapse grid', () => this.toggleCollapse(frame.id)]);
+      }
+    }
     actions.push(['Export empty template', () => {
-        const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
-        const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
-        link.download = `${frame.label.replace(/[^a-z0-9_-]/gi, '-') || 'grid'}.grid.json`; link.click();
-        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-      }]);
+      const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
+      link.download = `${frame.label.replace(/[^a-z0-9_-]/gi, '-') || 'grid'}.grid.json`; link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }]);
     actions.push(['Remove grid (keep nodes)', () => this.controller.remove(frame.id)]);
-    this.showMenu(event, actions);
+    return actions;
+  }
+  frameMenu(event, frame, options) {
+    const actions = this.frameActions(frame, options);
+    if (actions.length) this.showMenu(event, actions);
   }
   // Both toggles edit through the controller so the change lands in the
   // workflow's undo history like every other frame edit.
@@ -976,6 +1022,84 @@ export class LayoutOverlay {
       if (!frame) return;
       if (frame.lock === true) delete frame.lock; else frame.lock = true;
     }));
+  }
+  draggedNodes() {
+    if (this.isGhostActive()) {
+      const ghost = this.getGhostNode();
+      return ghost?.pos && ghost?.size ? [ghost] : [];
+    }
+    if (!this.nativeDrag) return [];
+    const moved = [];
+    if (this.nativeDrag.before) {
+      for (const [id, previous] of this.nativeDrag.before) {
+        const node = this.controller.graph?.getNodeById(id);
+        if (!node?.pos || !node?.size) continue;
+        if (Math.abs(node.pos[0] - previous.pos[0]) > 1 || Math.abs(node.pos[1] - previous.pos[1]) > 1) {
+          moved.push(node);
+        }
+      }
+    }
+    if (!moved.length && this.nativeNode && this.nativeDrag.pointer) {
+      const current = this.controller.graph?.getNodeById(this.nativeNode.id) ?? this.nativeNode;
+      if (current?.pos && current?.size) moved.push(current);
+    }
+    return moved;
+  }
+  isFrameAutohidden(frame, selectedIds, dragged) {
+    if (!frame || frame.autohide !== true) return false;
+    if (frame.collapsed === true || frame.minimized === true) return false;
+    if (this.editing?.frameId === frame.id || this.drag?.frame?.id === frame.id || this.headerPreview?.frameId === frame.id) return false;
+    const ids = selectedIds ?? new Set(this.controller.selectedNodes().map(n => String(n.id)));
+    for (const cell of leaves(frame.root)) {
+      for (const id of cell.nodes) {
+        if (ids.has(String(id))) return false;
+      }
+    }
+    if (this.hover && findCell(frame.root, this.hover)) return false;
+    const activeNodes = dragged ?? this.draggedNodes();
+    if (activeNodes.length) {
+      const [fx, fy] = frame.pos;
+      const [fw, fh] = frame.size;
+      if (this.nativeDrag?.pointer && contains([fx, fy, fw, fh], this.nativeDrag.pointer)) return false;
+      const titleHeight = this.controller.adapter?.classicTitle ?? 30;
+      for (const node of activeNodes) {
+        const nx = node.pos[0];
+        const ny = node.pos[1] - titleHeight;
+        const nw = node.size[0];
+        const nh = node.size[1] + titleHeight;
+        if (nx <= fx + fw && nx + nw >= fx && ny <= fy + fh && ny + nh >= fy) return false;
+      }
+    }
+    return true;
+  }
+  deselectFrameNodes(frame) {
+    const canvas = this.app.canvas;
+    if (!canvas) return;
+    const frameNodeIds = new Set(leaves(frame.root).flatMap(cell => cell.nodes.map(String)));
+    for (const node of this.controller.selectedNodes()) {
+      if (frameNodeIds.has(String(node.id))) {
+        canvas.deselect?.(node);
+        if (canvas.selected_nodes && !(canvas.selected_nodes instanceof Map) && !(canvas.selected_nodes instanceof Set)) {
+          delete canvas.selected_nodes[node.id];
+        }
+        node.is_selected = false;
+      }
+    }
+  }
+  toggleAutohide(frameId) {
+    let enabled = false;
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(frame => frame.id === frameId);
+      if (!frame || frame.minimized === true || frame.collapsed === true) return;
+      if (frame.autohide === true) delete frame.autohide;
+      else { frame.autohide = true; enabled = true; }
+    }));
+    if (enabled) {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      if (frame) this.deselectFrameNodes(frame);
+    }
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
   }
   // Node draws and link draws consult this per item, so it is rebuilt once
   // per animation frame (and right after minimize toggles), not per lookup.
@@ -1116,7 +1240,8 @@ export class LayoutOverlay {
     this.safe(() => {
       if (!this.controller.frames.length) return;
       const pointer = this.controller.adapter.point(event);
-      this.nativeNode = this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
+      const domNodeId = event.target?.closest?.('.lg-node')?.dataset?.nodeId;
+      this.nativeNode = (domNodeId != null && this.controller.graph.getNodeById(domNodeId)) || this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
       this.controller.begin();
       this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId };
     });
@@ -1156,9 +1281,11 @@ export class LayoutOverlay {
       this.hover = target?.cell.id ?? null;
     } else if (this.nativeDrag) {
       const pointer = this.controller.adapter.point(event);
-      const node = this.nativeNode && this.controller.graph.getNodeById(this.nativeNode.id);
+      this.nativeDrag.pointer = pointer;
+      const dragged = this.draggedNodes();
+      const node = (this.nativeNode && this.controller.graph.getNodeById(this.nativeNode.id)) || dragged[0] || null;
       const pick = node ? pickCell(this.controller.geometry(), [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
-      this.hover = pick?.cell.id ?? this.controller.target(pointer)?.cell.id ?? null;
+      this.hover = node ? (pick?.cell.id ?? this.controller.target(pointer)?.cell.id ?? null) : null;
     }
   }
   up(event, cancelled = false) {
@@ -1186,7 +1313,10 @@ export class LayoutOverlay {
         const { ds } = this.app.canvas;
         this.refreshHidden();
         this.deselectHidden();
-        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover]);
+        const selectedIds = new Set(this.controller.selectedNodes().map(n => String(n.id)));
+        const dragged = this.draggedNodes();
+        const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
+        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, autohidden]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
           const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
@@ -1220,9 +1350,12 @@ export class LayoutOverlay {
         }
       }
     }
+    const selectedIds = new Set(this.controller.selectedNodes().map(n => String(n.id)));
+    const dragged = this.draggedNodes();
     const fragment = document.createDocumentFragment();
     for (const layout of layouts) {
       const { frame } = layout;
+      if (this.isFrameAutohidden(frame, selectedIds, dragged)) continue;
       const el = element('section', 'clt-frame'); el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
       rectStyle(el, [...frame.pos, ...frame.size]);
       applyBorder(el, frame.border);
@@ -1231,6 +1364,7 @@ export class LayoutOverlay {
         color: normalizeColor(frame.color),
         textColor: normalizeColor(frame.textColor),
         fontSize: normalizeFontSize(frame.fontSize),
+        headerOpacity: normalizeOpacity(frame.headerOpacity),
       });
       const badge = element('span', 'clt-emoji', '🌀');
       badge.setAttribute('aria-hidden', 'true');
@@ -1244,12 +1378,22 @@ export class LayoutOverlay {
       header.append(lock);
 
       const minimized = frame.minimized === true;
+      const collapsed = frame.collapsed === true;
+      const autohide = frame.autohide === true;
+      const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
+      autohideBtn.classList.add('clt-autohide');
+      autohideBtn.setAttribute('aria-pressed', String(autohide));
+      if (minimized || collapsed) {
+        autohideBtn.hidden = true;
+        autohideBtn.style.display = 'none';
+      }
+      header.append(autohideBtn);
+
       const minimize = button(minimized ? 'Restore grid' : 'Minimize grid', () => this.toggleMinimize(frame.id), minimized ? '◻' : '−');
       minimize.classList.add('clt-minimize');
       minimize.setAttribute('aria-expanded', String(!minimized));
       header.append(minimize);
 
-      const collapsed = frame.collapsed === true;
       const collapse = button(collapsed ? 'Expand grid' : 'Collapse grid', () => this.toggleCollapse(frame.id), collapsed ? '▾' : '▴');
       collapse.classList.add('clt-collapse');
       collapse.setAttribute('aria-expanded', String(!collapsed));
@@ -1331,10 +1475,12 @@ export class LayoutOverlay {
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
         applyBorder(cellEl, cell.border);
         const cellHeader = element('div', 'clt-cell-header');
+        cellHeader.addEventListener('pointerdown', e => e.stopPropagation());
         applyHeaderStyle(cellHeader, {
           color: normalizeColor(cell.color) ?? normalizeColor(frame.color),
           textColor: normalizeColor(cell.textColor) ?? normalizeColor(frame.textColor),
           fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
+          headerOpacity: normalizeOpacity(cell.headerOpacity) ?? normalizeOpacity(frame.headerOpacity),
         });
         cellHeader.append(this.title(cell.label, frame.id, cell.id));
         cellHeader.append(button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '+'));
