@@ -1,4 +1,4 @@
-import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, validateFrame } from './layout.js';
+import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, targetCellForNode, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 // Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
@@ -138,10 +138,14 @@ export class LayoutController {
   }
   target(point) {
     for (const layout of this.geometry().reverse()) {
+      if (layout.frame?.lock === true) continue;
       const target = layout.cells.find(({ rect }) => contains(rect, point));
       if (target) return { frame: layout.frame, ...target };
     }
     return null;
+  }
+  targetNode(node) {
+    return targetCellForNode(this.geometry(), node);
   }
   drop(nodeIds, point, target) {
     return this.edit(() => {

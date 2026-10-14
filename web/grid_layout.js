@@ -115,8 +115,11 @@ app.registerExtension({
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const { controller, overlay } = active;
       if (app.configuringGraph || node.graph !== controller.graph || !controller.frames.length) return;
-      const point = [node.pos[0] + node.size[0] / 2, node.pos[1] + node.size[1] / 2];
-      if (controller.target(point)) overlay.safe(() => controller.drop([node.id], point));
+      const target = controller.targetNode(node);
+      if (target) {
+        const point = [node.pos[0] + node.size[0] / 2, node.pos[1] + node.size[1] / 2];
+        overlay.safe(() => controller.drop([node.id], point, target));
+      }
     }));
   },
 });

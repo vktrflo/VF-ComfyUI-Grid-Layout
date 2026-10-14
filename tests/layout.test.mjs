@@ -200,3 +200,51 @@ test('LayoutController migrates legacy comfyui_layout_templates to comfyui_grid_
   assert.equal(mockGraph.extra.comfyui_grid_layout, data);
   assert.equal(mockGraph.extra.comfyui_layout_templates, undefined);
 });
+
+test('targetCellForNode errs on caution and avoids aggressive grabs near controls or borders', () => {
+  // Cell at [100, 100, 200, 200].
+  // Cell header spans y: 100..126 (CELL_TITLE = 26).
+  // Content area spans x: 100..300, y: 126..300.
+  const cell = { cell: { id: 'c1' }, rect: [100, 100, 200, 200] };
+  const layouts = [{ frame: { id: 'f1' }, cells: [cell] }];
+  const nodeSize = [150, 80];
+
+  // 1. Clearly inside cell content area attaches cleanly
+  const insideNode = { pos: [120, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, insideNode)?.cell.id, 'c1', 'node inside content area attaches');
+
+  // 2. Placed to the left outside the cell (center is inside at x=50+75=125, but pos is outside)
+  const leftNode = { pos: [50, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, leftNode), null, 'node placed outside left is not grabbed');
+
+  // 3. Placed to the right outside the cell
+  const rightNode = { pos: [310, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, rightNode), null, 'node placed outside right is not grabbed');
+
+  // 4. Placed above cell / near frame header
+  const aboveNode = { pos: [120, 80], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, aboveNode), null, 'node placed above cell is not grabbed');
+
+  // 5. Placed in the cell header control (y=110 < 100 + CELL_TITLE)
+  const headerNode = { pos: [120, 110], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, headerNode), null, 'node placed in cell header is not grabbed');
+
+  // 6. Placed too close to the left border (within inset: x=102 < 100 + 4)
+  const nearBorderNode = { pos: [102, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, nearBorderNode), null, 'node placed on border is not grabbed');
+
+  // 7. Placed near right edge so majority of width hangs outside (pos x=250, center x=250+75=325 > 300)
+  const hangingRightNode = { pos: [250, 150], size: nodeSize };
+  assert.equal(engine.targetCellForNode(layouts, hangingRightNode), null, 'node hanging predominantly outside is not grabbed');
+
+  // 8. Locked frame is never targeted
+  const lockedLayouts = [{ frame: { id: 'f1', lock: true }, cells: [cell] }];
+  assert.equal(engine.targetCellForNode(lockedLayouts, insideNode), null, 'locked frame is ignored');
+
+  // 9. Tall node placed cleanly in cell attaches even if taller than cell
+  const tallNode = { pos: [120, 140], size: [150, 300] };
+  assert.equal(engine.targetCellForNode(layouts, tallNode)?.cell.id, 'c1', 'tall node placed in cell attaches');
+
+  // 10. pickCell also ignores locked frames
+  assert.equal(engine.pickCell(lockedLayouts, [120, 150, 50, 50]), null, 'pickCell ignores locked frame');
+});
