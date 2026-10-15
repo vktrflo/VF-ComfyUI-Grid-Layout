@@ -126,6 +126,10 @@ export class LayoutController {
     return frame;
   }
   export(frame) { return exportTemplate(frame); }
+  // Ids of deleted nodes can linger in cells, so only live nodes count.
+  hasNodes(frame) {
+    return leaves(frame.root).some(cell => cell.nodes.some(id => this.graph?.getNodeById(id)));
+  }
   metrics() {
     const result = new Map();
     for (const frame of this.frames) for (const cell of leaves(frame.root)) for (const id of cell.nodes) {
@@ -140,6 +144,9 @@ export class LayoutController {
     return this.frames.map(frame => ({ frame, ...layoutFrame(frame, metrics) }));
   }
   reflow() {
+    // An empty autohidden grid could never be revealed, deleted, or dropped
+    // into again, so autohide switches off as soon as the last node leaves.
+    if (!this.app.configuringGraph) for (const frame of this.frames) if (frame.autohide === true && !this.hasNodes(frame)) delete frame.autohide;
     for (const { placements } of this.geometry()) for (const placement of placements) {
       const node = this.graph.getNodeById(placement.nodeId);
       if (node) this.adapter.apply(node, placement);

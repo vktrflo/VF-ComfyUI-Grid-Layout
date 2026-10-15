@@ -1123,7 +1123,7 @@ export class LayoutOverlay {
     }
     if (includeToggles) {
       actions.push([frame.lock === true ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id)]);
-      if (frame.minimized !== true && frame.collapsed !== true) {
+      if (frame.minimized !== true && frame.collapsed !== true && this.frameHasNodes(frame)) {
         actions.push([frame.autohide === true ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id)]);
       }
       actions.push([frame.minimized === true ? 'Restore grid' : 'Minimize grid', () => this.toggleMinimize(frame.id)]);
@@ -1171,8 +1171,13 @@ export class LayoutOverlay {
     }
     return moved;
   }
+  frameHasNodes(frame) {
+    const graph = this.controller.graph;
+    return leaves(frame.root).some(cell => cell.nodes.some(id => graph?.getNodeById(id)));
+  }
   isFrameAutohidden(frame, selectedIds, dragged) {
     if (!frame || frame.autohide !== true) return false;
+    if (!this.frameHasNodes(frame)) return false;
     if (frame.collapsed === true || frame.minimized === true) return false;
     if (this.editing?.frameId === frame.id || this.drag?.frame?.id === frame.id || this.headerPreview?.frameId === frame.id) return false;
     if (this.hover && findCell(frame.root, this.hover)) return false;
@@ -1212,6 +1217,7 @@ export class LayoutOverlay {
       const frame = this.controller.frames.find(frame => frame.id === frameId);
       if (!frame || frame.minimized === true || frame.collapsed === true) return;
       if (frame.autohide === true) delete frame.autohide;
+      else if (!this.frameHasNodes(frame)) return;
       else { frame.autohide = true; enabled = true; }
     }));
     if (enabled) {
@@ -1511,10 +1517,15 @@ export class LayoutOverlay {
 
       const minimized = frame.minimized === true;
       const collapsed = frame.collapsed === true;
-      const autohide = frame.autohide === true;
+      const empty = !this.frameHasNodes(frame);
+      const autohide = frame.autohide === true && !empty;
       const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
       autohideBtn.classList.add('clt-autohide');
       autohideBtn.setAttribute('aria-pressed', String(autohide));
+      if (empty) {
+        autohideBtn.disabled = true;
+        autohideBtn.title = 'Add a node to the grid to use autohide';
+      }
       if (minimized || collapsed) {
         autohideBtn.hidden = true;
         autohideBtn.style.display = 'none';

@@ -368,7 +368,7 @@ test('render hides autohide toggle when collapsed or minimized and omits contain
     fakeOverlay.controller = {
       frames: [frame],
       selectedNodes: () => selected,
-      graph: { links: [] },
+      graph: { links: [], getNodeById: id => (String(id) === '1' ? { id: 1 } : null) },
     };
 
     // 1. Expanded, autohide off: frame, cells, dividers, and autohide toggle button render
@@ -548,6 +548,57 @@ test('autohide reveals the grid container when an external or ghost node is drag
 
   ghostNode.pos = [800, 800];
   assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'hidden when ghost node is outside the grid container');
+});
+
+test('an empty grid forces autohide off and keeps the toggle disabled until a node is added', async () => {
+  const { LayoutController } = await import('../web/core/controller.js');
+  const n1 = { id: 1, pos: [0, 0], size: [200, 100], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+  const graph = {
+    extra: {},
+    _nodes: [n1],
+    getNodeById: id => graph._nodes.find(n => String(n.id) === String(id)) ?? null,
+    setDirtyCanvas() {},
+  };
+  const app = { configuringGraph: false, graph, canvas: { graph, selected_nodes: {}, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1], 'columns');
+
+  const overlay = Object.create(LayoutOverlay.prototype);
+  Object.assign(overlay, { controller, app, safe: fn => fn(), editing: null, drag: null, headerPreview: null, hover: null, nativeDrag: null, nativeNode: null, ghostNodeId: null });
+  const labels = () => overlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
+
+  overlay.toggleAutohide(frame.id);
+  assert.equal(frame.autohide, true);
+  assert.equal(overlay.isFrameAutohidden(frame), true);
+
+  // Dragging the last node out of the grid switches autohide off.
+  controller.drop([1], [5000, 5000], null);
+  assert.equal(engine.leaves(frame.root).some(cell => cell.nodes.length), false);
+  assert.equal('autohide' in frame, false, 'autohide is cleared once the grid is empty');
+  assert.equal(overlay.isFrameAutohidden(frame), false, 'an empty grid is always visible');
+
+  // While empty, autohide cannot be switched back on.
+  overlay.toggleAutohide(frame.id);
+  assert.equal('autohide' in frame, false, 'toggle refuses to enable autohide on an empty grid');
+  assert.equal(labels().includes('Autohide grid'), false, 'menu omits autohide while the grid is empty');
+  assert.equal(labels().includes('Remove grid (keep nodes)'), true);
+
+  // A stale autohide flag saved in the workflow cannot hide an empty grid either.
+  frame.autohide = true;
+  assert.equal(overlay.isFrameAutohidden(frame), false, 'a saved autohide flag cannot hide an empty grid');
+  delete frame.autohide;
+
+  // Dropping a node back in makes autohide available again.
+  const cell = engine.leaves(frame.root)[0];
+  controller.drop([1], null, { frame, cell });
+  assert.equal(labels().includes('Autohide grid'), true);
+  overlay.toggleAutohide(frame.id);
+  assert.equal(frame.autohide, true);
+
+  // Deleting the last node from the workflow also clears autohide on the next reflow.
+  graph._nodes = [];
+  controller.reflow();
+  assert.equal('autohide' in frame, false, 'autohide is cleared when the last node is deleted');
 });
 
 test('syncSelectionMenuDom colors top toolbox icon purple when in grid, adds VF logo to hamburger menu item, deduplicates, and hides menu item when in grid', () => {
