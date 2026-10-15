@@ -2,7 +2,7 @@
 
 All notable changes to **VF Grid Layout** (`vf-comfyui-grid-layout`) are documented in this file.
 
-## [1.1.1] - 2026-10-14
+## [1.1.2] - 2026-10-14
 
 ### Added
 - **VF Link Effects**: Animated connector styles and custom link rendering effects.
