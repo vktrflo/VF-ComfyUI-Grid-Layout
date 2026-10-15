@@ -16,7 +16,7 @@ const twoColumn = (fill) => {
   return { frame };
 };
 
-test('validateFrame keeps frame fill true and drops everything else', () => {
+test('validateFrame keeps frame and leaf cell fill true and drops everything else', () => {
   const frame = engine.createFrame([1, 2]);
   frame.fill = true;
   frame.color = '#abcdef';
@@ -27,16 +27,41 @@ test('validateFrame keeps frame fill true and drops everything else', () => {
   for (const bad of [false, 'yes', 1, null, undefined]) {
     const f = engine.createFrame([0, 0]);
     f.fill = bad;
-    assert.equal('fill' in engine.validateFrame(f), false, `expected ${String(bad)} to be dropped`);
+    f.root.fill = bad;
+    const clean = engine.validateFrame(f);
+    assert.equal('fill' in clean, false, `expected ${String(bad)} on frame to be dropped`);
+    assert.equal('fill' in clean.root, false, `expected ${String(bad)} on leaf to be dropped`);
   }
 
   const cells = engine.createFrame([0, 0]);
   engine.splitCell(cells, cells.root.id, 'x');
-  cells.root.fill = true; // frame-level only: a fill on a split cell is dropped
-  cells.root.children[0].fill = true; // ...and on a leaf too
+  cells.root.fill = true; // a fill on a split cell is dropped
+  cells.root.children[0].fill = true; // a fill on a leaf cell is preserved
   const clean = engine.validateFrame(cells);
   assert.equal('fill' in clean.root, false);
-  assert.equal('fill' in clean.root.children[0], false);
+  assert.equal(clean.root.children[0].fill, true);
+  assert.equal('fill' in clean.root.children[1], false);
+});
+
+test('per-column (leaf cell) fill stretches only that column and carries to the first child on split', () => {
+  const { frame } = twoColumn(false);
+  const [left, right] = engine.leaves(frame.root);
+  left.nodes = ['tall'];
+  right.nodes = ['a', 'b'];
+  right.fill = true;
+
+  const metrics = new Map([['tall', metric(200, 300)], ['a', metric(200, 120)], ['b', metric(200, 100, 60)]]);
+  const { cells, placements } = engine.layoutFrame(frame, metrics);
+  const tall = placements.find(p => p.nodeId === 'tall');
+  const b = placements.find(p => p.nodeId === 'b');
+  const rightRect = cells.find(({ cell }) => cell.id === right.id).rect;
+  assert.equal('fill' in tall, false, 'unfilled left column is not marked owned');
+  assert.equal(b.fill, true, 'filled right column bottom node is owned');
+  assert.equal(b.y + b.height, rightRect[1] + rightRect[3] - PAD, 'filled column stretches flush to floor');
+
+  engine.splitCell(frame, right.id, 'y');
+  assert.equal('fill' in right, false, 'split parent drops fill');
+  assert.equal(right.children[0].fill, true, 'first child inherits fill');
 });
 
 test('frame fill survives splits and grids unchanged', () => {

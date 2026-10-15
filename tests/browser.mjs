@@ -425,8 +425,8 @@ try {
       await page.getByRole('button', { name: 'Grid options', exact: true }).click();
     };
     await openFrameMenu();
-    assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).count(), 0, 'fit entry hidden before filling');
-    await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height (all columns)', exact: true }).count(), 0, 'fit entry hidden before filling');
+    await page.getByRole('menuitem', { name: 'Fill cell height (all columns)', exact: true }).click();
     const waitForFlush = () => page.waitForFunction(async () => {
       const { LayoutController } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/controller.js');
       const { PAD } = await import('/extensions/VF-ComfyUI-Grid-Layout/core/layout.js');
@@ -453,19 +453,19 @@ try {
     assert.ok(Math.abs(fillAfter.height - fillBefore.target) < 1.5, 'stretched node matches the computed fill height');
     assert.ok(Math.abs(fillAfter.tallHeight - fillBefore.tallSize) < 1.5, 'the taller column node is unchanged (anchor preserved)');
     await openFrameMenu();
-    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 0, 'fill entry hidden while filling');
-    assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height (all columns)', exact: true }).count(), 0, 'fill entry hidden while filling');
+    assert.equal(await page.getByRole('menuitem', { name: 'Undo Fill cell height (all columns)', exact: true }).count(), 1);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Control+z');
     await page.waitForFunction(size => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - size) < 1.5, fillBefore.size);
     await page.keyboard.press('Control+Shift+z');
     await waitForFlush();
     await openFrameMenu();
-    await page.getByRole('menuitem', { name: 'Undo Fill cell height', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Undo Fill cell height (all columns)', exact: true }).click();
     await page.waitForFunction(size => Math.abs(window.comfyAPI.app.app.graph.getNodeById(window.testNodes[1]).size[1] - size) < 1.5, fillBefore.size);
     await openFrameMenu();
-    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).count(), 1, 'fill entry returns after release');
-    await page.getByRole('menuitem', { name: 'Fill cell height', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Fill cell height (all columns)', exact: true }).count(), 1, 'fill entry returns after release');
+    await page.getByRole('menuitem', { name: 'Fill cell height (all columns)', exact: true }).click();
     await waitForFlush();
     const filledSave = await page.evaluate(() => JSON.parse(JSON.stringify(window.comfyAPI.app.app.graph.serialize())));
     await page.evaluate(async saved => { await window.comfyAPI.app.app.loadGraphData(saved); }, filledSave);

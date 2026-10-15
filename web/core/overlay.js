@@ -15,11 +15,14 @@ const STYLE = `
 .clt-port-in{left:-6px;top:calc(50% - 6px)}
 .clt-port-out{right:-6px;top:calc(50% - 6px)}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize{flex:none}
+.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize,.clt-bypass{flex:none}
+.clt-bypass[aria-pressed="true"]{background:rgba(168,85,247,.28);border-color:#a855f7;color:#e9d5ff}
 .lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
-.clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:6px;border-radius:4px 4px 0 0}
+.clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:4px;border-radius:4px 4px 0 0}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
+.clt-cell-header .clt-button{padding:1px 5px;font-size:11px;line-height:1.1}
+.clt-cell-options{font-size:10px !important;letter-spacing:-0.05em}
 .clt-button:hover,.clt-button:focus-visible{background:#345361;border-color:#7197a5;outline:none}
 .clt-custom-bg .clt-button:hover,.clt-custom-bg .clt-button:focus-visible{background:rgba(128,128,128,.3);border-color:transparent}
 .clt-hint{position:absolute;top:48px;left:12px;right:12px;color:#8ea1a9;font-size:12px;text-align:center;pointer-events:none}
@@ -34,7 +37,8 @@ const STYLE = `
 .clt-resize-left{left:-2px;top:36px;bottom:0;width:10px;cursor:ew-resize}
 .clt-resize-x:hover,.clt-resize-left:hover{background:#70d8be55}
 .clt-menu{position:fixed;z-index:10000;min-width:180px;padding:5px;background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:5px;box-shadow:0 4px 16px #0006;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px}
-.clt-menu button{display:block;width:100%;text-align:left;padding:8px;border:0;background:none;color:inherit;cursor:pointer}.clt-menu button:hover{background:#345361}
+.clt-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px;border:0;background:none;color:inherit;cursor:pointer}.clt-menu button:hover{background:#345361}
+.clt-menu-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;flex-shrink:0;font-size:14px;line-height:1}
 .clt-dialog{background:var(--comfy-menu-bg,#20282c);color:var(--fg-color,#eee);border:1px solid #7197a5;border-radius:6px;padding:20px;min-width:400px;max-height:85vh;overflow-y:auto;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:14px}.clt-dialog::backdrop{background:#0007}
 .clt-dialog h3{margin:0 0 12px}
 .clt-dialog h4{margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #345361;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;color:#70d8be}
@@ -331,6 +335,36 @@ function button(label, action, text = label) {
 
 export const LOGO_PURPLE = '#8b5cf6';
 const SELECTION_ACTION_LABEL = 'Create grid layout from selected nodes';
+export const MENU_ICONS = {
+  'Change Appearance…': '🎨',
+  'Shrink grid to content': '📐',
+  'Add bottom row': '➕',
+  'Fill cell height': '↕️',
+  'Undo Fill cell height': '↩️',
+  'Fill cell height (all columns)': '↕️',
+  'Undo Fill cell height (all columns)': '↩️',
+  'Fill cell height (this column)': '↕️',
+  'Undo Fill cell height (this column)': '↩️',
+  'Bypass grid': '⏭️',
+  'Unbypass grid': '▶️',
+  'Bypass cell': '⏭️',
+  'Unbypass cell': '▶️',
+  'Lock frame': '🔒',
+  'Unlock frame': '🔓',
+  'Autohide grid': '🙈',
+  'Disable autohide': '👁️',
+  'Minimize grid': '➖',
+  'Restore grid': '◻️',
+  'Collapse grid': '🔼',
+  'Expand grid': '🔽',
+  'Export empty template': '📤',
+  'Remove grid (keep nodes)': '🗑️',
+  'Delete cell (keep nodes)': '🗑️',
+  'Split into left / right': '↔️',
+  'Split into top / bottom': '↕️',
+  'Create grid…': '🪟',
+  'Rename cell…': '✏️',
+};
 export const VF_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="VKTRFLO"><defs><linearGradient id="ring" x1="9" y1="8" x2="119" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#52d1a5"/><stop offset="0.34" stop-color="#78d7bd"/><stop offset="0.64" stop-color="#8b5cf6"/><stop offset="1" stop-color="#c084fc"/></linearGradient><filter id="shadow" x="-8" y="-8" width="144" height="144" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.32"/><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000000" flood-opacity="0.5"/></filter></defs><rect x="9" y="9" width="110" height="110" rx="29" fill="none" stroke="url(#ring)" stroke-width="15" filter="url(#shadow)"/></svg>')}`;
 
 export function createLogoBadge(doc = document) {
@@ -1047,14 +1081,47 @@ export class LayoutOverlay {
     this.closeMenu();
     const menu = element('div', 'clt-menu'); menu.setAttribute('role', 'menu');
     actions = [...actions].sort((a,b) => Number(b[0].startsWith('Change Appearance')) - Number(a[0].startsWith('Change Appearance')));
-    for (const [label, action] of actions) {
-      const item = element('button', '', label); item.type = 'button'; item.setAttribute('role', 'menuitem');
+    for (const [label, action, icon = MENU_ICONS[label]] of actions) {
+      const item = element('button', ''); item.type = 'button'; item.setAttribute('role', 'menuitem');
+      if (icon) {
+        const iconSpan = element('span', 'clt-menu-icon', icon);
+        iconSpan.setAttribute('aria-hidden', 'true');
+        item.append(iconSpan, element('span', 'clt-menu-label', label));
+      } else {
+        item.textContent = label;
+      }
       item.onclick = () => { this.closeMenu(); this.safe(action); }; menu.append(item);
     }
     document.body.append(menu);
     menu.style.left = `${Math.min(event.clientX, innerWidth - menu.offsetWidth - 8)}px`;
     menu.style.top = `${Math.min(event.clientY, innerHeight - menu.offsetHeight - 8)}px`;
     this.menu = menu; menu.firstElementChild.focus();
+  }
+  cellFillAction(frame, cell) {
+    if (!frame || !cell || cell.children) return null;
+    const filled = frame.fill === true || cell.fill === true;
+    if (filled) {
+      return ['Undo Fill cell height (this column)', () => this.controller.edit(() => {
+        const f = this.controller.frames.find(item => item.id === frame.id);
+        const c = f && findCell(f.root, cell.id);
+        if (!f || !c) return;
+        if (f.fill === true) {
+          delete f.fill;
+          for (const leaf of leaves(f.root)) {
+            if (leaf.id !== c.id) leaf.fill = true;
+          }
+        }
+        delete c.fill;
+        const nodeId = c.nodes[c.nodes.length - 1];
+        const node = nodeId != null ? this.controller.graph.getNodeById(nodeId) : null;
+        if (node) this.controller.adapter.releaseFill(node);
+      })];
+    }
+    return ['Fill cell height (this column)', () => this.controller.edit(() => {
+      const f = this.controller.frames.find(item => item.id === frame.id);
+      const c = f && findCell(f.root, cell.id);
+      if (c) c.fill = true;
+    })];
   }
   cellMenu(event, frameId, cellId) {
     const edit = action => this.controller.edit(() => {
@@ -1063,10 +1130,18 @@ export class LayoutOverlay {
       if (!cell) throw new Error('This cell is no longer available.');
       action(frame, cell);
     });
+    const currentFrame = this.controller.frames.find(f => f.id === frameId);
+    const currentCell = currentFrame && findCell(currentFrame.root, cellId);
+    const cellFill = this.cellFillAction(currentFrame, currentCell);
+    const cellBypass = this.cellHasNodes(currentCell)
+      ? [this.isCellBypassed(currentCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frameId, cellId)]
+      : null;
     const actions = [
       ['Delete cell (keep nodes)', () => edit(frame => deleteCell(frame, cellId))],
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x', this.controller.metrics()))],
       ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y', this.controller.metrics()))],
+      ...(cellFill ? [cellFill] : []),
+      ...(cellBypass ? [cellBypass] : []),
       ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns, this.controller.metrics())))],
       ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', optional: true, value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
       ['Change Appearance…', () => {
@@ -1085,7 +1160,7 @@ export class LayoutOverlay {
     ];
     this.showMenu(event, actions);
   }
-  frameActions(frame, { includeToggles = false } = {}) {
+  frameActions(frame, { includeToggles = false, cellId } = {}) {
     frame = this.controller.frames.find(f => f.id === frame?.id);
     if (!frame) return [];
     const actions = [
@@ -1110,18 +1185,37 @@ export class LayoutOverlay {
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
     ];
     if (frame.fill === true) {
-      actions.push(['Undo Fill cell height', () => this.controller.edit(() => {
-        delete frame.fill;
-        for (const cell of leaves(frame.root)) {
+      actions.push(['Undo Fill cell height (all columns)', () => this.controller.edit(() => {
+        const f = this.controller.frames.find(item => item.id === frame.id);
+        if (!f) return;
+        delete f.fill;
+        for (const cell of leaves(f.root)) {
+          delete cell.fill;
           const nodeId = cell.nodes[cell.nodes.length - 1];
           const node = nodeId != null ? this.controller.graph.getNodeById(nodeId) : null;
           if (node) this.controller.adapter.releaseFill(node);
         }
       })]);
     } else {
-      actions.push(['Fill cell height', () => this.controller.edit(() => { frame.fill = true; })]);
+      actions.push(['Fill cell height (all columns)', () => this.controller.edit(() => {
+        const f = this.controller.frames.find(item => item.id === frame.id);
+        if (f) f.fill = true;
+      })]);
+    }
+    const targetCell = includeToggles
+      ? ((cellId && findCell(frame.root, cellId)) || this.controller.selectedCell?.(frame) || leaves(frame.root)[0])
+      : null;
+    if (includeToggles) {
+      const cellFill = this.cellFillAction(frame, targetCell);
+      if (cellFill) actions.push(cellFill);
+    }
+    if (this.frameHasNodes(frame)) {
+      actions.push([this.isFrameBypassed(frame) ? 'Unbypass grid' : 'Bypass grid', () => this.toggleFrameBypass(frame.id)]);
     }
     if (includeToggles) {
+      if (this.cellHasNodes(targetCell)) {
+        actions.push([this.isCellBypassed(targetCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, targetCell.id)]);
+      }
       actions.push([frame.lock === true ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id)]);
       if (frame.minimized !== true && frame.collapsed !== true && this.frameHasNodes(frame)) {
         actions.push([frame.autohide === true ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id)]);
@@ -1170,6 +1264,61 @@ export class LayoutOverlay {
       }
     }
     return moved;
+  }
+  cellHasNodes(cell) {
+    const graph = this.controller.graph;
+    return Boolean(cell && !cell.children && cell.nodes.some(id => graph?.getNodeById(id)));
+  }
+  isCellBypassed(cell) {
+    const graph = this.controller.graph;
+    if (!cell || cell.children) return false;
+    const nodes = cell.nodes.map(id => graph?.getNodeById(id)).filter(Boolean);
+    return nodes.length > 0 && nodes.every(node => node.mode === 4);
+  }
+  isFrameBypassed(frame) {
+    const graph = this.controller.graph;
+    if (!frame) return false;
+    const nodes = leaves(frame.root).flatMap(cell => cell.nodes).map(id => graph?.getNodeById(id)).filter(Boolean);
+    return nodes.length > 0 && nodes.every(node => node.mode === 4);
+  }
+  bypassedNodeIds() {
+    const graph = this.controller.graph;
+    const ids = [];
+    for (const frame of this.controller.frames ?? []) {
+      for (const cell of leaves(frame.root)) {
+        for (const id of cell.nodes) {
+          if (graph?.getNodeById(id)?.mode === 4) ids.push(String(id));
+        }
+      }
+    }
+    return ids;
+  }
+  toggleFrameBypass(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      if (!frame) return;
+      const graph = this.controller.graph;
+      const nodes = leaves(frame.root).flatMap(cell => cell.nodes).map(id => graph?.getNodeById(id)).filter(Boolean);
+      if (!nodes.length) return;
+      const nextMode = nodes.every(node => node.mode === 4) ? 0 : 4;
+      for (const node of nodes) node.mode = nextMode;
+    }));
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
+  }
+  toggleCellBypass(frameId, cellId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      const cell = frame && findCell(frame.root, cellId);
+      if (!cell || cell.children) return;
+      const graph = this.controller.graph;
+      const nodes = cell.nodes.map(id => graph?.getNodeById(id)).filter(Boolean);
+      if (!nodes.length) return;
+      const nextMode = nodes.every(node => node.mode === 4) ? 0 : 4;
+      for (const node of nodes) node.mode = nextMode;
+    }));
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
   }
   frameHasNodes(frame) {
     const graph = this.controller.graph;
@@ -1453,7 +1602,7 @@ export class LayoutOverlay {
           this.hover = node ? (pick?.cell.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null) : null;
         }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
-        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, autohidden]);
+        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, autohidden, this.bypassedNodeIds()]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
           const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
@@ -1518,6 +1667,16 @@ export class LayoutOverlay {
       const minimized = frame.minimized === true;
       const collapsed = frame.collapsed === true;
       const empty = !this.frameHasNodes(frame);
+      const frameBypassed = this.isFrameBypassed(frame);
+      const bypassBtn = button(frameBypassed ? 'Unbypass grid' : 'Bypass grid', () => this.toggleFrameBypass(frame.id), '↱');
+      bypassBtn.classList.add('clt-bypass');
+      bypassBtn.setAttribute('aria-pressed', String(frameBypassed));
+      if (empty) {
+        bypassBtn.disabled = true;
+        bypassBtn.title = 'Add a node to the grid to use bypass';
+      }
+      header.append(bypassBtn);
+
       const autohide = frame.autohide === true && !empty;
       const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
       autohideBtn.classList.add('clt-autohide');
@@ -1626,7 +1785,19 @@ export class LayoutOverlay {
           headerOpacity: normalizeOpacity(cell.headerOpacity) ?? normalizeOpacity(frame.headerOpacity),
         });
         cellHeader.append(this.title(cell.label, frame.id, cell.id));
-        cellHeader.append(button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '+'));
+        const cellEmpty = !this.cellHasNodes(cell);
+        const cellBypassed = this.isCellBypassed(cell);
+        const cellBypassBtn = button(cellBypassed ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, cell.id), '↱');
+        cellBypassBtn.classList.add('clt-bypass', 'clt-cell-bypass');
+        cellBypassBtn.setAttribute('aria-pressed', String(cellBypassed));
+        if (cellEmpty) {
+          cellBypassBtn.disabled = true;
+          cellBypassBtn.title = 'Add a node to the cell to use bypass';
+        }
+        cellHeader.append(cellBypassBtn);
+        const cellOptionsBtn = button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '•••');
+        cellOptionsBtn.classList.add('clt-cell-options');
+        cellHeader.append(cellOptionsBtn);
         cellEl.append(cellHeader);
         if (!cell.nodes.length) cellEl.append(element('div', 'clt-hint', 'Drop nodes here'));
         fragment.append(cellEl);
