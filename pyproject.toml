@@ -1,6 +1,6 @@
 [project]
 name = "vf-comfyui-grid-layout"
-version = "1.1.0"
+version = "1.1.1"
 description = "Splittable canvas grid frames with drop-to-fit node stacks for ComfyUI"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
