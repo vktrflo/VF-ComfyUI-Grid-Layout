@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as engine from '../web/core/layout.js';
-import { applyHeaderStyle, applyHeaderConfig, LayoutOverlay, LOGO_PURPLE, syncSelectionMenuDom } from '../web/core/overlay.js';
+import { applyHeaderStyle, applyHeaderConfig, LayoutOverlay, LOGO_PURPLE, MENU_ICONS, syncSelectionMenuDom } from '../web/core/overlay.js';
 
 
 test('validateFrame validates container appearance properties on frames', () => {
@@ -458,13 +458,16 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
   fakeOverlay.app = app;
   fakeOverlay.safe = fn => fn();
 
-  // Expanded frame with includeToggles: true includes both ••• items and all 4 header toggles
+  // Expanded frame with includeToggles: true includes both ••• items, per-column fill, bypass toggles, and all 4 header toggles
   const expandedLabels = fakeOverlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
   assert.deepEqual(expandedLabels, [
     'Change Appearance…',
     'Shrink grid to content',
     'Add bottom row',
-    'Fill cell height',
+    'Fill cell height (all columns)',
+    'Fill cell height (this column)',
+    'Bypass grid',
+    'Bypass cell',
     'Lock frame',
     'Autohide grid',
     'Minimize grid',
@@ -794,6 +797,83 @@ test('syncSelectionMenuDom colors top toolbox icon purple when in grid, adds VF 
   assert.equal(createItems.length, 0, 'does not show Create grid layout from selected nodes menu item when node is already in grid');
 });
 
+test('all frame and cell menu items have emoji icons and render aria-hidden icon spans in showMenu', async () => {
+  const { LayoutController } = await import('../web/core/controller.js');
+  const n1 = { id: 1, pos: [0, 0], size: [200, 100], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+  const graph = {
+    extra: {},
+    _nodes: [n1],
+    getNodeById: id => graph._nodes.find(n => String(n.id) === String(id)) ?? null,
+    setDirtyCanvas() {},
+  };
+  const app = { configuringGraph: false, graph, canvas: { graph, selected_nodes: {}, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1], 'columns');
 
+  const overlay = Object.create(LayoutOverlay.prototype);
+  Object.assign(overlay, { controller, app, safe: fn => fn(), menu: null });
 
+  for (const [label] of overlay.frameActions(frame, { includeToggles: true })) {
+    assert.ok(MENU_ICONS[label], `expected MENU_ICONS entry for "${label}"`);
+  }
+
+  frame.fill = true;
+  frame.lock = true;
+  frame.autohide = true;
+  for (const [label] of overlay.frameActions(frame, { includeToggles: true })) {
+    assert.ok(MENU_ICONS[label], `expected MENU_ICONS entry for toggled "${label}"`);
+  }
+
+  let capturedActions = null;
+  overlay.showMenu = (_event, actions) => { capturedActions = actions; };
+  const firstCell = engine.leaves(frame.root)[0];
+  overlay.cellMenu({ clientX: 0, clientY: 0 }, frame.id, firstCell.id);
+  assert.ok(capturedActions?.length);
+  for (const [label] of capturedActions) {
+    assert.ok(MENU_ICONS[label], `expected MENU_ICONS entry for cell action "${label}"`);
+  }
+});
+
+test('toggleFrameBypass and toggleCellBypass switch node.mode between 4 (bypass) and 0 (active)', async () => {
+  const { LayoutController } = await import('../web/core/controller.js');
+  const n1 = { id: 1, pos: [0, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+  const n2 = { id: 2, pos: [400, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+  const graph = {
+    extra: {},
+    _nodes: [n1, n2],
+    getNodeById: id => graph._nodes.find(n => String(n.id) === String(id)) ?? null,
+    setDirtyCanvas() {},
+  };
+  const app = { configuringGraph: false, graph, canvas: { graph, selected_nodes: { 1: n1 }, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1, 2], 'columns');
+  const [cell1, cell2] = engine.leaves(frame.root);
+
+  const overlay = Object.create(LayoutOverlay.prototype);
+  Object.assign(overlay, { controller, app, safe: fn => fn(), menu: null, signature: 'initial' });
+
+  assert.equal(overlay.isCellBypassed(cell1), false);
+  assert.equal(overlay.isFrameBypassed(frame), false);
+
+  overlay.toggleCellBypass(frame.id, cell1.id);
+  assert.equal(n1.mode, 4, 'first column node is bypassed');
+  assert.equal(n2.mode, 0, 'second column node stays active');
+  assert.equal(overlay.isCellBypassed(cell1), true);
+  assert.equal(overlay.isFrameBypassed(frame), false, 'frame is not fully bypassed while second column is active');
+
+  overlay.toggleFrameBypass(frame.id);
+  assert.equal(n1.mode, 4);
+  assert.equal(n2.mode, 4, 'entire grid is now bypassed');
+  assert.equal(overlay.isFrameBypassed(frame), true);
+  assert.equal(
+    overlay.frameActions(frame, { includeToggles: true }).some(([label]) => label === 'Unbypass grid'),
+    true,
+    'menu flips to Unbypass grid when all grid nodes are bypassed'
+  );
+
+  overlay.toggleFrameBypass(frame.id);
+  assert.equal(n1.mode, 0);
+  assert.equal(n2.mode, 0, 'unbypassing grid restores all nodes to active mode 0');
+  assert.equal(overlay.isFrameBypassed(frame), false);
+});
 

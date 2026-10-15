@@ -61,7 +61,10 @@ export class LayoutController {
         this.transaction.graph.extra = this.transaction.extra;
         for (const [id, state] of this.transaction.nodes) {
           const node = this.transaction.graph.getNodeById(id);
-          if (node) this.adapter.apply(node, { x: state.pos[0], y: state.pos[1], width: state.size[0], height: state.size[1] });
+          if (node) {
+            if (state.mode !== undefined) node.mode = state.mode;
+            this.adapter.apply(node, { x: state.pos[0], y: state.pos[1], width: state.size[0], height: state.size[1] });
+          }
         }
       }
       throw error;
@@ -84,6 +87,12 @@ export class LayoutController {
       }
     }
     return null;
+  }
+  selectedCell(frame = this.selectedFrame()) {
+    if (!frame) return null;
+    const selectedIds = new Set(this.selectedNodes().map(node => String(node.id)));
+    if (!selectedIds.size) return null;
+    return leaves(frame.root).find(cell => cell.nodes.some(id => selectedIds.has(String(id)))) ?? null;
   }
   createFromNodes(ids, arrangement = 'columns') {
     if (!['columns','stack'].includes(arrangement)) throw new Error('Choose columns or a single stack.');
@@ -186,7 +195,7 @@ export class LayoutController {
     });
   }
   snapshot() {
-    return new Map((this.graph?._nodes ?? this.graph?.nodes ?? []).map(n => [n.id, { pos: [...n.pos], size: [...n.size] }]));
+    return new Map((this.graph?._nodes ?? this.graph?.nodes ?? []).map(n => [n.id, { pos: [...n.pos], size: [...n.size], mode: n.mode }]));
   }
   finishNativeDrag(before) {
     const moved = [], resized = [];

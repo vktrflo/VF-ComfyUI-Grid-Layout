@@ -165,7 +165,7 @@ function cellDepth(cell, cellId, depth = 0) {
 }
 
 function carryHeaderConfig(target, source) {
-  for (const key of ['color', 'textColor', 'fontSize', 'headerOpacity', 'border']) {
+  for (const key of ['color', 'textColor', 'fontSize', 'headerOpacity', 'border', 'fill']) {
     if (source[key] !== undefined) { target[key] = source[key]; delete source[key]; }
   }
 }
@@ -532,7 +532,7 @@ export function layoutFrame(frame, metrics) {
       let y = rect[1] + CELL_TITLE + PAD;
       const last = cell.nodes.length - 1;
       const floor = rect[1] + rect[3] - PAD;
-      const filling = frame.fill === true;
+      const filling = frame.fill === true || cell.fill === true;
       cell.nodes.forEach((nodeId, index) => {
         const metric = metrics.get(nodeId);
         let height = metric.height;
@@ -596,6 +596,7 @@ export function validateFrame(value, freshIds = false, empty = false) {
       const headerOpacity = normalizeOpacity(cell.headerOpacity);
       if (headerOpacity !== undefined) result.headerOpacity = headerOpacity;
       const border = normalizeBorder(cell.border); if (border) result.border = border;
+      if (cell.fill === true) result.fill = true;
     }
     return result;
   }
