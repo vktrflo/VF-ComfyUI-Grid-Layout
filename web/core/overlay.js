@@ -345,8 +345,6 @@ export const MENU_ICONS = {
   'Undo Fill cell height (all columns)': '↩️',
   'Fill cell height (this column)': '↕️',
   'Undo Fill cell height (this column)': '↩️',
-  'Bypass grid': '⏭️',
-  'Unbypass grid': '▶️',
   'Bypass cell': '⏭️',
   'Unbypass cell': '▶️',
   'Lock frame': '🔒',
@@ -1208,11 +1206,6 @@ export class LayoutOverlay {
     if (includeToggles) {
       const cellFill = this.cellFillAction(frame, targetCell);
       if (cellFill) actions.push(cellFill);
-    }
-    if (this.frameHasNodes(frame)) {
-      actions.push([this.isFrameBypassed(frame) ? 'Unbypass grid' : 'Bypass grid', () => this.toggleFrameBypass(frame.id)]);
-    }
-    if (includeToggles) {
       if (this.cellHasNodes(targetCell)) {
         actions.push([this.isCellBypassed(targetCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, targetCell.id)]);
       }
@@ -1275,12 +1268,6 @@ export class LayoutOverlay {
     const nodes = cell.nodes.map(id => graph?.getNodeById(id)).filter(Boolean);
     return nodes.length > 0 && nodes.every(node => node.mode === 4);
   }
-  isFrameBypassed(frame) {
-    const graph = this.controller.graph;
-    if (!frame) return false;
-    const nodes = leaves(frame.root).flatMap(cell => cell.nodes).map(id => graph?.getNodeById(id)).filter(Boolean);
-    return nodes.length > 0 && nodes.every(node => node.mode === 4);
-  }
   bypassedNodeIds() {
     const graph = this.controller.graph;
     const ids = [];
@@ -1292,19 +1279,6 @@ export class LayoutOverlay {
       }
     }
     return ids;
-  }
-  toggleFrameBypass(frameId) {
-    this.safe(() => this.controller.edit(() => {
-      const frame = this.controller.frames.find(f => f.id === frameId);
-      if (!frame) return;
-      const graph = this.controller.graph;
-      const nodes = leaves(frame.root).flatMap(cell => cell.nodes).map(id => graph?.getNodeById(id)).filter(Boolean);
-      if (!nodes.length) return;
-      const nextMode = nodes.every(node => node.mode === 4) ? 0 : 4;
-      for (const node of nodes) node.mode = nextMode;
-    }));
-    this.signature = null;
-    this.app.canvas?.setDirty(true, true);
   }
   toggleCellBypass(frameId, cellId) {
     this.safe(() => this.controller.edit(() => {
@@ -1667,16 +1641,6 @@ export class LayoutOverlay {
       const minimized = frame.minimized === true;
       const collapsed = frame.collapsed === true;
       const empty = !this.frameHasNodes(frame);
-      const frameBypassed = this.isFrameBypassed(frame);
-      const bypassBtn = button(frameBypassed ? 'Unbypass grid' : 'Bypass grid', () => this.toggleFrameBypass(frame.id), '↱');
-      bypassBtn.classList.add('clt-bypass');
-      bypassBtn.setAttribute('aria-pressed', String(frameBypassed));
-      if (empty) {
-        bypassBtn.disabled = true;
-        bypassBtn.title = 'Add a node to the grid to use bypass';
-      }
-      header.append(bypassBtn);
-
       const autohide = frame.autohide === true && !empty;
       const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
       autohideBtn.classList.add('clt-autohide');
