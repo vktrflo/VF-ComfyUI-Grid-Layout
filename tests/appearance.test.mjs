@@ -458,7 +458,7 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
   fakeOverlay.app = app;
   fakeOverlay.safe = fn => fn();
 
-  // Expanded frame with includeToggles: true includes both ••• items, per-column fill, bypass toggles, and all 4 header toggles
+  // Expanded frame with includeToggles: true includes both ••• items, per-column fill, cell bypass toggle, and all 4 header toggles
   const expandedLabels = fakeOverlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
   assert.deepEqual(expandedLabels, [
     'Change Appearance…',
@@ -466,7 +466,6 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
     'Add bottom row',
     'Fill cell height (all columns)',
     'Fill cell height (this column)',
-    'Bypass grid',
     'Bypass cell',
     'Lock frame',
     'Autohide grid',
@@ -834,7 +833,7 @@ test('all frame and cell menu items have emoji icons and render aria-hidden icon
   }
 });
 
-test('toggleFrameBypass and toggleCellBypass switch node.mode between 4 (bypass) and 0 (active)', async () => {
+test('toggleCellBypass switches node.mode between 4 (bypass) and 0 (active)', async () => {
   const { LayoutController } = await import('../web/core/controller.js');
   const n1 = { id: 1, pos: [0, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
   const n2 = { id: 2, pos: [400, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
@@ -853,27 +852,20 @@ test('toggleFrameBypass and toggleCellBypass switch node.mode between 4 (bypass)
   Object.assign(overlay, { controller, app, safe: fn => fn(), menu: null, signature: 'initial' });
 
   assert.equal(overlay.isCellBypassed(cell1), false);
-  assert.equal(overlay.isFrameBypassed(frame), false);
+  assert.equal(overlay.isCellBypassed(cell2), false);
 
   overlay.toggleCellBypass(frame.id, cell1.id);
   assert.equal(n1.mode, 4, 'first column node is bypassed');
   assert.equal(n2.mode, 0, 'second column node stays active');
   assert.equal(overlay.isCellBypassed(cell1), true);
-  assert.equal(overlay.isFrameBypassed(frame), false, 'frame is not fully bypassed while second column is active');
-
-  overlay.toggleFrameBypass(frame.id);
-  assert.equal(n1.mode, 4);
-  assert.equal(n2.mode, 4, 'entire grid is now bypassed');
-  assert.equal(overlay.isFrameBypassed(frame), true);
   assert.equal(
-    overlay.frameActions(frame, { includeToggles: true }).some(([label]) => label === 'Unbypass grid'),
+    overlay.frameActions(frame, { includeToggles: true, cellId: cell1.id }).some(([label]) => label === 'Unbypass cell'),
     true,
-    'menu flips to Unbypass grid when all grid nodes are bypassed'
+    'menu flips to Unbypass cell when all cell nodes are bypassed'
   );
 
-  overlay.toggleFrameBypass(frame.id);
-  assert.equal(n1.mode, 0);
-  assert.equal(n2.mode, 0, 'unbypassing grid restores all nodes to active mode 0');
-  assert.equal(overlay.isFrameBypassed(frame), false);
+  overlay.toggleCellBypass(frame.id, cell1.id);
+  assert.equal(n1.mode, 0, 'unbypassing cell restores node to active mode 0');
+  assert.equal(overlay.isCellBypassed(cell1), false);
 });
 
