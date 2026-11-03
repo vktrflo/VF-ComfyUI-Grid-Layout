@@ -1,4 +1,4 @@
-import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, targetCellForNode, validateFrame } from './layout.js';
+import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, insertColumnCell, addBottomRow, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, targetCellForNode, resolveDropTarget, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 // Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
@@ -15,6 +15,7 @@ export class LayoutController {
     this.defaultColumns = options?.defaultColumns ?? 2;
     this.adapter = new NodeAdapter(app, options);
     this.transaction = null;
+    this.pendingAutohide = new Set();
   }
   get graph() { return this.app.canvas.graph ?? this.app.graph; }
   get frames() {
@@ -71,7 +72,7 @@ export class LayoutController {
     } finally { if (own) this.end(); }
   }
   create(pos) {
-    return this.edit(() => { const frame = createFrame(pos); gridCell(frame, frame.root.id, 1, this.defaultColumns); this.ensureData().frames.push(frame); return frame; });
+    return this.edit(() => { const frame = createFrame(pos); this.pendingAutohide.add(frame.id); gridCell(frame, frame.root.id, 1, this.defaultColumns); this.ensureData().frames.push(frame); return frame; });
   }
   selectedNodes() {
     const selection = this.app.canvas.selected_nodes ?? {};
@@ -131,6 +132,7 @@ export class LayoutController {
   }
   import(value, pos) {
     const frame = importTemplate(value, pos);
+    this.pendingAutohide.add(frame.id);
     this.edit(() => this.ensureData().frames.push(frame));
     return frame;
   }
@@ -155,7 +157,12 @@ export class LayoutController {
   reflow() {
     // An empty autohidden grid could never be revealed, deleted, or dropped
     // into again, so autohide switches off as soon as the last node leaves.
-    if (!this.app.configuringGraph) for (const frame of this.frames) if (frame.autohide === true && !this.hasNodes(frame)) delete frame.autohide;
+    if (!this.app.configuringGraph) {
+      for (const frame of this.frames) {
+        if (this.hasNodes(frame)) this.pendingAutohide.delete(frame.id);
+        else if (frame.autohide === true && !this.pendingAutohide.has(frame.id)) delete frame.autohide;
+      }
+    }
     for (const { placements } of this.geometry()) for (const placement of placements) {
       const node = this.graph.getNodeById(placement.nodeId);
       if (node) this.adapter.apply(node, placement);
@@ -176,22 +183,36 @@ export class LayoutController {
   drop(nodeIds, point, target) {
     return this.edit(() => {
       const resolved = target === undefined ? this.target(point) : target;
-      const moving = new Set(nodeIds.map(String));
-      const others = resolved?.cell.nodes.filter(id => !moving.has(String(id))) ?? [];
-      const index = others.findIndex(id => {
-        const node = this.graph.getNodeById(id);
-        return node && point[1] < node.pos[1] + node.size[1] / 2;
-      });
       const metrics = this.metrics();
       for (const id of nodeIds) {
         const node = this.graph.getNodeById(id);
         if (node) {
-          const metric = this.adapter.measure(node);
+          const metric = { ...this.adapter.measure(node), width: node.size?.[0] ?? 0 };
           metrics.set(id, metric);
           metrics.set(node.id, metric);
         }
       }
-      dropNodes(this.frames, resolved?.frame.id ?? null, resolved?.cell.id ?? null, nodeIds, index === -1 ? others.length : index, metrics);
+      if (resolved?.kind === 'split-left' || resolved?.kind === 'split-right') {
+        insertColumnCell(this.frames, resolved.frame.id, resolved.cell.id, resolved.kind === 'split-left' ? 'left' : 'right', nodeIds, metrics);
+        return;
+      }
+      if (resolved?.kind === 'bottom-row') {
+        const frame = this.frames.find(f => f.id === resolved.frame.id);
+        if (!frame) return;
+        addBottomRow(frame);
+        const bottomCell = frame.root.children?.at(-1);
+        if (bottomCell) dropNodes(this.frames, frame.id, bottomCell.id, nodeIds, 0, metrics);
+        return;
+      }
+      const moving = new Set(nodeIds.map(String));
+      const others = resolved?.cell?.nodes.filter(id => !moving.has(String(id))) ?? [];
+      const index = Number.isInteger(resolved?.index)
+        ? resolved.index
+        : others.findIndex(id => {
+            const node = this.graph.getNodeById(id);
+            return node && point[1] < node.pos[1] + node.size[1] / 2;
+          });
+      dropNodes(this.frames, resolved?.frame.id ?? null, resolved?.cell?.id ?? null, nodeIds, index === -1 ? others.length : index, metrics);
     });
   }
   snapshot() {
@@ -208,12 +229,14 @@ export class LayoutController {
     if (moved.length) {
       // Group nodes by destination so multi-selection can cross cell boundaries.
       const destinations = new Map();
+      const movingIds = moved.map(n => n.id);
+      const layouts = this.geometry();
       for (const node of moved) {
         const rect = [node.pos[0], node.pos[1], node.size[0], node.size[1]];
-        const pick = pickCell(this.geometry(), rect);
-        const key = pick?.cell.id ?? 'outside';
-        // The node's own center anchors the insertion order; pickCell resolved
-        // the destination (null = detach).
+        const pick = resolveDropTarget(layouts, rect, { excludeIds: movingIds, titleHeight: this.adapter.classicTitle });
+        const key = pick ? `${pick.kind}:${pick.frame.id}:${pick.cell?.id ?? 'row'}:${pick.position ?? ''}` : 'outside';
+        // The node's own center anchors the insertion order; resolveDropTarget
+        // resolved the destination (null = detach).
         if (!destinations.has(key)) destinations.set(key, { target: pick, point: [rect[0] + rect[2] / 2, rect[1] + rect[3] / 2], nodes: [] });
         destinations.get(key).nodes.push(node);
       }

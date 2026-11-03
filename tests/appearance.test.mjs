@@ -143,9 +143,9 @@ test('headerOpacity validates on frames and leaf cells, transfers on split/grid,
   assert.equal(restored.root.children[0].headerOpacity, 1);
 });
 
-test('validateFrame keeps frame autohide true, drops invalid or cell values, and strips autohide from exported templates', () => {
+test('createFrame and importTemplate enable autohide by default while validateFrame preserves saved state and exportTemplate strips autohide', () => {
   const frame = engine.createFrame([0, 0]);
-  frame.autohide = true;
+  assert.equal(frame.autohide, true, 'createFrame sets autohide = true by default');
   frame.root.autohide = true;
   const validated = engine.validateFrame(frame);
   assert.equal(validated.autohide, true);
@@ -159,6 +159,8 @@ test('validateFrame keeps frame autohide true, drops invalid or cell values, and
 
   const template = engine.exportTemplate(frame);
   assert.equal('autohide' in template.frame, false, 'empty template does not ship autohide');
+  const imported = engine.importTemplate(template, [10, 20]);
+  assert.equal(imported.autohide, true, 'importTemplate sets autohide = true by default');
 });
 
 test('applyHeaderStyle and applyHeaderConfig handle headerOpacity for default and custom colors, cell overrides, and reset', () => {
@@ -244,8 +246,21 @@ test('autohide hides expanded frames even when nested nodes are selected and onl
     },
   };
 
+  assert.equal(frame.autohide, true, 'autohide is enabled by default on new frames');
+  assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'frame is autohidden by default');
+
+  fakeOverlay.toggleAutohide(frame.id);
+  assert.equal('autohide' in frame, false);
   assert.equal(fakeOverlay.isFrameAutohidden(frame), false, 'not autohidden when autohide is off');
 
+  // Toggling autohide with preserveSelection: true enables autohide without deselecting frame nodes
+  selected = [node10, node99];
+  fakeOverlay.toggleAutohide(frame.id, { preserveSelection: true });
+  assert.equal(frame.autohide, true);
+  assert.deepEqual(selected.map(n => n.id), [10, 99], 'preserveSelection keeps nested node selected');
+
+  // Toggle off and back on without preserveSelection deselects frame nodes
+  fakeOverlay.toggleAutohide(frame.id);
   fakeOverlay.toggleAutohide(frame.id);
   assert.equal(frame.autohide, true);
   assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'frame is autohidden');
@@ -348,6 +363,7 @@ test('render hides autohide toggle when collapsed or minimized and omits contain
     };
 
     const frame = engine.createFrame([0, 0]);
+    delete frame.autohide;
     engine.gridCell(frame, frame.root.id, 1, 2);
     const [first] = engine.leaves(frame.root);
     first.nodes = [1];
@@ -458,7 +474,7 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
   fakeOverlay.app = app;
   fakeOverlay.safe = fn => fn();
 
-  // Expanded frame with includeToggles: true includes both ••• items, per-column fill, cell bypass toggle, and all 4 header toggles
+  // Expanded frame with includeToggles: true includes ••• items, per-column fill, cell bypass, lock, minimize, and collapse, and omits autohide (now in selection toolbox)
   const expandedLabels = fakeOverlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
   assert.deepEqual(expandedLabels, [
     'Change Appearance…',
@@ -468,12 +484,13 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
     'Fill cell height (this column)',
     'Bypass cell',
     'Lock frame',
-    'Autohide grid',
     'Minimize grid',
     'Collapse grid',
     'Export empty template',
     'Remove grid (keep nodes)',
   ]);
+  assert.equal(expandedLabels.includes('Autohide grid'), false);
+  assert.equal(expandedLabels.includes('Disable autohide'), false);
 
   // Collapsed frame omits Autohide toggle and flips Collapse -> Expand
   frame.collapsed = true;
@@ -552,7 +569,7 @@ test('autohide reveals the grid container when an external or ghost node is drag
   assert.equal(fakeOverlay.isFrameAutohidden(frame), true, 'hidden when ghost node is outside the grid container');
 });
 
-test('an empty grid forces autohide off and keeps the toggle disabled until a node is added', async () => {
+test('new grids start with autohide on, empty grids stay visible until populated, and losing the last node clears autohide', async () => {
   const { LayoutController } = await import('../web/core/controller.js');
   const n1 = { id: 1, pos: [0, 0], size: [200, 100], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
   const graph = {
@@ -563,27 +580,32 @@ test('an empty grid forces autohide off and keeps the toggle disabled until a no
   };
   const app = { configuringGraph: false, graph, canvas: { graph, selected_nodes: {}, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
   const controller = new LayoutController(app);
-  const frame = controller.createFromNodes([1], 'columns');
-
   const overlay = Object.create(LayoutOverlay.prototype);
   Object.assign(overlay, { controller, app, safe: fn => fn(), editing: null, drag: null, headerPreview: null, hover: null, nativeDrag: null, nativeNode: null, ghostNodeId: null });
-  const labels = () => overlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
 
-  overlay.toggleAutohide(frame.id);
-  assert.equal(frame.autohide, true);
+  // 1. An empty grid created via controller.create starts with autohide = true, stays visible while empty, and hides once populated.
+  const emptyCreated = controller.create([0, 0]);
+  assert.equal(emptyCreated.autohide, true, 'empty created grid retains default autohide = true before population');
+  assert.equal(overlay.isFrameAutohidden(emptyCreated), false, 'empty grid remains visible before any node is dropped in');
+  controller.drop([1], null, { frame: emptyCreated, cell: engine.leaves(emptyCreated.root)[0] });
+  assert.equal(emptyCreated.autohide, true, 'autohide remains true once the first node drops in');
+  assert.equal(overlay.isFrameAutohidden(emptyCreated), true, 'grid autohides once populated');
+  controller.remove(emptyCreated.id);
+
+  // 2. A grid created from selected nodes starts with autohide = true immediately.
+  const frame = controller.createFromNodes([1], 'columns');
+  assert.equal(frame.autohide, true, 'createFromNodes starts with autohide = true');
   assert.equal(overlay.isFrameAutohidden(frame), true);
 
-  // Dragging the last node out of the grid switches autohide off.
+  // Dragging the last node out of a populated grid switches autohide off.
   controller.drop([1], [5000, 5000], null);
   assert.equal(engine.leaves(frame.root).some(cell => cell.nodes.length), false);
-  assert.equal('autohide' in frame, false, 'autohide is cleared once the grid is empty');
+  assert.equal('autohide' in frame, false, 'autohide is cleared once the grid becomes empty');
   assert.equal(overlay.isFrameAutohidden(frame), false, 'an empty grid is always visible');
 
   // While empty, autohide cannot be switched back on.
   overlay.toggleAutohide(frame.id);
   assert.equal('autohide' in frame, false, 'toggle refuses to enable autohide on an empty grid');
-  assert.equal(labels().includes('Autohide grid'), false, 'menu omits autohide while the grid is empty');
-  assert.equal(labels().includes('Remove grid (keep nodes)'), true);
 
   // A stale autohide flag saved in the workflow cannot hide an empty grid either.
   frame.autohide = true;
@@ -593,7 +615,6 @@ test('an empty grid forces autohide off and keeps the toggle disabled until a no
   // Dropping a node back in makes autohide available again.
   const cell = engine.leaves(frame.root)[0];
   controller.drop([1], null, { frame, cell });
-  assert.equal(labels().includes('Autohide grid'), true);
   overlay.toggleAutohide(frame.id);
   assert.equal(frame.autohide, true);
 
@@ -686,6 +707,7 @@ test('syncSelectionMenuDom colors top toolbox icon purple when in grid, adds VF 
         if (sel === '.selection-toolbox [class~="icon-[lucide--panels-top-left]"]') {
           return this.classList.contains('icon-[lucide--panels-top-left]');
         }
+        if (sel === '.clt-toolbox-autohide') return this.classList.contains('clt-toolbox-autohide');
         if (sel === '.p-contextmenu-root-list') return this.classList.contains('p-contextmenu-root-list');
         if (sel === '.p-contextmenu-item') return this.classList.contains('p-contextmenu-item');
         if (sel === 'a' || sel === '.p-contextmenu-item-link') return this.tagName === 'A' || this.classList.contains('p-contextmenu-item-link');
@@ -777,19 +799,65 @@ test('syncSelectionMenuDom colors top toolbox icon purple when in grid, adds VF 
   assert.equal(createItems.length, 1, 'does not duplicate existing menu item from getNodeMenuItems');
   assert.ok(primeVueLink.querySelector('.vf-brand-link'), 'prepends VF logo badge to existing menu item');
 
-  // 3. Selected node IS contained in a grid container (inGrid = true):
+  // 3. Selected node IS contained in an expanded grid container (inGrid = true, canAutohide = true):
   //    - top toolbox icon turns purple (#8b5cf6)
+  //    - eye toggle button (.clt-toolbox-autohide) appears next to Grid button
+  //    - when autohide = true (grid hidden): shows icon-[lucide--eye-off] with default color and aria-label="Disable autohide"
+  //    - when autohide = false (grid visible): shows icon-[lucide--eye] with purple color and aria-label="Autohide grid"
   //    - "Create grid layout from selected nodes" menu item is hidden/removed from the hamburger menu
+  let toggledCount = 0;
   pending = syncSelectionMenuDom(root, {
     doc: fakeDoc,
     inGrid: true,
+    canAutohide: true,
+    autohide: true,
     selectionCount: 1,
     menuPending: true,
     onActivate() {},
+    onToggleAutohide() { toggledCount++; },
   });
   assert.equal(pending, false);
   assert.equal(icon.style.color, LOGO_PURPLE, 'top toolbox icon turns logo purple when selected node is in grid');
   assert.equal(button.classList.contains('clt-in-grid'), true);
+  let eyeBtn = toolbox.querySelector('.clt-toolbox-autohide');
+  assert.ok(eyeBtn, 'renders autohide eye button next to Grid button when in expanded grid');
+  assert.equal(eyeBtn.getAttribute('aria-label'), 'Disable autohide');
+  assert.equal(eyeBtn.getAttribute('aria-pressed'), 'true');
+  assert.equal(eyeBtn.children[0].classList.contains('icon-[lucide--eye-off]'), true);
+  assert.equal(eyeBtn.children[0].style.color, '');
+  eyeBtn.onclick({});
+  assert.equal(toggledCount, 1, 'clicking eye button invokes onToggleAutohide');
+
+  // Flip to autohide = false (grid visible) -> purple eye icon
+  syncSelectionMenuDom(root, {
+    doc: fakeDoc,
+    inGrid: true,
+    canAutohide: true,
+    autohide: false,
+    selectionCount: 1,
+    menuPending: false,
+    onActivate() {},
+    onToggleAutohide() { toggledCount++; },
+  });
+  eyeBtn = toolbox.querySelector('.clt-toolbox-autohide');
+  assert.ok(eyeBtn);
+  assert.equal(eyeBtn.getAttribute('aria-label'), 'Autohide grid');
+  assert.equal(eyeBtn.getAttribute('aria-pressed'), 'false');
+  assert.equal(eyeBtn.children[0].classList.contains('icon-[lucide--eye]'), true);
+  assert.equal(eyeBtn.children[0].style.color, LOGO_PURPLE);
+
+  // When collapsed/minimized (canAutohide = false), eye button is removed
+  syncSelectionMenuDom(root, {
+    doc: fakeDoc,
+    inGrid: true,
+    canAutohide: false,
+    autohide: false,
+    selectionCount: 1,
+    menuPending: false,
+    onActivate() {},
+  });
+  assert.equal(toolbox.querySelector('.clt-toolbox-autohide'), null, 'removes eye button when grid is collapsed or minimized');
+
   createItems = list.querySelectorAll('.p-contextmenu-item').filter(
     el => el.getAttribute('aria-label') === 'Create grid layout from selected nodes' || el.fullText.trim() === 'Create grid layout from selected nodes'
   );
@@ -868,4 +936,118 @@ test('toggleCellBypass switches node.mode between 4 (bypass) and 0 (active)', as
   assert.equal(n1.mode, 0, 'unbypassing cell restores node to active mode 0');
   assert.equal(overlay.isCellBypassed(cell1), false);
 });
+
+test('LayoutOverlay renders .clt-ghost-cell and .clt-ghost-node previews during directional node drag', async () => {
+  const { LayoutController } = await import('../web/core/controller.js');
+  const prevDoc = globalThis.document;
+  const makeElement = tag => {
+    const classes = new Set();
+    const attrs = new Map();
+    const node = {
+      tagName: tag.toUpperCase(),
+      className: '',
+      dataset: {},
+      style: {},
+      children: [],
+      classList: {
+        add(...names) { names.forEach(n => classes.add(n)); },
+        remove(...names) { names.forEach(n => classes.delete(n)); },
+        contains(n) { return classes.has(n) || node.className.split(/\s+/).includes(n); },
+        toggle(n, force) {
+          const on = force === undefined ? !classes.has(n) : Boolean(force);
+          if (on) classes.add(n); else classes.delete(n);
+          return on;
+        },
+      },
+      setAttribute(k, v) { attrs.set(k, String(v)); },
+      getAttribute(k) { return attrs.get(k) ?? null; },
+      addEventListener() {},
+      append(...items) {
+        for (const item of items) {
+          if (item?.tagName === 'FRAGMENT') node.children.push(...item.children);
+          else if (item) node.children.push(item);
+        }
+      },
+      replaceChildren(...items) {
+        node.children = [];
+        node.append(...items);
+      },
+    };
+    return node;
+  };
+  try {
+    globalThis.document = {
+      createElement(tag) { return makeElement(tag); },
+      createDocumentFragment() { return makeElement('fragment'); },
+      querySelectorAll() { return []; },
+    };
+    const n1 = { id: 1, pos: [120, 180], size: [200, 100], mode: 0, computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+    const n2 = { id: 2, pos: [600, 180], size: [180, 80], mode: 0, computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+    const graph = {
+      extra: {},
+      _nodes: [n1, n2],
+      getNodeById: id => [n1, n2].find(n => String(n.id) === String(id)) ?? null,
+      setDirtyCanvas() {},
+    };
+    const app = { canvas: { graph, selected_nodes: {}, setDirty() {} }, graph, configuringGraph: false };
+    const controller = new LayoutController(app, { defaultColumns: 1 });
+    const frame = controller.createFromNodes([1], 'columns');
+    delete frame.autohide;
+
+    const overlay = Object.create(LayoutOverlay.prototype);
+    const plane = makeElement('div');
+    Object.assign(overlay, {
+      controller,
+      app,
+      plane,
+      hidden: { ids: new Set(), frames: new Map() },
+      editing: null,
+      drag: null,
+      headerPreview: null,
+      hover: null,
+      dropPreview: null,
+      nativeNode: n2,
+      nativeDrag: {
+        before: new Map([[1, { pos: [...n1.pos], size: [...n1.size] }], [2, { pos: [900, 900], size: [...n2.size] }]]),
+        graph,
+        pointerId: 1,
+      },
+      isGhostActive: () => false,
+    });
+
+    const layouts = controller.geometry();
+    const [cx, , cw] = layouts[0].cells[0].rect;
+    const p1 = layouts[0].placements[0];
+
+    // Move n2 to left edge of populated cell -> ghost cell preview
+    n2.pos = [cx - 60, p1.y];
+    overlay.dropPreview = overlay.computeDropPreview?.(layouts) ?? null;
+    overlay.render(layouts);
+    let previewEl = plane.children.find(c => c.classList.contains('clt-drop-preview'));
+    assert.ok(previewEl, 'drop preview element is rendered in plane');
+    assert.equal(previewEl.classList.contains('clt-ghost-cell'), true, 'left edge renders a ghost cell');
+    assert.equal(previewEl.dataset.dropKind, 'split-left');
+
+    // Move n2 close to bottom of n1 -> ghost node preview
+    n2.pos = [cx + cw / 2 - n2.size[0] / 2, p1.y + p1.height - 25];
+    overlay.dropPreview = overlay.computeDropPreview?.(layouts) ?? null;
+    overlay.render(layouts);
+    previewEl = plane.children.find(c => c.classList.contains('clt-drop-preview'));
+    assert.ok(previewEl);
+    assert.equal(previewEl.classList.contains('clt-ghost-node'), true, 'bottom level 1 renders a ghost node');
+    assert.equal(previewEl.dataset.dropKind, 'stack');
+
+    // Move n2 further down at bottom of grid -> spanned bottom-row ghost cell preview
+    n2.pos = [cx + cw / 2 - n2.size[0] / 2, frame.pos[1] + frame.size[1] - 10];
+    overlay.dropPreview = overlay.computeDropPreview?.(layouts) ?? null;
+    overlay.render(layouts);
+    previewEl = plane.children.find(c => c.classList.contains('clt-drop-preview'));
+    assert.ok(previewEl);
+    assert.equal(previewEl.classList.contains('clt-ghost-cell'), true, 'bottom level 2 renders a ghost cell');
+    assert.equal(previewEl.dataset.dropKind, 'bottom-row');
+  } finally {
+    globalThis.document = prevDoc;
+  }
+});
+
 

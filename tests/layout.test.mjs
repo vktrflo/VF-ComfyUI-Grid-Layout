@@ -308,3 +308,89 @@ test('dropNodes with metrics preserves container and sibling column widths unles
   close(frame.size[0], 744);
 });
 
+test('resolveDropTarget distinguishes left/right ghost cells, two-level bottom zones, and top/empty ghost node slots', () => {
+  assert.equal(typeof engine.resolveDropTarget, 'function', 'resolveDropTarget must be exported');
+  const frame = engine.createFrame([100, 100]);
+  engine.gridCell(frame, frame.root.id, 1, 2);
+  const [col0, col1] = frame.root.children;
+  col0.nodes = [1];
+  col1.nodes = [];
+  const localMetrics = new Map([[1, { minWidth: 200, width: 200, height: 100, titleHeight: 30 }]]);
+  const layout = { frame, ...engine.layoutFrame(frame, localMetrics) };
+  const [cx0, cy0, cw0, ch0] = layout.cells[0].rect;
+  const [cx1, cy1, cw1] = layout.cells[1].rect;
+  const n1Placement = layout.placements[0];
+
+  // 1. Left edge of populated cell -> split-left ghost cell
+  const leftTarget = engine.resolveDropTarget([layout], [cx0 - 60, n1Placement.y, 160, 80]);
+  assert.equal(leftTarget?.kind, 'split-left');
+  assert.equal(leftTarget?.ghostType, 'cell');
+  assert.equal(leftTarget?.cell.id, col0.id);
+
+  // 2. Right edge of populated cell -> split-right ghost cell
+  const rightTarget = engine.resolveDropTarget([layout], [cx0 + cw0 - 100, n1Placement.y, 160, 80]);
+  assert.equal(rightTarget?.kind, 'split-right');
+  assert.equal(rightTarget?.ghostType, 'cell');
+  assert.equal(rightTarget?.cell.id, col0.id);
+
+  // 3. Top half of populated node -> stack before (ghost node)
+  const topTarget = engine.resolveDropTarget([layout], [cx0 + cw0 / 2 - 80, n1Placement.y - 20, 160, 60]);
+  assert.equal(topTarget?.kind, 'stack');
+  assert.equal(topTarget?.position, 'before');
+  assert.equal(topTarget?.ghostType, 'node');
+  assert.equal(topTarget?.index, 0);
+
+  // 4. Bottom Level 1 (close to bottom of populated node) -> stack after (ghost node below node 1)
+  const bottomLevel1 = engine.resolveDropTarget([layout], [cx0 + cw0 / 2 - 80, n1Placement.y + n1Placement.height - 30, 160, 80]);
+  assert.equal(bottomLevel1?.kind, 'stack');
+  assert.equal(bottomLevel1?.position, 'after');
+  assert.equal(bottomLevel1?.ghostType, 'node');
+  assert.equal(bottomLevel1?.index, 1);
+  assert.ok(bottomLevel1.previewRect[1] >= n1Placement.y + n1Placement.height, 'ghost node preview sits below node 1');
+
+  // 5. Bottom Level 2 (dragged further down at bottom of grid) -> horizontally spanned ghost cell at bottom of grid
+  const frameBottom = frame.pos[1] + frame.size[1];
+  const bottomLevel2 = engine.resolveDropTarget([layout], [cx0 + cw0 / 2 - 80, frameBottom - 10, 160, 80]);
+  assert.equal(bottomLevel2?.kind, 'bottom-row');
+  assert.equal(bottomLevel2?.ghostType, 'cell');
+  assert.equal(bottomLevel2?.previewRect[0], frame.pos[0] + engine.PAD);
+  assert.equal(bottomLevel2?.previewRect[2], frame.size[0] - engine.PAD * 2, 'ghost cell spans full grid inner width');
+
+  // 6. Empty cell -> only ghost node preview, never split-left or split-right even at edges
+  const emptyLeftEdge = engine.resolveDropTarget([layout], [cx1 - 60, cy1 + 40, 160, 80]);
+  assert.equal(emptyLeftEdge?.kind, 'cell');
+  assert.equal(emptyLeftEdge?.ghostType, 'node');
+  assert.equal(emptyLeftEdge?.cell.id, col1.id);
+});
+
+test('insertColumnCell inserts a new left or right column sized to the dropped node while preserving existing column widths', () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
+  assert.equal(typeof engine.insertColumnCell, 'function', 'insertColumnCell must be exported');
+  const frame = engine.createFrame([100, 100]);
+  frame.size[0] = 684;
+  engine.gridCell(frame, frame.root.id, 1, 2);
+  frame.root.ratios = [224 / 648, 424 / 648];
+  const [col0, col1] = frame.root.children;
+  col0.nodes = [1];
+  col1.nodes = [2];
+  const localMetrics = new Map([
+    [1, { minWidth: 180, width: 200, height: 80, titleHeight: 30 }],
+    [2, { minWidth: 200, width: 400, height: 80, titleHeight: 30 }],
+    [3, { minWidth: 200, width: 300, height: 80, titleHeight: 30 }],
+  ]);
+  const before = engine.layoutFrame(frame, localMetrics);
+  const col0XBefore = before.cells[0].rect[0];
+
+  // Insert node 3 (width 300 -> cell width 324) to the left of leftmost col0
+  const created = engine.insertColumnCell([frame], frame.id, col0.id, 'left', [3], localMetrics);
+  assert.ok(created);
+  const after = engine.layoutFrame(frame, localMetrics);
+  assert.equal(after.cells.length, 3);
+  assert.deepEqual(after.cells.map(c => c.cell.nodes), [[3], [1], [2]]);
+  close(after.cells[0].rect[2], 324);
+  close(after.cells[1].rect[2], 224);
+  close(after.cells[2].rect[2], 424);
+  close(after.cells[1].rect[0], col0XBefore);
+});
+
+

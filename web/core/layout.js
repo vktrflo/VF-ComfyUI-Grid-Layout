@@ -81,6 +81,133 @@ export function targetCellForNode(layouts, node, options = {}) {
   return null;
 }
 
+export function resolveDropTarget(layouts, node, options = {}) {
+  if (!node || !layouts) return null;
+  const rect = Array.isArray(node) ? node : (node.pos && node.size ? [node.pos[0], node.pos[1], node.size[0], node.size[1]] : null);
+  if (!rect || rect.some(n => typeof n !== 'number' || !Number.isFinite(n))) return null;
+  const [x, y, width, height] = rect;
+  if (width <= 0 || height <= 0) return null;
+
+  const moving = new Set((options?.excludeIds ?? []).map(String));
+  if (!Array.isArray(node) && node?.id != null) moving.add(String(node.id));
+  const titleHeight = options?.titleHeight ?? 30;
+  const ghostHeight = Math.max(64, height + titleHeight);
+  const center = [x + width / 2, y + height / 2];
+  const pointer = options?.pointer ?? null;
+
+  for (const layout of [...layouts].reverse()) {
+    const { frame, cells = [], placements = [] } = layout;
+    if (!frame || frame.lock === true || frame.minimized === true || frame.collapsed === true || !cells.length) continue;
+
+    const frameHasOtherNodes = cells.some(({ cell }) => cell.nodes.some(id => !moving.has(String(id))));
+    const [fx, fy] = frame.pos;
+    const [fw, fh] = frame.size;
+    const frameBottom = fy + fh;
+
+    if (
+      frameHasOtherNodes &&
+      center[0] >= fx &&
+      center[0] <= fx + fw &&
+      center[1] >= frameBottom + 8 &&
+      center[1] <= frameBottom + Math.max(120, height)
+    ) {
+      return {
+        kind: 'bottom-row',
+        ghostType: 'cell',
+        frame,
+        cell: null,
+        previewRect: [fx + PAD, frameBottom, fw - PAD * 2, ghostHeight],
+      };
+    }
+
+    if (center[1] > frameBottom + Math.max(120, height)) continue;
+
+    let pick = pickCell([layout], rect);
+    if (!pick && pointer) {
+      const hit = cells.find(({ rect: cellRect }) => contains(cellRect, pointer));
+      if (hit) pick = { frame, ...hit };
+    }
+    if (!pick) continue;
+
+    const { cell, rect: cellRect } = pick;
+    const [cx, cy, cw, ch] = cellRect;
+    const others = cell.nodes.filter(id => !moving.has(String(id)));
+
+    if (!others.length) {
+      const previewY = cy + CELL_TITLE + PAD;
+      const previewH = Math.min(ghostHeight, Math.max(48, ch - CELL_TITLE - PAD * 2));
+      return {
+        kind: 'cell',
+        ghostType: 'node',
+        frame,
+        cell,
+        rect: cellRect,
+        index: 0,
+        previewRect: [cx + PAD, previewY, cw - PAD * 2, previewH],
+      };
+    }
+
+    const edgeThreshold = Math.min(72, Math.max(36, cw * 0.22));
+    const splitPreviewWidth = Math.min(Math.round(cw * 0.45), Math.max(72, Math.round(edgeThreshold * 1.4)));
+    if (center[0] <= cx + edgeThreshold) {
+      return {
+        kind: 'split-left',
+        ghostType: 'cell',
+        frame,
+        cell,
+        rect: cellRect,
+        previewRect: [cx, cy, splitPreviewWidth, ch],
+      };
+    }
+    if (center[0] >= cx + cw - edgeThreshold) {
+      return {
+        kind: 'split-right',
+        ghostType: 'cell',
+        frame,
+        cell,
+        rect: cellRect,
+        previewRect: [cx + cw - splitPreviewWidth, cy, splitPreviewWidth, ch],
+      };
+    }
+
+    const nodePlacements = others
+      .map(id => placements.find(p => String(p.nodeId) === String(id)))
+      .filter(Boolean);
+    const firstBelowIdx = nodePlacements.findIndex(p => center[1] < p.y + p.height / 2);
+    const insertIndex = firstBelowIdx === -1 ? others.length : firstBelowIdx;
+
+    if (insertIndex === 0) {
+      const previewY = cy + CELL_TITLE + PAD;
+      const previewH = Math.min(ghostHeight, Math.max(48, ch - CELL_TITLE - PAD * 2));
+      return {
+        kind: 'stack',
+        position: 'before',
+        ghostType: 'node',
+        frame,
+        cell,
+        rect: cellRect,
+        index: 0,
+        previewRect: [cx + PAD, previewY, cw - PAD * 2, previewH],
+      };
+    }
+
+    const prevPlacement = nodePlacements[insertIndex - 1] ?? nodePlacements.at(-1);
+    const slotY = prevPlacement ? prevPlacement.y + prevPlacement.height + GAP : cy + CELL_TITLE + PAD;
+    const previewH = Math.max(48, Math.min(ghostHeight, 120));
+    return {
+      kind: 'stack',
+      position: 'after',
+      ghostType: 'node',
+      frame,
+      cell,
+      rect: cellRect,
+      index: insertIndex,
+      previewRect: [cx + PAD, slotY, cw - PAD * 2, previewH],
+    };
+  }
+  return null;
+}
+
 export function normalizeColor(value) {
   if (typeof value !== 'string') return undefined;
   const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
@@ -146,7 +273,7 @@ export function normalizeContainerMode(value) {
   return ['color', 'image'].includes(lower) ? lower : undefined;
 }
 
-export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Grid', pos: [...pos], size: [620, 500], root: createCell() });
+export const createFrame = (pos = [0, 0]) => ({ id: id(), label: 'Grid', pos: [...pos], size: [620, 500], autohide: true, root: createCell() });
 export const leaves = cell => cell.children ? cell.children.flatMap(leaves) : [cell];
 export function findCell(cell, cellId) {
   if (cell.id === cellId) return cell;
@@ -257,6 +384,100 @@ export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity, me
     cell.nodes.splice(Math.min(Math.max(0, index), cell.nodes.length), 0, ...ids);
     if (metrics) preserveSplitWidths(target, cellId, metrics, initialInnerWidth);
   }
+}
+
+export function insertColumnCell(frames, frameId, cellId, side, nodeIds, metrics) {
+  if (!['left', 'right'].includes(side)) throw new Error('Choose left or right column insertion.');
+  const target = frames.find(f => f.id === frameId);
+  const cell = target && findCell(target.root, cellId);
+  if (!target || !cell || cell.children) throw new Error('Drop into an unsplit cell.');
+  if (leaves(target.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
+
+  const beforeCells = metrics ? layoutFrame(target, metrics).cells : [];
+  const beforeRect = beforeCells.find(c => c.cell.id === cellId)?.rect;
+  const isLeftmost = beforeRect ? Math.abs(beforeRect[0] - (target.pos[0] + PAD)) < 1 : side === 'left';
+  const initialInnerWidth = metrics ? Math.max(contentMinimumWidth(target.root, metrics), target.size[0] - PAD * 2) : target.size[0] - PAD * 2;
+
+  const ids = [...new Set(nodeIds)];
+  const moving = new Set(ids.map(String));
+  for (const frame of frames) for (const leaf of leaves(frame.root)) {
+    leaf.nodes = leaf.nodes.filter(n => !moving.has(String(n)));
+  }
+
+  const nodeWidth = Math.max(160, ...ids.map(id => {
+    const m = metrics?.get(id);
+    return Math.max(m?.minWidth ?? 160, m?.width ?? 0);
+  }));
+  const newCellWidth = nodeWidth + PAD * 2;
+  const newCell = createCell('');
+  newCell.nodes = ids;
+  if (metrics) {
+    for (const id of ids) {
+      const m = metrics.get(id);
+      if (m && m.width > m.minWidth) metrics.set(id, { ...m, minWidth: m.width });
+    }
+  }
+
+  function insert(node, currentWidth) {
+    if (node.children && node.axis === 'x' && node.children.some(c => c.id === cellId) && node.children.length < 16) {
+      const gaps = GAP * (node.children.length - 1);
+      const available = Math.max(0, currentWidth - gaps);
+      const weights = ratios(node);
+      const widths = node.children.map((child, i) => Math.max(available * weights[i], metrics ? contentMinimumWidth(child, metrics) : 160 + PAD * 2));
+      const idx = node.children.findIndex(c => c.id === cellId);
+      const insertIdx = side === 'left' ? idx : idx + 1;
+      node.children.splice(insertIdx, 0, newCell);
+      widths.splice(insertIdx, 0, newCellWidth);
+      const total = widths.reduce((sum, w) => sum + w, 0);
+      node.ratios = widths.map(w => w / total);
+      return total + GAP * (node.children.length - 1);
+    }
+    if (node.id === cellId) {
+      if (cellDepth(target.root, cellId) >= 16) throw new Error('Layouts support up to 16 nested split levels.');
+      const existingWidth = Math.max(currentWidth, metrics ? contentMinimumWidth(node, metrics) : 160 + PAD * 2);
+      const existingCopy = createCell(node.label);
+      existingCopy.nodes = node.nodes;
+      delete node.nodes;
+      carryHeaderConfig(existingCopy, node);
+      const children = side === 'left' ? [newCell, existingCopy] : [existingCopy, newCell];
+      const widths = side === 'left' ? [newCellWidth, existingWidth] : [existingWidth, newCellWidth];
+      const total = widths[0] + widths[1];
+      Object.assign(node, { axis: 'x', ratios: [widths[0] / total, widths[1] / total], children });
+      return total + GAP;
+    }
+    if (!node.children || !containsCell(node, cellId)) {
+      return Math.max(currentWidth, metrics ? contentMinimumWidth(node, metrics) : 160 + PAD * 2);
+    }
+    if (node.axis === 'y') {
+      let nextWidth = currentWidth;
+      for (const child of node.children) {
+        const w = containsCell(child, cellId)
+          ? insert(child, currentWidth)
+          : Math.max(currentWidth, metrics ? contentMinimumWidth(child, metrics) : 160 + PAD * 2);
+        nextWidth = Math.max(nextWidth, w);
+      }
+      return nextWidth;
+    }
+    const gaps = GAP * (node.children.length - 1);
+    const available = Math.max(0, currentWidth - gaps);
+    const weights = ratios(node);
+    const widths = node.children.map((child, i) => (
+      containsCell(child, cellId)
+        ? insert(child, available * weights[i])
+        : Math.max(available * weights[i], metrics ? contentMinimumWidth(child, metrics) : 160 + PAD * 2)
+    ));
+    const total = widths.reduce((sum, w) => sum + w, 0);
+    if (total > 0) node.ratios = widths.map(w => w / total);
+    return total + gaps;
+  }
+
+  const prevWidth = target.size[0];
+  const nextInnerWidth = insert(target.root, initialInnerWidth);
+  target.size[0] = Math.max(target.size[0], nextInnerWidth + PAD * 2);
+  if (side === 'left' && isLeftmost) {
+    target.pos[0] -= (target.size[0] - prevWidth);
+  }
+  return newCell;
 }
 
 function ratios(cell) {
@@ -661,6 +882,7 @@ export function importTemplate(value, pos) {
   if ((value?.kind !== KIND && value?.kind !== LEGACY_KIND) || value.version !== VERSION) throw new Error('Choose a version 1 ComfyUI grid template JSON file.');
   const frame = validateFrame(value.frame, true, true);
   frame.pos = [...pos];
+  frame.autohide = true;
   layoutFrame(frame, new Map());
   validateFrame(frame);
   return frame;

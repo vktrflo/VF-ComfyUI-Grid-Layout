@@ -246,3 +246,47 @@ test('dropping a node maintains container width unless the target column must gr
   close(frame.size[0], initialFrameWidth + 60);
 });
 
+test('finishNativeDrag supports directional split-left, split-right, stack below, and bottom-row drops', () => {
+  const { app, graph } = host();
+  const n1 = { id: 1, pos: [100, 100], size: [200, 100], computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+  const n2 = { id: 2, pos: [500, 100], size: [200, 100], computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+  const n3 = { id: 3, pos: [900, 100], size: [240, 100], computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+  const n4 = { id: 4, pos: [900, 300], size: [200, 100], computeSize: () => [180, 80], setSize(s) { this.size = s; } };
+  graph._nodes = [n1, n2, n3, n4];
+  graph.getNodeById = id => graph._nodes.find(n => String(n.id) === String(id)) ?? null;
+
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1], 'columns');
+  let geom = controller.geometry()[0];
+  let [cx, cy, cw] = geom.cells[0].rect;
+
+  // 1. Drag n2 to right edge of populated cell -> inserts a new column on the right
+  let before = controller.snapshot();
+  n2.pos = [cx + cw - 110, geom.placements[0].y];
+  controller.finishNativeDrag(before);
+  geom = controller.geometry()[0];
+  assert.equal(geom.cells.length, 2);
+  assert.deepEqual(geom.cells.map(c => c.cell.nodes), [[1], [2]]);
+
+  // 2. Drag n3 close to the bottom of n1 (Bottom Level 1) -> stacks below n1 in column 0
+  before = controller.snapshot();
+  [cx, cy, cw] = geom.cells[0].rect;
+  const p1 = geom.placements.find(p => p.nodeId === 1);
+  n3.pos = [cx + cw / 2 - n3.size[0] / 2, p1.y + p1.height - 30];
+  controller.finishNativeDrag(before);
+  geom = controller.geometry()[0];
+  assert.equal(geom.cells.length, 2);
+  assert.deepEqual(geom.cells.map(c => c.cell.nodes), [[1, 3], [2]]);
+
+  // 3. Drag n4 further down at the bottom of the grid (Bottom Level 2) -> creates a spanned bottom row
+  before = controller.snapshot();
+  const frameBottom = frame.pos[1] + frame.size[1];
+  n4.pos = [frame.pos[0] + frame.size[0] / 2 - n4.size[0] / 2, frameBottom - 20];
+  controller.finishNativeDrag(before);
+  geom = controller.geometry()[0];
+  assert.equal(geom.cells.length, 3);
+  assert.deepEqual(geom.cells.map(c => c.cell.nodes), [[1, 3], [2], [4]]);
+  assert.equal(geom.cells[2].rect[2], frame.size[0] - 24, 'new bottom row spans full grid inner width');
+});
+
+

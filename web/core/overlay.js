@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, contains, KEY, LEGACY_KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, resolveDropTarget, contains, KEY, LEGACY_KEY } from './layout.js';
 
 import { LinkEffects } from './link-effects.js';
 
@@ -27,6 +27,9 @@ const STYLE = `
 .clt-custom-bg .clt-button:hover,.clt-custom-bg .clt-button:focus-visible{background:rgba(128,128,128,.3);border-color:transparent}
 .clt-hint{position:absolute;top:48px;left:12px;right:12px;color:#8ea1a9;font-size:12px;text-align:center;pointer-events:none}
 .clt-cell.clt-target{border:2px solid #70d8be;box-shadow:inset 0 0 0 2px #70d8be33}
+.clt-drop-preview{position:absolute;box-sizing:border-box;pointer-events:none;z-index:15;border-radius:5px;transition:left .08s ease,top .08s ease,width .08s ease,height .08s ease}
+.clt-ghost-cell{border:2px dashed #70d8be;background:rgba(112,216,190,.12);box-shadow:inset 0 25px 0 rgba(112,216,190,.18),0 0 0 1px rgba(112,216,190,.25)}
+.clt-ghost-node{border:2px dashed #8b5cf6;background:rgba(139,92,246,.14);box-shadow:inset 0 0 0 1px rgba(139,92,246,.25)}
 .clt-divider{position:absolute;pointer-events:auto;touch-action:none}
 .clt-divider::after{content:'';position:absolute;background:#7197a5;opacity:.5;border-radius:2px}
 .clt-divider-x{cursor:col-resize}.clt-divider-x::after{width:2px;height:32px;left:5px;top:calc(50% - 16px)}
@@ -84,7 +87,7 @@ const STYLE = `
 .clt-appearance-dialog footer button{background:#2a2a36;border:1px solid #444;color:#eee;border-radius:4px;font-size:12px;padding:6px 12px}
 .clt-appearance-dialog footer .clt-primary{background:#0066cc;border-color:#0088ff;color:#fff}
 .clt-appearance-dialog button:focus-visible,.clt-appearance-dialog input:focus-visible,.clt-appearance-dialog select:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
-.selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"]{color:#8b5cf6 !important}
+.selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"],.selection-toolbox button.clt-toolbox-autohide.clt-autohide-off [class~="icon-[lucide--eye]"]{color:#8b5cf6 !important}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -349,8 +352,6 @@ export const MENU_ICONS = {
   'Unbypass cell': '▶️',
   'Lock frame': '🔒',
   'Unlock frame': '🔓',
-  'Autohide grid': '🙈',
-  'Disable autohide': '👁️',
   'Minimize grid': '➖',
   'Restore grid': '◻️',
   'Collapse grid': '🔼',
@@ -397,7 +398,7 @@ function isSelectionMenuItem(el) {
   );
 }
 
-export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid = false, selectionCount = 0, menuPending = false, onActivate } = {}) {
+export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid = false, canAutohide = false, autohide = false, selectionCount = 0, menuPending = false, onActivate, onToggleAutohide } = {}) {
   if (!root || !doc) return menuPending;
   const icon = root.querySelector('.selection-toolbox [class~="icon-[lucide--panels-top-left]"]');
   const toolbarButton = icon?.closest?.('button');
@@ -409,8 +410,54 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
       label.textContent = 'Grid';
       toolbarButton.append(label);
     }
-    toolbarButton.classList.toggle('clt-in-grid', Boolean(inGrid));
-    icon.style.color = inGrid ? LOGO_PURPLE : '';
+    if (toolbarButton.classList.contains('clt-in-grid') !== Boolean(inGrid)) {
+      toolbarButton.classList.toggle('clt-in-grid', Boolean(inGrid));
+    }
+    const desiredGridColor = inGrid ? LOGO_PURPLE : '';
+    if (icon.style.color !== desiredGridColor) icon.style.color = desiredGridColor;
+    if (inGrid && canAutohide) {
+      let eyeBtn = root.querySelector('.clt-toolbox-autohide');
+      if (!eyeBtn) {
+        eyeBtn = doc.createElement('button');
+        eyeBtn.type = 'button';
+        const baseClasses = (toolbarButton.className || '').split(/\s+/).filter(c => c && c !== 'clt-in-grid' && c !== 'clt-toolbox-autohide' && c !== 'clt-autohide-off');
+        eyeBtn.className = [...baseClasses, 'clt-toolbox-autohide'].join(' ');
+        const eyeIcon = doc.createElement('i');
+        eyeIcon.setAttribute('aria-hidden', 'true');
+        eyeBtn.append(eyeIcon);
+        if (typeof toolbarButton.after === 'function') toolbarButton.after(eyeBtn);
+        else (toolbarButton.parentElement ?? toolbarButton.parent)?.append?.(eyeBtn);
+      }
+      const labelText = autohide ? 'Disable autohide' : 'Autohide grid';
+      if (eyeBtn.getAttribute('aria-label') !== labelText) {
+        eyeBtn.setAttribute('aria-label', labelText);
+        eyeBtn.title = labelText;
+      }
+      const pressed = String(Boolean(autohide));
+      if (eyeBtn.getAttribute('aria-pressed') !== pressed) eyeBtn.setAttribute('aria-pressed', pressed);
+      if (eyeBtn.classList.contains('clt-autohide-off') !== !autohide) {
+        eyeBtn.classList.toggle('clt-autohide-off', !autohide);
+      }
+      const eyeIcon = eyeBtn.children?.[0] ?? eyeBtn.querySelector?.('i');
+      if (eyeIcon) {
+        const desiredClass = autohide ? 'icon-[lucide--eye-off]' : 'icon-[lucide--eye]';
+        if (!eyeIcon.classList.contains(desiredClass)) {
+          eyeIcon.classList.remove('icon-[lucide--eye]', 'icon-[lucide--eye-off]');
+          eyeIcon.classList.add(desiredClass);
+        }
+        const desiredColor = autohide ? '' : LOGO_PURPLE;
+        if (eyeIcon.style.color !== desiredColor) eyeIcon.style.color = desiredColor;
+      }
+      eyeBtn.onclick = event => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        onToggleAutohide?.(event);
+      };
+    } else {
+      for (const btn of root.querySelectorAll?.('.clt-toolbox-autohide') ?? []) btn.remove();
+    }
+  } else {
+    for (const btn of root.querySelectorAll?.('.clt-toolbox-autohide') ?? []) btn.remove();
   }
 
   for (const entry of root.querySelectorAll?.('.litemenu-entry') ?? []) {
@@ -422,10 +469,18 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
     }
   }
 
-  const list = [...(root.querySelectorAll?.('.p-contextmenu-root-list') ?? [])].find(l => l.getBoundingClientRect().width > 0);
+  const lists = [
+    ...(root.querySelectorAll?.('.p-contextmenu-root-list') ?? []),
+    ...(root.querySelectorAll?.('[role="menu"][data-menu-owner]') ?? []),
+  ];
+  const list = lists.find(l => l.getBoundingClientRect().width > 0);
   if (!list) return inGrid ? false : menuPending;
 
-  const existing = [...list.querySelectorAll('.p-contextmenu-item')].filter(isSelectionMenuItem);
+  const menuItems = [
+    ...(list.querySelectorAll?.('.p-contextmenu-item') ?? []),
+    ...(list.querySelectorAll?.('[role="menuitem"]') ?? []),
+  ];
+  const existing = menuItems.filter(isSelectionMenuItem);
   if (inGrid) {
     for (const item of existing) item.remove();
     return false;
@@ -433,7 +488,7 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
 
   if (existing.length > 0) {
     for (let i = 1; i < existing.length; i++) existing[i].remove();
-    const link = existing[0].querySelector('a') ?? existing[0];
+    const link = existing[0].querySelector('a') ?? existing[0].querySelector('div') ?? existing[0];
     if (link && !link.querySelector('.vf-brand-link')) {
       link.prepend(createLogoBadge(doc));
     }
@@ -441,7 +496,7 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
   }
 
   if (!menuPending || !selectionCount) return menuPending;
-  const example = list.querySelector('.p-contextmenu-item');
+  const example = list.querySelector('.p-contextmenu-item') ?? list.querySelector('[role="menuitem"]');
   if (!example) return menuPending;
   const item = example.cloneNode(true);
   item.removeAttribute('id');
@@ -449,10 +504,10 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
   item.removeAttribute('aria-setsize');
   item.setAttribute('aria-label', SELECTION_ACTION_LABEL);
   item.dataset.cltSelectionAction = 'true';
-  const link = item.querySelector('a');
+  const link = item.querySelector('a') ?? item.querySelector('div') ?? item;
   if (!link) return menuPending;
   const labelSpan = doc.createElement('span');
-  labelSpan.className = 'p-contextmenu-item-label';
+  labelSpan.className = item.classList?.contains?.('p-contextmenu-item') ? 'p-contextmenu-item-label' : 'flex-1';
   labelSpan.textContent = SELECTION_ACTION_LABEL;
   link.replaceChildren(createLogoBadge(doc), labelSpan);
   link.tabIndex = 0;
@@ -466,6 +521,7 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
     doc.body?.click?.();
     onActivate?.({ clientX: box.right, clientY: box.top });
   };
+  item.onclick = activate;
   link.onclick = activate;
   link.onkeydown = event => {
     if (event.key === 'Enter' || event.key === ' ') activate(event);
@@ -532,7 +588,7 @@ export class LayoutOverlay {
       }
     }
     this.hidden = { ids: new Set(), frames: new Map() };
-    this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null;
+    this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null; this.dropPreview = null;
     this.ghostNodeId = null; this.ghostHandled = new Set();
     const options = { capture: true, signal: this.abort.signal };
     document.addEventListener('pointerdown', e => this.nativeDown(e), options);
@@ -1210,9 +1266,6 @@ export class LayoutOverlay {
         actions.push([this.isCellBypassed(targetCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, targetCell.id)]);
       }
       actions.push([frame.lock === true ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id)]);
-      if (frame.minimized !== true && frame.collapsed !== true && this.frameHasNodes(frame)) {
-        actions.push([frame.autohide === true ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id)]);
-      }
       actions.push([frame.minimized === true ? 'Restore grid' : 'Minimize grid', () => this.toggleMinimize(frame.id)]);
       if (frame.minimized !== true) {
         actions.push([frame.collapsed === true ? 'Expand grid' : 'Collapse grid', () => this.toggleCollapse(frame.id)]);
@@ -1303,6 +1356,7 @@ export class LayoutOverlay {
     if (!this.frameHasNodes(frame)) return false;
     if (frame.collapsed === true || frame.minimized === true) return false;
     if (this.editing?.frameId === frame.id || this.drag?.frame?.id === frame.id || this.headerPreview?.frameId === frame.id) return false;
+    if (this.dropPreview?.frame?.id === frame.id) return false;
     if (this.hover && findCell(frame.root, this.hover)) return false;
     const activeNodes = dragged ?? this.draggedNodes();
     if (activeNodes.length) {
@@ -1320,6 +1374,19 @@ export class LayoutOverlay {
     }
     return true;
   }
+  computeDropPreview(layouts, dragged = this.draggedNodes()) {
+    if (!this.nativeDrag || this.nativeDrag.finishing) return null;
+    const pointer = this.nativeDrag.pointer ?? null;
+    const node = (this.nativeNode && dragged.some(n => String(n.id) === String(this.nativeNode.id))
+      ? this.controller.graph.getNodeById(this.nativeNode.id)
+      : dragged[0]) || null;
+    if (!node) return null;
+    return resolveDropTarget(layouts, [node.pos[0], node.pos[1], node.size[0], node.size[1]], {
+      excludeIds: dragged.map(n => n.id),
+      pointer,
+      titleHeight: this.controller.adapter?.classicTitle ?? 30,
+    });
+  }
   deselectFrameNodes(frame) {
     const canvas = this.app.canvas;
     if (!canvas) return;
@@ -1334,7 +1401,7 @@ export class LayoutOverlay {
       }
     }
   }
-  toggleAutohide(frameId) {
+  toggleAutohide(frameId, { preserveSelection = false } = {}) {
     let enabled = false;
     this.safe(() => this.controller.edit(() => {
       const frame = this.controller.frames.find(frame => frame.id === frameId);
@@ -1343,7 +1410,7 @@ export class LayoutOverlay {
       else if (!this.frameHasNodes(frame)) return;
       else { frame.autohide = true; enabled = true; }
     }));
-    if (enabled) {
+    if (enabled && !preserveSelection) {
       const frame = this.controller.frames.find(f => f.id === frameId);
       if (frame) this.deselectFrameNodes(frame);
     }
@@ -1527,16 +1594,14 @@ export class LayoutOverlay {
     } else if (this.isGhostActive()) {
       const node = this.getGhostNode();
       const target = node && this.controller.frames.length ? this.controller.targetNode(node, { ghost: true }) : null;
+      this.dropPreview = null;
       this.hover = target?.cell.id ?? null;
     } else if (this.nativeDrag) {
       const pointer = this.controller.adapter.point(event);
       this.nativeDrag.pointer = pointer;
-      const dragged = this.draggedNodes();
-      const node = (this.nativeNode && dragged.some(n => String(n.id) === String(this.nativeNode.id))
-        ? this.controller.graph.getNodeById(this.nativeNode.id)
-        : dragged[0]) || null;
-      const pick = node ? pickCell(this.controller.geometry(), [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
-      this.hover = node ? (pick?.cell.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null) : null;
+      const preview = this.computeDropPreview(this.controller.geometry());
+      this.dropPreview = preview;
+      this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
     }
   }
   up(event, cancelled = false) {
@@ -1546,7 +1611,7 @@ export class LayoutOverlay {
     if (this.nativeDrag && (!event || event.pointerId === this.nativeDrag.pointerId)) {
       const pending = this.nativeDrag;
       if (pending.finishing) return;
-      pending.finishing = true; this.nativeNode = null; this.hover = null;
+      pending.finishing = true; this.nativeNode = null; this.hover = null; this.dropPreview = null;
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
@@ -1569,14 +1634,15 @@ export class LayoutOverlay {
         const dragged = this.draggedNodes();
         if (this.nativeDrag && !this.nativeDrag.finishing) {
           const pointer = this.nativeDrag.pointer;
-          const node = (this.nativeNode && dragged.some(n => String(n.id) === String(this.nativeNode.id))
-            ? this.controller.graph.getNodeById(this.nativeNode.id)
-            : dragged[0]) || null;
-          const pick = node ? pickCell(layouts, [node.pos[0], node.pos[1], node.size[0], node.size[1]]) : null;
-          this.hover = node ? (pick?.cell.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null) : null;
+          const preview = this.computeDropPreview(layouts, dragged);
+          this.dropPreview = preview;
+          this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
+        } else if (!this.nativeDrag) {
+          this.dropPreview = null;
         }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
-        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, autohidden, this.bypassedNodeIds()]);
+        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.previewRect] : null;
+        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, previewSig, autohidden, this.bypassedNodeIds()]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
           const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
@@ -1772,6 +1838,16 @@ export class LayoutOverlay {
         el.onpointerdown = e => this.startDrag(e, 'divider', { frame, cell: divider.cell, index: divider.index, weights: [...divider.cell.ratios], available: divider.available });
         fragment.append(el);
       }
+    }
+    if (this.dropPreview?.previewRect) {
+      const ghost = element(
+        'div',
+        `clt-drop-preview ${this.dropPreview.ghostType === 'cell' ? 'clt-ghost-cell' : 'clt-ghost-node'}`
+      );
+      ghost.dataset.dropKind = this.dropPreview.kind;
+      ghost.dataset.ghostType = this.dropPreview.ghostType;
+      rectStyle(ghost, this.dropPreview.previewRect);
+      fragment.append(ghost);
     }
     this.plane.replaceChildren(fragment);
     this.app.canvas?.setDirty(true, true);

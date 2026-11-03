@@ -87,7 +87,7 @@ try {
     const click=await worldPoint([1100,700]);
     await page.mouse.click(click.x,click.y,{button:'right'});
     await page.getByText('Create grid layout from selected nodes',{exact:true}).click();
-    await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
+    await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout?.frames?.[0]?.root?.children?.length === 2);
     assert.deepEqual(await membership(),[[1],[2]]);
     assert.deepEqual(await page.evaluate(()=>window.comfyAPI.app.app.graph._nodes.map(n=>Math.round(n.size[0]))),[360,440]);
     assert.deepEqual(await page.evaluate(async()=> (await window.comfyAPI.app.app.graphToPrompt()).output),prompt);
@@ -97,8 +97,8 @@ try {
     await settle();
     assert.equal(await page.getByText('Create grid layout from selected nodes',{exact:true}).count(), 0, 'Create grid layout from selected nodes is hidden when selected node is already in grid');
     await page.evaluate(() => window.LiteGraph?.closeAllContextMenus?.());
-    await page.keyboard.press('Control+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-frame').length===0);
-    await page.keyboard.press('Control+Shift+z');await page.waitForFunction(()=>document.querySelectorAll('.clt-cell').length===2);
+    await page.keyboard.press('Control+z');await page.waitForFunction(() => (window.comfyAPI.app.app.graph.extra.comfyui_grid_layout?.frames?.length ?? 0) === 0);
+    await page.keyboard.press('Control+Shift+z');await page.waitForFunction(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout?.frames?.[0]?.root?.children?.length === 2);
     console.log(`Selected-node menu, columns, in-grid menu hiding, prompt, undo/redo passed: ${vue?'Nodes 2.0':'Classic'}`);
   }
   assert.deepEqual(errors, [], 'no browser runtime errors');
