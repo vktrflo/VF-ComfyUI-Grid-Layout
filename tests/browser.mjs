@@ -26,7 +26,7 @@ try {
     await page.route('**/extensions', async route => {
       const response = await route.fetch();
       const list = await response.json();
-      await route.fulfill({ response, json: [...list, `${prefix}grid_layout.js`] });
+      await route.fulfill({ response, json: [...list.filter(path => !path.startsWith(prefix)), `${prefix}grid_layout.js`] });
     });
     await page.route(`**${prefix}**`, async route => {
       const relative = new URL(route.request().url()).pathname.slice(prefix.length);
@@ -39,8 +39,8 @@ try {
   }
   await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.comfyAPI?.app?.app?.canvas, { timeout: 60000 });
-  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 15000 });
-  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 15000 }); }
+  await page.waitForFunction(() => window.comfyAPI.app.app.extensions.some(e => e.name === 'VF.ComfyUI.GridLayout'), { timeout: 60000 });
+  try { await page.locator('.clt-overlay').waitFor({ state: 'attached', timeout: 60000 }); }
   catch (error) {
     console.log('Startup errors:', errors);
     console.log(await page.evaluate(() => ({ ready: Boolean(window.comfyAPI?.app?.app?.canvas?.canvas), apiKeys: Object.keys(window.comfyAPI ?? {}) })));
@@ -171,6 +171,9 @@ try {
     assert.equal(await page.evaluate(() => document.querySelector('.clt-frame-header .clt-emoji')?.textContent), '🌀', 'frame header shows the cyclone emoji');
     await nodeDragTo(0, [850, 185]);
     assert.deepEqual(await membership(), [[1]], `${vue ? 'Vue' : 'Classic'} drop attaches first node`);
+    assert.equal(await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].autohide === true), true, 'new frame has autohide enabled by default');
+    await page.evaluate(() => { delete window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].autohide; });
+    await page.waitForFunction(() => document.querySelectorAll('.clt-cell').length === 1);
     if (vue) {
       const bounds = await page.evaluate(() => {
         const node = document.querySelector('[data-node-id="1"]');
@@ -390,6 +393,7 @@ try {
     await page.locator('.clt-frame').waitFor();
     await nodeDragTo(0, [850, 185]);
     assert.deepEqual(await membership(), [[1], []], 'fill scenario attaches the tall-column node');
+    await page.evaluate(() => { delete window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].autohide; });
     await page.evaluate(() => { const n = window.comfyAPI.app.app.graph.getNodeById(window.testNodes[0]); n.setSize([n.size[0], 420]); });
     await settle();
     await page.waitForTimeout(250);

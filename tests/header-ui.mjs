@@ -171,13 +171,17 @@ try {
     await page.mouse.up();
     await page.waitForFunction(() => document.querySelectorAll('.clt-frame').length === 0 && document.querySelectorAll('.clt-cell').length === 0);
 
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const app = window.comfyAPI.app.app;
+      await app.ui.settings.setSettingValue('Comfy.Canvas.SelectionToolbox', true);
       app.canvas.selectNodes([app.graph._nodes[0]]);
-      const ext = app.extensions.find(e => e.name === 'VF.ComfyUI.GridLayout');
-      ext.openSelectionMenu();
     });
-    await page.getByRole('menuitem', { name: 'Disable autohide', exact: true }).click();
+    const eyeBtn = page.locator('.selection-toolbox .clt-toolbox-autohide');
+    await eyeBtn.waitFor();
+    assert.equal(await eyeBtn.getAttribute('aria-label'), 'Disable autohide');
+    await eyeBtn.click();
+    assert.equal(await eyeBtn.getAttribute('aria-label'), 'Autohide grid');
+    assert.equal(await page.evaluate(() => Object.keys(window.comfyAPI.app.app.canvas.selected_nodes ?? {}).length), 1, 'node remains selected after toggling autohide from selection toolbox');
     await page.evaluate(() => { const app = window.comfyAPI.app.app; app.canvas.deselectAllNodes?.(); });
     await settle();
     assert.equal(await page.locator('.clt-frame').count(), 1, 'container stays visible after disabling autohide');

@@ -51,11 +51,22 @@ app.registerExtension({
     // the selected node is already inside a grid container.
     let selectionMenuPending = false;
     const syncMenus = () => {
+      const frame = controller.selectedFrame();
+      const canAutohide = Boolean(frame && frame.minimized !== true && frame.collapsed !== true && overlay.frameHasNodes(frame));
       selectionMenuPending = syncSelectionMenuDom(document.body, {
-        inGrid: Boolean(controller.selectedFrame()),
+        inGrid: Boolean(frame),
+        canAutohide,
+        autohide: Boolean(canAutohide && frame.autohide === true),
         selectionCount: controller.selectedNodes().length,
         menuPending: selectionMenuPending,
         onActivate: openSelectionMenu,
+        onToggleAutohide: () => {
+          const current = controller.selectedFrame();
+          if (current) {
+            overlay.toggleAutohide(current.id, { preserveSelection: true });
+            syncMenus();
+          }
+        },
       });
     };
     overlay.onTick = syncMenus;
