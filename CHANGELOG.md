@@ -2,6 +2,25 @@
 
 All notable changes to **VF Grid Layout** (`vf-comfyui-grid-layout`) are documented in this file.
 
+## [1.2.0] - 2026-11-03
+
+### Added
+- **Directional drop previews**: Dragging a node over a grid shows a ghost preview of where it will land.
+  - Left or right edge of a cell: inserts a new column next to that cell.
+  - Just below a node: stacks the node below it in the same cell.
+  - Further below the grid: adds a full-width row at the bottom.
+- **Autohide toggle in the selection toolbox**: An eye button next to **Grid** turns autohide on or off. The node stays selected.
+- **Floating cell controls**: In autohide mode, cell controls show as a small pill at the top-right corner of each cell.
+
+### Changed
+- New grids have autohide on by default. Empty grids stay visible until you drop a node in.
+- The autohide item moved from the Grid context menu to the selection toolbox. The grid header button is unchanged.
+- In autohide mode, cells no longer reserve space for a header bar. Nodes do not move when you select or deselect them.
+
+### Notes
+- Saved grids that already have autohide on will lay out 26px shorter per cell when opened, because the header space is removed.
+- Turning autohide on or off moves the nodes in that grid by 26px.
+
 ## [1.1.2] - 2026-10-14
 
 ### Added

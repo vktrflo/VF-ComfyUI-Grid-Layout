@@ -1,4 +1,4 @@
-import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, CELL_TITLE, gridCell, contains, dropNodes, insertColumnCell, addBottomRow, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, targetCellForNode, resolveDropTarget, validateFrame } from './layout.js';
+import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, gridCell, contains, dropNodes, insertColumnCell, addBottomRow, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, targetCellForNode, resolveDropTarget, validateFrame } from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 // Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
