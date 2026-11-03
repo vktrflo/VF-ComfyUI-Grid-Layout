@@ -107,7 +107,7 @@ export class LayoutController {
     }
     if (columns.length > 256) throw new Error('A grid supports up to 256 columns.');
     return this.edit(() => {
-      const frame = createFrame([Math.min(...nodes.map(node=>node.pos[0]))-PAD*2, Math.min(...nodes.map(node=>node.pos[1]-this.adapter.classicTitle))-FRAME_TITLE-PAD*2-CELL_TITLE]);
+      const frame = createFrame([Math.min(...nodes.map(node=>node.pos[0]))-PAD*2, Math.min(...nodes.map(node=>node.pos[1]-this.adapter.classicTitle))-FRAME_TITLE-PAD*2]);
       // Group large selections into bounded split nodes accepted by serialization.
       const build = cells => {
         if (cells.length === 1) return cells[0];

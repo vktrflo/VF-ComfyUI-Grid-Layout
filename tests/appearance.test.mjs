@@ -1050,4 +1050,114 @@ test('LayoutOverlay renders .clt-ghost-cell and .clt-ghost-node previews during 
   }
 });
 
+test('autohide collapses cell header vertical space and renders floating cell header pills without jumping nodes on select/deselect', async () => {
+  const prevDoc = globalThis.document;
+  const makeNode = (tag) => {
+    const classes = new Set();
+    const attrs = new Map();
+    const node = {
+      tagName: tag.toUpperCase(),
+      className: '',
+      textContent: '',
+      hidden: false,
+      dataset: {},
+      style: {},
+      children: [],
+      classList: {
+        add: (...cs) => cs.forEach(c => classes.add(c)),
+        remove: (...cs) => cs.forEach(c => classes.delete(c)),
+        toggle: (c, force) => (force ? classes.add(c) : classes.delete(c)),
+        contains: c => classes.has(c),
+      },
+      setAttribute: (k, v) => attrs.set(k, String(v)),
+      getAttribute: k => attrs.get(k) ?? null,
+      addEventListener() {},
+      append(...items) {
+        for (const item of items) {
+          if (item?.tagName === 'FRAGMENT') this.children.push(...item.children);
+          else if (item) this.children.push(item);
+        }
+      },
+      replaceChildren(...items) {
+        this.children = [];
+        this.append(...items);
+      },
+      findAll(pred) {
+        const res = [];
+        if (pred(this)) res.push(this);
+        for (const c of this.children) res.push(...c.findAll(pred));
+        return res;
+      },
+    };
+    return new Proxy(node, {
+      set(target, prop, value) {
+        if (prop === 'className' && typeof value === 'string') {
+          value.split(/\s+/).filter(Boolean).forEach(c => target.classList.add(c));
+        }
+        target[prop] = value;
+        return true;
+      },
+    });
+  };
+
+  try {
+    globalThis.document = {
+      createElement: tag => makeNode(tag),
+      createDocumentFragment: () => makeNode('fragment'),
+      querySelectorAll: () => [],
+    };
+    const { LayoutOverlay } = await import('../web/core/overlay.js');
+
+    const frame = engine.createFrame([100, 100]);
+    frame.root.nodes = [1];
+    const metrics = new Map([[1, { minWidth: 200, height: 120, minHeight: 80, collapsed: false, titleHeight: 30 }]]);
+
+    // When autohide is true on a populated frame, CELL_TITLE (26px) is collapsed (0px)
+    const autohideLayout = engine.layoutFrame(frame, metrics);
+    const cellRect = autohideLayout.cells[0].rect;
+    const nodePlacementAutohide = autohideLayout.placements[0];
+    assert.equal(nodePlacementAutohide.y, cellRect[1] + engine.PAD + 30, 'node sits at cell top + PAD without 26px CELL_TITLE offset');
+
+    // When autohide is disabled, CELL_TITLE (26px) is reserved
+    delete frame.autohide;
+    const visibleLayout = engine.layoutFrame(frame, metrics);
+    assert.equal(visibleLayout.placements[0].y, cellRect[1] + engine.CELL_TITLE + engine.PAD + 30, 'disabling autohide restores 26px CELL_TITLE offset');
+    assert.equal(visibleLayout.cells[0].rect[3] - autohideLayout.cells[0].rect[3], engine.CELL_TITLE, 'autohide collapses cell height by CELL_TITLE');
+
+    // Selecting and deselecting a node while autohide is true keeps node y identical (0px jump) and renders .clt-cell-header-floating when revealed
+    frame.autohide = true;
+    const plane = makeNode('div');
+    let selected = [{ id: 1 }];
+    const fakeOverlay = Object.create(LayoutOverlay.prototype);
+    fakeOverlay.hidden = { ids: new Set(), frames: new Map() };
+    fakeOverlay.plane = plane;
+    fakeOverlay.hover = frame.root.id;
+    fakeOverlay.editing = null;
+    fakeOverlay.drag = null;
+    fakeOverlay.headerPreview = null;
+    fakeOverlay.dropPreview = null;
+    fakeOverlay.isGhostActive = () => false;
+    fakeOverlay.app = { canvas: { setDirty() {} } };
+    fakeOverlay.controller = {
+      frames: [frame],
+      selectedNodes: () => selected,
+      graph: { links: [], getNodeById: id => (String(id) === '1' ? { id: 1, mode: 0 } : null) },
+    };
+
+    const selectedGeom = { frame, ...engine.layoutFrame(frame, metrics) };
+    fakeOverlay.render([selectedGeom]);
+    const floatingHeaders = plane.findAll(el => el.classList.contains('clt-cell-header-floating'));
+    assert.equal(floatingHeaders.length, 1, 'cell header renders as a floating pill when autohide is active');
+
+    fakeOverlay.hover = null;
+    selected = [];
+    const deselectedGeom = { frame, ...engine.layoutFrame(frame, metrics) };
+    fakeOverlay.render([deselectedGeom]);
+    assert.equal(deselectedGeom.placements[0].y, selectedGeom.placements[0].y, 'deselecting node causes 0px vertical jump');
+  } finally {
+    globalThis.document = prevDoc;
+  }
+});
+
+
 

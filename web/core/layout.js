@@ -67,11 +67,13 @@ export function targetCellForNode(layouts, node, options = {}) {
 
   for (const layout of [...layouts].reverse()) {
     if (layout.frame?.lock === true) continue;
+    const hasNodes = layout.cells.some(({ cell }) => cell?.nodes?.length > 0);
+    const cellTitle = layout.frame?.autohide === true && hasNodes ? 0 : CELL_TITLE;
     for (const cell of layout.cells) {
       const [cx, cy, cw, ch] = cell.rect;
       const left = cx + PAD;
       const right = cx + cw - PAD;
-      const top = cy + CELL_TITLE + PAD;
+      const top = cy + cellTitle + PAD;
       const bottom = cy + ch - PAD;
       if (right >= left && bottom >= top && anchorX >= left && anchorX <= right && anchorY >= top && anchorY <= bottom) {
         return { frame: layout.frame, ...cell };
@@ -99,6 +101,8 @@ export function resolveDropTarget(layouts, node, options = {}) {
     const { frame, cells = [], placements = [] } = layout;
     if (!frame || frame.lock === true || frame.minimized === true || frame.collapsed === true || !cells.length) continue;
 
+    const frameHasNodes = cells.some(({ cell }) => cell.nodes.length > 0);
+    const cellTitle = frame.autohide === true && frameHasNodes ? 0 : CELL_TITLE;
     const frameHasOtherNodes = cells.some(({ cell }) => cell.nodes.some(id => !moving.has(String(id))));
     const [fx, fy] = frame.pos;
     const [fw, fh] = frame.size;
@@ -134,8 +138,8 @@ export function resolveDropTarget(layouts, node, options = {}) {
     const others = cell.nodes.filter(id => !moving.has(String(id)));
 
     if (!others.length) {
-      const previewY = cy + CELL_TITLE + PAD;
-      const previewH = Math.min(ghostHeight, Math.max(48, ch - CELL_TITLE - PAD * 2));
+      const previewY = cy + cellTitle + PAD;
+      const previewH = Math.min(ghostHeight, Math.max(48, ch - cellTitle - PAD * 2));
       return {
         kind: 'cell',
         ghostType: 'node',
@@ -177,8 +181,8 @@ export function resolveDropTarget(layouts, node, options = {}) {
     const insertIndex = firstBelowIdx === -1 ? others.length : firstBelowIdx;
 
     if (insertIndex === 0) {
-      const previewY = cy + CELL_TITLE + PAD;
-      const previewH = Math.min(ghostHeight, Math.max(48, ch - CELL_TITLE - PAD * 2));
+      const previewY = cy + cellTitle + PAD;
+      const previewH = Math.min(ghostHeight, Math.max(48, ch - cellTitle - PAD * 2));
       return {
         kind: 'stack',
         position: 'before',
@@ -192,7 +196,7 @@ export function resolveDropTarget(layouts, node, options = {}) {
     }
 
     const prevPlacement = nodePlacements[insertIndex - 1] ?? nodePlacements.at(-1);
-    const slotY = prevPlacement ? prevPlacement.y + prevPlacement.height + GAP : cy + CELL_TITLE + PAD;
+    const slotY = prevPlacement ? prevPlacement.y + prevPlacement.height + GAP : cy + cellTitle + PAD;
     const previewH = Math.max(48, Math.min(ghostHeight, 120));
     return {
       kind: 'stack',
@@ -720,6 +724,8 @@ export function layoutFrame(frame, metrics) {
     frame.size[1] = FRAME_TITLE + height + PAD;
     return { cells: [], dividers, placements };
   }
+  const hasNodes = leaves(frame.root).some(cell => cell.nodes.some(n => metrics.has(n)));
+  const cellTitle = frame.autohide === true && hasNodes ? 0 : CELL_TITLE;
   const sizes = new Map();
   function minimum(cell) {
     let size;
@@ -727,7 +733,7 @@ export function layoutFrame(frame, metrics) {
       cell.nodes = cell.nodes.filter(n => metrics.has(n));
       const nodes = cell.nodes.map(n => metrics.get(n));
       size = [Math.max(160, ...nodes.map(n => n.minWidth)) + PAD * 2,
-        CELL_TITLE + PAD * 2 + Math.max(64, nodes.reduce((h, n) => h + n.height + n.titleHeight, 0) + Math.max(0, nodes.length - 1) * GAP)];
+        cellTitle + PAD * 2 + Math.max(64, nodes.reduce((h, n) => h + n.height + n.titleHeight, 0) + Math.max(0, nodes.length - 1) * GAP)];
     } else {
       const children = cell.children.map(minimum), weights = ratios(cell);
       const dim = cell.axis === 'x' ? 0 : 1, cross = 1 - dim;
@@ -750,7 +756,7 @@ export function layoutFrame(frame, metrics) {
   function place(cell, rect) {
     if (!cell.children) {
       cells.push({ cell, rect });
-      let y = rect[1] + CELL_TITLE + PAD;
+      let y = rect[1] + cellTitle + PAD;
       const last = cell.nodes.length - 1;
       const floor = rect[1] + rect[3] - PAD;
       const filling = frame.fill === true || cell.fill === true;

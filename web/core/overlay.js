@@ -20,6 +20,9 @@ const STYLE = `
 .lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:4px;border-radius:4px 4px 0 0}
+.clt-cell-header.clt-cell-header-floating{position:absolute;top:-11px;right:8px;height:20px;padding:0 4px;border-radius:999px;border:1px solid #5d7e89;box-shadow:0 2px 6px rgba(0,0,0,.35);z-index:5}
+.clt-cell-header.clt-cell-header-floating .clt-label:empty{display:none}
+.clt-cell-header.clt-cell-header-floating .clt-label{padding:0 4px;font-size:11px}
 .clt-button{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:3px;cursor:pointer;padding:2px 6px}
 .clt-cell-header .clt-button{padding:1px 5px;font-size:11px;line-height:1.1}
 .clt-cell-options{font-size:10px !important;letter-spacing:-0.05em}
@@ -1806,7 +1809,7 @@ export class LayoutOverlay {
         const cellEl = element('div', `clt-cell${this.hover === cell.id ? ' clt-target' : ''}`);
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
         applyBorder(cellEl, cell.border);
-        const cellHeader = element('div', 'clt-cell-header');
+        const cellHeader = element('div', `clt-cell-header${autohide ? ' clt-cell-header-floating' : ''}`);
         cellHeader.addEventListener('pointerdown', e => e.stopPropagation());
         applyHeaderStyle(cellHeader, {
           color: normalizeColor(cell.color) ?? normalizeColor(frame.color),

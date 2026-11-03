@@ -76,6 +76,7 @@ try {
   });
 
  for(const vue of [false,true]) {
+  await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await settle();
   await page.evaluate(async ({workflow,vue})=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);await app.ui.settings.setSettingValue('Comfy.Canvas.SelectionToolbox',true);const data=structuredClone(workflow);delete data.extra.comfyui_grid_layout;delete data.extra.comfyui_layout_templates;await app.loadGraphData(data);},{workflow:exampleWorkflow,vue});
   await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await settle();
   await page.evaluate(() => {

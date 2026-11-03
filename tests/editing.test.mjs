@@ -38,7 +38,7 @@ test('right edge resizes boundary cells in every grid row without moving inner d
 });
 
 test('frame height snaps to content and shrinks after content removal, including nested rows',()=>{
- const f=engine.createFrame(); f.size[1]=4000; f.root.nodes=[1,2];
+ const f=engine.createFrame(); delete f.autohide; f.size[1]=4000; f.root.nodes=[1,2];
  const m=new Map([[1,{minWidth:160,height:100,titleHeight:30}],[2,{minWidth:160,height:200,titleHeight:30}]]);
  engine.layoutFrame(f,m); close(f.size[1],50+130+230+12+60);
  f.root.nodes=[1]; engine.layoutFrame(f,m); close(f.size[1],50+130+60);

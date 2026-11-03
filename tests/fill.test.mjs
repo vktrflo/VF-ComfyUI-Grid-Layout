@@ -87,6 +87,7 @@ test('template round trips preserve frame fill with fresh ids', () => {
 
 test('frame fill stretches each bottom node flush to its cell floor', () => {
   const { frame } = twoColumn(true);
+  delete frame.autohide;
   const metrics = new Map([['tall', metric(200, 300)], ['short', metric(200, 100, 60)]]);
   const { cells, placements } = engine.layoutFrame(frame, metrics);
   const rect = cells.find(({ cell }) => cell.nodes[0] === 'short').rect;
