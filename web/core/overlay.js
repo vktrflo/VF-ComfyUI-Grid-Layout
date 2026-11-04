@@ -1242,6 +1242,7 @@ export class LayoutOverlay {
       }],
       ['Shrink grid to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
+      ['Delete Empty Cells', () => this.controller.edit(() => deleteEmptyCells(this.controller.frames.find(f => f.id === frame.id)))],
     ];
     if (frame.fill === true) {
       actions.push(['Undo Fill cell height (all columns)', () => this.controller.edit(() => {

@@ -83,3 +83,27 @@ test('cell menu exposes Delete Empty Cells and prunes through controller.edit', 
 
   assert.deepEqual(engine.leaves(frame.root).map(cell => cell.nodes), [[1], [3]]);
 });
+
+test('grid menu exposes Delete Empty Cells and prunes the whole frame', () => {
+  const make = id => ({ id, pos: [id * 300, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(size) { this.size = size; } });
+  const nodes = [make(1), make(2), make(3)];
+  const graph = {
+    extra: {},
+    _nodes: nodes,
+    getNodeById: id => nodes.find(node => String(node.id) === String(id)) ?? null,
+    setDirtyCanvas() {},
+  };
+  const app = { configuringGraph: false, graph, canvas: { graph, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1, 2, 3], 'columns');
+  const cells = engine.leaves(frame.root);
+  cells[2].nodes = [];
+
+  const overlay = Object.create(LayoutOverlay.prototype);
+  Object.assign(overlay, { controller, app, safe: fn => fn(), menu: null });
+  const entry = overlay.frameActions(frame, { includeToggles: true }).find(([label]) => label === 'Delete Empty Cells');
+  assert.ok(entry, 'expected a Delete Empty Cells entry in the grid menu');
+
+  entry[1]();
+  assert.deepEqual(engine.leaves(frame.root).map(cell => cell.nodes), [[1], [2]]);
+});
