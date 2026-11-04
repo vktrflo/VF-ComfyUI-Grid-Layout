@@ -4,6 +4,15 @@ Organize your ComfyUI canvas with grid frames. Drop nodes into a cell and they s
 
 VF Grid Layout adds canvas tools only. It does not add nodes that run during generation, and it does not change your connections or widget values.
 
+## What's new in 1.1 and 1.2
+
+- **[Drop previews](#3-drop-nodes-exactly-where-you-want-them)**: A ghost shows where a node will land before you let go.
+- **[Autohide and title bar opacity](#autohide)**: Hide the grid around your nodes, or fade its title bars.
+- **[Minimize a grid](#minimize-a-grid)**: Shrink a grid to its header. Its wires stay connected through small ports.
+- **[Cell bypass and per-column fill](#bypass-a-cell-or-fill-one-column)**: Work on one cell or one column at a time.
+- **[VF Link Effects](#vf-link-effects)**: Animated wires for selected nodes, and a wire reveal for the Hidden link mode.
+- **[Tabbed Change Appearance dialog](#4-style-it-live)**: Separate tabs for the title bar, the border, and a new grid background.
+
 ## Try it in 30 seconds
 
 1. Install (below), restart ComfyUI, and refresh the browser with **Ctrl+F5**.
@@ -54,17 +63,19 @@ Then restart ComfyUI and refresh with **Ctrl+F5** so the browser loads the new v
 
 ### 1. Wrap a messy selection
 
-![Selecting nodes and creating a layout that preserves their columns](docs/media/01-instant-layout.gif)
+![Selecting scattered nodes, clicking Grid in the selection toolbox, then showing the new grid with the eye button](docs/media/01-instant-layout.gif)
 
-Select nodes, then click **Grid** in the floating selection toolbox. You can also right-click the canvas or a selected node → **Create grid layout from selected nodes**. Nodes that sit above each other become one column. Connections and widget values are kept.
+Select nodes, then click **Grid** in the floating selection toolbox. You can also right-click the canvas or a selected node → **Create grid layout from selected nodes**. Nodes that sit above each other become one column. Connections and widget values are kept. New grids start with [autohide](#autohide) on, so click the **eye** button in the toolbox to show the frame.
 
 ### 2. Split cells and add rows
 
-![Splitting a cell into top and bottom, then adding a full-width bottom row](docs/media/02-split-cells.gif)
+![Splitting a cell into top and bottom, adding a full-width bottom row, then splitting that row](docs/media/02-split-cells.gif)
 
 Click **•••** on a cell to split it left/right or top/bottom, create a grid, or rename it. Click **•••** on the frame header → **Add bottom row** to add a full-width row.
 
 ### 3. Drop nodes exactly where you want them
+
+![Dragging a node over a grid while ghosts preview a stacked node, a new column, and a new row](docs/media/11-drop-previews.gif)
 
 While you drag a node over a grid, a dashed ghost shows the result before you let go:
 
@@ -77,7 +88,7 @@ To take a node out of a grid, drag it fully clear of every cell. It keeps its cu
 
 ### 4. Style it live
 
-![The Change Appearance panel previewing background, font size and border changes](docs/media/03-live-appearance.gif)
+![The tabbed Change Appearance dialog changing the title bar, the border, and the grid background](docs/media/03-live-appearance.gif)
 
 **••• → Change Appearance…** opens tabs for **Title Bar**, **Border**, and **Grid Background**. Changes preview live, and nothing is saved until you press **OK**. A cell's **•••** menu can override the frame's look for that one cell.
 
@@ -89,7 +100,7 @@ Double-click any frame or cell title, type, then press **Enter** or click away t
 
 ### 6. Resize and shrink to content
 
-![Dragging the left edge of a frame, then shrinking the layout back to its content](docs/media/05-resize-and-shrink.gif)
+![Dragging the right and left edges of a frame, then shrinking the grid back to its content](docs/media/05-resize-and-shrink.gif)
 
 Drag dividers or the frame's left or right edge to resize. Only the cells that touch that edge change width. **••• → Shrink grid to content** fits every cell back to its nodes.
 
@@ -97,15 +108,30 @@ Drag dividers or the frame's left or right edge to resize. Only the cells that t
 
 ![Filling every cell's height, then undoing and redoing the change](docs/media/06-fill-and-undo.gif)
 
-**••• → Fill cell height** stretches each cell's bottom node to the cell floor. **Undo Fill cell height** returns the nodes to their own heights. **Ctrl+Z** and **Ctrl+Shift+Z** work as they do everywhere else in ComfyUI.
+**••• → Fill cell height (all columns)** stretches each cell's bottom node to the cell floor. **Undo Fill cell height (all columns)** returns the nodes to their own heights. **Ctrl+Z** and **Ctrl+Shift+Z** work as they do everywhere else in ComfyUI.
 
 ### Autohide
+
+![Fading the title bar with the opacity slider, then hiding and showing the grid with autohide](docs/media/09-autohide-and-opacity.gif)
 
 New grids start with autohide on. A grid with autohide on hides its frame, cell bars, and background, and shows only your nodes. Empty grids stay visible until you drop a node in.
 
 - The grid appears while you drag a node over it, so you can still see where it will land.
 - To turn autohide off or on, select a node in the grid and click the **eye** button next to **Grid** in the selection toolbox. You can also click 👁 / 🙈 in the frame header.
 - With autohide on, cells don't reserve space for a title bar, so nodes don't move when you select them. Cell buttons show as a small pill in the corner of each cell.
+- To fade the title bars instead of hiding the grid, set **Title bar opacity** in **••• → Change Appearance…**.
+
+### Minimize a grid
+
+![Minimizing a grid to its header, reading the wires on its ports, moving it, then restoring it](docs/media/08-minimize.gif)
+
+Click **−** on the frame header to shrink the frame to its header and hide its nodes. Wires to the hidden nodes connect to one input port and one output port on the header. Hover a port to list its wires. Click **◻** to restore the grid.
+
+### Bypass a cell or fill one column
+
+![Bypassing a cell and re-enabling it, then filling one column at a time and undoing one fill](docs/media/10-bypass-and-column-fill.gif)
+
+Click **↱** on a cell to bypass all nodes in that cell. Click it again to re-enable them. To fill a single column, click **•••** on a cell → **Fill cell height (this column)**. Other columns keep their heights.
 
 ### Frame header buttons
 
@@ -126,6 +152,8 @@ New grids start with autohide on. A grid with autohide on hides its frame, cell 
 - If a node needs more room than its cell, the frame grows instead of clipping the node.
 
 ## VF Link Effects
+
+![Electricity and Neon Glow on the wires of a selected node, then wires shown only for the selected node in Hidden link mode](docs/media/07-link-effects.gif)
 
 In **Settings → Lite Graph → Graph**, turn on **VF Link Effects** to choose an effect:
 
