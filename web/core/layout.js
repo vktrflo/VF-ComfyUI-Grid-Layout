@@ -539,6 +539,17 @@ export function deleteCell(frame, cellId) {
   frame.root = remove(frame.root) ?? createCell();
 }
 
+// Removing every empty leaf collapses the tree the same way one delete does.
+// Refuse when nothing would remain, so one menu click cannot wipe the grid.
+export function deleteEmptyCells(frame) {
+  const cells = leaves(frame.root);
+  const empty = cells.filter(cell => cell.nodes.length === 0);
+  if (!empty.length) throw new Error('This grid has no empty cells.');
+  if (empty.length === cells.length) throw new Error('The grid has no cells with nodes.');
+  for (const cell of empty) deleteCell(frame, cell.id);
+  return empty.length;
+}
+
 // Preserve absolute widths on the left. Only subtrees touching the right
 // boundary receive the delta, including each row of a vertical split.
 export function resizeRightEdge(frame, delta, metrics) {
