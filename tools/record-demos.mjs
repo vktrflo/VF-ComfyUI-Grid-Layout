@@ -210,11 +210,12 @@ try{
   await h.gridMenu('Add bottom row');await h.fit(500);await h.wait(1300);
   await h.cellMenu(-1,'Split into left / right');await h.wait(1600);
  });
- await run('03-live-appearance','YOUR WORKFLOW. YOUR STYLE.','Live colors, borders and backgrounds. Nothing sticks until OK.',async(p,h)=>{await p.evaluate(buildGraph,false);await h.grid();},async(p,h)=>{
+ await run('03-live-appearance','YOUR WORKFLOW. YOUR STYLE.','Colors, opacity, borders and backgrounds. Nothing sticks until OK.',async(p,h)=>{await p.evaluate(buildGraph,false);await h.grid();},async(p,h)=>{
   await h.gridMenu('Change Appearance…');await h.wait(700);
   const dialog=p.locator('dialog.clt-appearance-dialog');const tab=name=>dialog.getByRole('button',{name,exact:true});
   await h.hover(p.getByLabel('Title bar background color',{exact:true}),500);await h.paint('Title bar background color','#1f6f8b');await h.wait(700);
   await h.hover(p.getByLabel('Title font size',{exact:true}),500);await h.slide('Title font size',13,20,700);await h.wait(400);
+  await h.hover(p.getByLabel('Title bar opacity',{exact:true}),400);await h.slide('Title bar opacity',100,65,600);await h.wait(400);
   await h.click(tab('Border'));await h.wait(300);
   await h.hover(p.getByLabel('Border color',{exact:true}),450);await h.paint('Border color','#54e3b5');await h.wait(400);
   await h.hover(p.getByLabel('Border thickness',{exact:true}),500);await h.slide('Border thickness',2,5,400);await h.wait(200);
@@ -255,16 +256,16 @@ try{
   const header=p.locator('.clt-frame-header .clt-label');await h.dragBy(header,0,170,900);await h.wait(900);await h.dragBy(header,0,-170,900);await h.wait(600);
   await h.click(p.getByRole('button',{name:'Restore grid',exact:true}));await h.wait(2000);
  });
- await run('09-autohide-and-opacity','SHOW ONLY WHAT MATTERS.','Fade the title bar. Hide the grid until you need it.',async(p,h)=>{await p.evaluate(buildGraph,false);await h.grid();await p.evaluate(()=>{const c=window.comfyAPI.app.app.extensions.find(e=>e.name==='VF.ComfyUI.GridLayout').controller;c.edit(()=>{c.frames[0].color='#1f9dc4';});});},async(p,h)=>{
-  await h.gridMenu('Change Appearance…');await h.wait(600);
-  const dialog=p.locator('dialog.clt-appearance-dialog');
-  await h.hover(p.getByLabel('Title bar opacity',{exact:true}),500);await h.slide('Title bar opacity',100,20,1400);await h.wait(600);
-  await h.click(dialog.getByRole('button',{name:'OK',exact:true}));await h.moveTo(540,650,500);await h.wait(1800);
-  await h.click(p.getByRole('button',{name:'Autohide grid',exact:true}));await h.moveTo(980,640,500);await h.wait(1800);
+ await run('09-autohide','ONLY YOUR NODES.','Hide the grid. It comes back when you drag a node over it.',async(p,h)=>{await p.evaluate(buildGraph,false);await h.grid({keys:['ckpt','latent','pos','neg','ks','dec']});await p.evaluate(()=>{const app=window.comfyAPI.app.app;const f=app.extensions.find(e=>e.name==='VF.ComfyUI.GridLayout').controller.frames[0];app.graph.getNodeById(window.demoNodes.save).pos=[f.pos[0]+f.size[0]+70,f.pos[1]+60];});await h.fit();},async(p,h)=>{
+  await h.wait(500);await h.click(p.getByRole('button',{name:'Autohide grid',exact:true}));await h.moveTo(540,650,500);await h.wait(1800);
+  const [x,y]=await h.nodePoint('save');await h.moveTo(x,y);await h.wait(300);
+  await p.mouse.down();await h.wait(120);
+  const [tx,ty]=await p.evaluate(()=>{const app=window.comfyAPI.app.app,ds=app.canvas.ds;const n=app.graph.getNodeById(window.demoNodes.dec);return [(n.pos[0]+80+ds.offset[0])*ds.scale,(n.pos[1]+n.size[1]+40+ds.offset[1])*ds.scale];});
+  await h.moveTo(tx,ty,1500);await h.wait(1600);await p.mouse.up();await h.moveTo(540,650,500);await h.wait(1800);
   await h.clickNode('ks');await h.wait(800);
-  await h.click(p.locator('.selection-toolbox .clt-toolbox-autohide'));await h.wait(1500);
+  await h.click(p.locator('.selection-toolbox .clt-toolbox-autohide'));await h.wait(1600);
   await h.click(p.locator('.selection-toolbox .clt-toolbox-autohide'));await h.wait(1200);
-  const [x,y]=await h.emptyPoint();await h.clickAt(x,y);await h.wait(1000);
+  await h.clickAt(1040,676);await h.wait(1200);
  });
  await run('10-bypass-and-column-fill','ONE CELL AT A TIME.','Bypass a whole cell. Fill one column at a time.',async(p,h)=>{await p.evaluate(buildGraph,false);await h.grid();},async(p,h)=>{
   const bypass=p.locator('.clt-cell-bypass');
