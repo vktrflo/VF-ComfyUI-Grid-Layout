@@ -29,9 +29,16 @@ export class NodeAdapter {
     const computed = Math.abs((minimum[0] || 140) - imposed) < 0.1 ? 0 : minimum[0] || 140;
     this.widths.set(node, Math.max(this.widths.get(node) ?? 140, computed, node.min_size?.[0] ?? 0));
     let renderedMinimum = 0;
+    let renderedHeight = 0;
     if (globalThis.LiteGraph?.vueNodesMode && globalThis.document) {
       const element = document.querySelector(`.lg-node[data-node-id="${CSS.escape(String(node.id))}"]`);
-      if (element) renderedMinimum = parseFloat(getComputedStyle(element).minWidth) || 0;
+      if (element) {
+        renderedMinimum = parseFloat(getComputedStyle(element).minWidth) || 0;
+        // Nodes 2.0 lets content (image previews, media) grow the element past
+        // node.size. offsetHeight ignores the canvas zoom transform, so it is in
+        // graph units. It includes the title bar, which placements add separately.
+        renderedHeight = Math.max(0, (element.offsetHeight || 0) - this.classicTitle);
+      }
     }
     const collapsed = node.flags?.collapsed;
     // Track the intrinsic (pre-stretch) height: a fill stretch we applied is not
@@ -41,10 +48,13 @@ export class NodeAdapter {
     const applied = this.appliedHeights.get(key);
     if (applied === undefined || Math.abs(size - applied) > 0.5) this.bases.set(key, size);
     const base = this.bases.get(key) ?? size;
+    // A filled node's element follows our stretch, so only trust the rendered
+    // height when no stretch is applied.
+    const content = applied === undefined ? renderedHeight : 0;
     return {
       minWidth: Math.max(this.widths.get(node), renderedMinimum),
-      height: collapsed ? 0 : Math.max(base, minimum[1] || 0),
-      minHeight: collapsed ? 0 : minimum[1] || size,
+      height: collapsed ? 0 : Math.max(base, minimum[1] || 0, content),
+      minHeight: collapsed ? 0 : Math.max(minimum[1] || size, content),
       collapsed: Boolean(collapsed),
       // Both renderers retain LiteGraph's body-origin position convention.
       titleHeight: this.classicTitle,
