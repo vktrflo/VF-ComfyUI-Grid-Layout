@@ -17,6 +17,10 @@ All notable changes to **VF Grid Layout** (`vf-comfyui-grid-layout`) are documen
 - The autohide item moved from the Grid context menu to the selection toolbox. The grid header button is unchanged.
 - In autohide mode, cells no longer reserve space for a header bar. Nodes do not move when you select or deselect them.
 
+### Fixed
+- Nodes 2.0: nodes whose content grows past their saved size (for example Load Image previews) are now measured by their rendered height, so rows below them no longer overlap.
+- Dragging the only node of the bottom row below the grid again reuses that row instead of leaving an empty row behind.
+
 ### Notes
 - Saved grids that already have autohide on will lay out 26px shorter per cell when opened, because the header space is removed.
 - Turning autohide on or off moves the nodes in that grid by 26px.

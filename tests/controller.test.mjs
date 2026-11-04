@@ -287,6 +287,35 @@ test('finishNativeDrag supports directional split-left, split-right, stack below
   assert.equal(geom.cells.length, 3);
   assert.deepEqual(geom.cells.map(c => c.cell.nodes), [[1, 3], [2], [4]]);
   assert.equal(geom.cells[2].rect[2], frame.size[0] - 24, 'new bottom row spans full grid inner width');
+
+  // 4. Dragging the bottom row's only node below the grid again reuses that row instead of leaving it empty
+  before = controller.snapshot();
+  const bottom = frame.pos[1] + frame.size[1];
+  n4.pos = [frame.pos[0] + frame.size[0] / 2 - n4.size[0] / 2, bottom - 20];
+  controller.finishNativeDrag(before);
+  geom = controller.geometry()[0];
+  assert.equal(geom.cells.length, 3, 'no extra empty row is created');
+  assert.deepEqual(geom.cells.map(c => c.cell.nodes), [[1, 3], [2], [4]]);
+});
+
+test('Nodes 2.0 measure uses the rendered element height when content grows past node.size', async () => {
+  const { NodeAdapter } = await import('../web/core/adapter.js');
+  const prev = { LiteGraph: globalThis.LiteGraph, document: globalThis.document, CSS: globalThis.CSS, getComputedStyle: globalThis.getComputedStyle };
+  try {
+    globalThis.LiteGraph = { vueNodesMode: true, NODE_TITLE_HEIGHT: 30 };
+    globalThis.CSS = { escape: s => s };
+    globalThis.getComputedStyle = () => ({ minWidth: '0px' });
+    globalThis.document = { querySelector: () => ({ offsetHeight: 352 }) };
+    const adapter = new NodeAdapter({ canvas: {} });
+    const node = { id: 1, size: [280, 102], computeSize: () => [200, 80] };
+    const metric = adapter.measure(node);
+    assert.equal(metric.height, 352 - adapter.classicTitle, 'image preview height counts as content');
+    assert.ok(metric.minHeight >= metric.height);
+    globalThis.LiteGraph = { vueNodesMode: false, NODE_TITLE_HEIGHT: 30 };
+    assert.equal(adapter.measure(node).height, 102, 'classic mode keeps node.size');
+  } finally {
+    Object.assign(globalThis, prev);
+  }
 });
 
 

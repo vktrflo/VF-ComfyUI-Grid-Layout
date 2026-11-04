@@ -199,7 +199,12 @@ export class LayoutController {
       if (resolved?.kind === 'bottom-row') {
         const frame = this.frames.find(f => f.id === resolved.frame.id);
         if (!frame) return;
-        addBottomRow(frame);
+        // Dragging the only node of the bottom row below the grid again must
+        // not leave that row empty behind a second new row. Reuse the row.
+        const moving = new Set(nodeIds.map(String));
+        const last = frame.root.axis === 'y' ? frame.root.children.at(-1) : null;
+        const reusable = last && !last.children && last.nodes.every(id => moving.has(String(id)));
+        if (!reusable) addBottomRow(frame);
         const bottomCell = frame.root.children?.at(-1);
         if (bottomCell) dropNodes(this.frames, frame.id, bottomCell.id, nodeIds, 0, metrics);
         return;
