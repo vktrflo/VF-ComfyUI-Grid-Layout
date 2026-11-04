@@ -480,6 +480,7 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
     'Change Appearance…',
     'Shrink grid to content',
     'Add bottom row',
+    'Delete Empty Cells',
     'Fill cell height (all columns)',
     'Fill cell height (this column)',
     'Bypass cell',

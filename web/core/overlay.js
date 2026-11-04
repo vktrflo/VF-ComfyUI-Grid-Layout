@@ -1,4 +1,4 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, resolveDropTarget, contains, KEY, LEGACY_KEY } from './layout.js';
+import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, deleteEmptyCells, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, resolveDropTarget, contains, KEY, LEGACY_KEY } from './layout.js';
 
 import { LinkEffects } from './link-effects.js';
 
@@ -362,6 +362,7 @@ export const MENU_ICONS = {
   'Export empty template': '📤',
   'Remove grid (keep nodes)': '🗑️',
   'Delete cell (keep nodes)': '🗑️',
+  'Delete Empty Cells': '🧹',
   'Split into left / right': '↔️',
   'Split into top / bottom': '↕️',
   'Create grid…': '🪟',
@@ -1195,6 +1196,7 @@ export class LayoutOverlay {
       : null;
     const actions = [
       ['Delete cell (keep nodes)', () => edit(frame => deleteCell(frame, cellId))],
+      ['Delete Empty Cells', () => edit(frame => deleteEmptyCells(frame))],
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x', this.controller.metrics()))],
       ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y', this.controller.metrics()))],
       ...(cellFill ? [cellFill] : []),
@@ -1240,6 +1242,7 @@ export class LayoutOverlay {
       }],
       ['Shrink grid to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
+      ['Delete Empty Cells', () => this.controller.edit(() => deleteEmptyCells(this.controller.frames.find(f => f.id === frame.id)))],
     ];
     if (frame.fill === true) {
       actions.push(['Undo Fill cell height (all columns)', () => this.controller.edit(() => {
