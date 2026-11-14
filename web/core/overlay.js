@@ -1,4 +1,44 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, deleteEmptyCells, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, resolveDropTarget, contains, KEY, LEGACY_KEY } from './layout.js';
+import {
+  findCell,
+  splitCell,
+  gridCell,
+  resizeDivider,
+  addBottomRow,
+  shrinkFrame,
+  deleteCell,
+  deleteEmptyCells,
+  resizeRightEdge,
+  resizeLeftEdge,
+  normalizeColor,
+  normalizeFontSize,
+  normalizeBorder,
+  normalizeOpacity,
+  normalizePattern,
+  normalizeImage,
+  normalizeImageMode,
+  normalizeContainerMode,
+  PATTERNS,
+  MAX_IMAGE_BYTES,
+  leaves,
+  pickCell,
+  resolveDropTarget,
+  contains,
+  KEY,
+  LEGACY_KEY,
+  PAD,
+  CELL_TITLE,
+  COLLAPSED_CELL_WIDTH,
+  COLLAPSED_CELL_HEIGHT,
+  activeTabIndex,
+  addCellTab,
+  selectCellTab,
+  renameCellTab,
+  removeCellTab,
+  moveCellTab,
+  toggleCellCollapse,
+  toggleMaximizeCell,
+  applyIdePreset,
+} from './layout.js';
 
 import { LinkEffects } from './link-effects.js';
 
@@ -15,7 +55,14 @@ const STYLE = `
 .clt-port-in{left:-6px;top:calc(50% - 6px)}
 .clt-port-out{right:-6px;top:calc(50% - 6px)}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize,.clt-bypass{flex:none}
+.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize,.clt-bypass,.clt-preset-btn,.clt-appmode{flex:none}
+.clt-emoji{font-size:0;width:15px;height:15px;display:inline-block;background-position:center;background-repeat:no-repeat;background-size:contain}
+.clt-lock,.clt-autohide{font-size:0 !important;width:24px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0 !important}
+.clt-lock::before,.clt-autohide::before{content:'';width:14px;height:14px;display:inline-block;background-color:currentColor;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
+.clt-lock[aria-pressed="false"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 9.9-1'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 9.9-1'/%3E%3C/svg%3E")}
+.clt-lock[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E")}
+.clt-autohide[aria-pressed="false"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
+.clt-autohide[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E")}
 .clt-bypass[aria-pressed="true"]{background:rgba(168,85,247,.28);border-color:#a855f7;color:#e9d5ff}
 .lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
@@ -91,6 +138,38 @@ const STYLE = `
 .clt-appearance-dialog footer .clt-primary{background:#0066cc;border-color:#0088ff;color:#fff}
 .clt-appearance-dialog button:focus-visible,.clt-appearance-dialog input:focus-visible,.clt-appearance-dialog select:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
 .selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"],.selection-toolbox button.clt-toolbox-autohide.clt-autohide-off [class~="icon-[lucide--eye]"]{color:#8b5cf6 !important}
+.clt-tab-bar{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;height:100%}
+.clt-tab-bar::-webkit-scrollbar{display:none}
+.clt-cell-tab{position:relative;display:inline-flex;align-items:center;gap:3px;height:21px;padding:0 5px;border-radius:3px 3px 0 0;background:rgba(17,27,32,.65);color:#9fb0b7;border:1px solid transparent;border-bottom:none;font:inherit;font-size:11px;cursor:grab;user-select:none;flex-shrink:0;max-width:130px;transition:background .12s ease,color .12s ease}
+.clt-cell-tab:hover{background:rgba(52,83,97,.65);color:#f4f6f7}
+.clt-cell-tab.active{background:rgba(112,216,190,.16);color:#70d8be;border-color:#70d8be66;font-weight:600}
+.clt-cell-tab.dragging{opacity:.42;border-color:#70d8be;border-style:dashed}
+.clt-cell-tab.clt-tab-drop-target{background:rgba(245,158,11,.28);border-color:#f59e0b;color:#fff;box-shadow:0 0 0 1px rgba(245,158,11,.55)}
+.clt-cell-tab.clt-tab-insert-before::after,.clt-cell-tab.clt-tab-insert-after::after{content:"";position:absolute;top:1px;bottom:1px;width:2px;background:#f59e0b;border-radius:1px;box-shadow:0 0 6px #f59e0b;pointer-events:none}
+.clt-cell-tab.clt-tab-insert-before::after{left:-2px}
+.clt-cell-tab.clt-tab-insert-after::after{right:-2px}
+.clt-cell-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px}
+.clt-cell-tab-close{font-size:11px;line-height:1;opacity:.65;padding:0 2px;border-radius:2px;cursor:pointer}
+.clt-cell-tab-close:hover{opacity:1;background:rgba(239,68,68,.28);color:#fca5a5}
+.clt-cell.clt-cell-collapsed-x{display:flex;flex-direction:column;align-items:center;background:var(--comfy-menu-bg,#1b2226);pointer-events:auto;overflow:hidden}
+.clt-activity-bar{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 2px;width:100%;height:100%;box-sizing:border-box;pointer-events:auto}
+.clt-activity-icon{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid transparent;background:rgba(255,255,255,.04);color:inherit;cursor:pointer;font-size:13px;padding:0}
+.clt-activity-icon:hover,.clt-activity-icon.active{background:rgba(112,216,190,.2);border-color:#70d8be;color:#70d8be}
+.clt-activity-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;letter-spacing:.05em;color:#9fb0b7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-top:4px;cursor:pointer}
+.clt-cell.clt-cell-collapsed-y{overflow:hidden;pointer-events:auto}
+.clt-compass{position:absolute;z-index:25;pointer-events:none;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3px;padding:4px;box-sizing:border-box;background:rgba(17,24,28,.82);border:1px solid #7197a5;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.5);backdrop-filter:blur(4px)}
+.clt-compass-zone{display:flex;align-items:center;justify-content:center;border-radius:5px;border:1px solid rgba(113,151,165,.45);background:rgba(32,40,44,.9);color:#9fb0b7;font-size:12px;font-weight:600;transition:all .1s ease}
+.clt-compass-zone.active{background:rgba(112,216,190,.32);border-color:#70d8be;color:#fff;transform:scale(1.08);box-shadow:0 0 8px rgba(112,216,190,.55)}
+.clt-compass-top{grid-column:2;grid-row:1}
+.clt-compass-left{grid-column:1;grid-row:2}
+.clt-compass-center{grid-column:2;grid-row:2}
+.clt-compass-right{grid-column:3;grid-row:2}
+.clt-compass-bottom{grid-column:2;grid-row:3}
+.clt-ghost-tab{border:2px solid #f59e0b;background:rgba(245,158,11,.15);box-shadow:inset 0 25px 0 rgba(245,158,11,.28),0 0 0 1px rgba(245,158,11,.35)}
+.clt-frame.clt-app-mode{border-radius:4px;border-width:1px}
+.clt-frame.clt-app-mode .clt-cell{border-radius:0;border-color:rgba(113,151,165,.45)}
+.clt-frame.clt-app-mode .clt-cell-header{border-radius:0}
+.clt-appmode[aria-pressed="true"],.clt-maximize-cell[aria-pressed="true"]{background:rgba(112,216,190,.24);border-color:#70d8be;color:#70d8be}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -342,31 +421,50 @@ function button(label, action, text = label) {
 export const LOGO_PURPLE = '#8b5cf6';
 const SELECTION_ACTION_LABEL = 'Create grid layout from selected nodes';
 export const MENU_ICONS = {
-  'Change Appearance…': '🎨',
-  'Shrink grid to content': '📐',
-  'Add bottom row': '➕',
-  'Fill cell height': '↕️',
-  'Undo Fill cell height': '↩️',
-  'Fill cell height (all columns)': '↕️',
-  'Undo Fill cell height (all columns)': '↩️',
-  'Fill cell height (this column)': '↕️',
-  'Undo Fill cell height (this column)': '↩️',
-  'Bypass cell': '⏭️',
-  'Unbypass cell': '▶️',
-  'Lock frame': '🔒',
-  'Unlock frame': '🔓',
-  'Minimize grid': '➖',
-  'Restore grid': '◻️',
-  'Collapse grid': '🔼',
-  'Expand grid': '🔽',
-  'Export empty template': '📤',
-  'Remove grid (keep nodes)': '🗑️',
-  'Delete cell (keep nodes)': '🗑️',
-  'Delete Empty Cells': '🧹',
-  'Split into left / right': '↔️',
-  'Split into top / bottom': '↕️',
-  'Create grid…': '🪟',
-  'Rename cell…': '✏️',
+  'Change Appearance…': '◈',
+  'Shrink grid to content': '⤡',
+  'Add bottom row': '+',
+  'Fill cell height': '↕',
+  'Undo Fill cell height': '↩',
+  'Fill cell height (all columns)': '↕',
+  'Undo Fill cell height (all columns)': '↩',
+  'Fill cell height (this column)': '↕',
+  'Undo Fill cell height (this column)': '↩',
+  'Bypass cell': '↱',
+  'Unbypass cell': '▶',
+  'Lock frame': '●',
+  'Unlock frame': '○',
+  'Minimize grid': '−',
+  'Restore grid': '◻',
+  'Collapse grid': '▴',
+  'Expand grid': '▾',
+  'Export empty template': '→',
+  'Remove grid (keep nodes)': '✕',
+  'Delete cell (keep nodes)': '✕',
+  'Delete Empty Cells': '⊗',
+  'Split into left / right': '↔',
+  'Split into top / bottom': '↕',
+  'Create grid…': '⊞',
+  'Rename cell…': '✎',
+  'Add tab': '+',
+  'Close active tab': '✕',
+  'Close tab': '✕',
+  'Move tab left': '◀',
+  'Move tab right': '▶',
+  'Move active tab left': '◀',
+  'Move active tab right': '▶',
+  'Rename tab…': '✎',
+  'Maximize panel': '⤢',
+  'Restore panel': '⤡',
+  'Collapse panel': '◀',
+  'Expand panel': '▶',
+  'Fold nodes in panel': '≡',
+  'Unfold nodes in panel': '≡',
+  'Enable App View': '▣',
+  'Disable App View': '▣',
+  'Preset: VS Code IDE': '◫',
+  'Preset: Dual Sidebar Studio': '◫',
+  'Preset: Tabbed Dashboard': '◫',
 };
 export const VF_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="VKTRFLO"><defs><linearGradient id="ring" x1="9" y1="8" x2="119" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#52d1a5"/><stop offset="0.34" stop-color="#78d7bd"/><stop offset="0.64" stop-color="#8b5cf6"/><stop offset="1" stop-color="#c084fc"/></linearGradient><filter id="shadow" x="-8" y="-8" width="144" height="144" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.32"/><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000000" flood-opacity="0.5"/></filter></defs><rect x="9" y="9" width="110" height="110" rx="29" fill="none" stroke="url(#ring)" stroke-width="15" filter="url(#shadow)"/></svg>')}`;
 
@@ -583,6 +681,19 @@ export class LayoutOverlay {
       if (canvas.renderLink) {
         this.origRenderLink = canvas.renderLink;
         canvas.renderLink = (ctx, startPos, endPos, link, ...rest) => {
+          if (link && this.hidden?.appModeFrames) {
+            const originFrame = this.hidden.appModeFrames.get(String(link.origin_id));
+            const targetFrame = this.hidden.appModeFrames.get(String(link.target_id));
+            if (originFrame && originFrame === targetFrame) return;
+          }
+          if (link && this.hidden?.ids?.size) {
+            const oId = String(link.origin_id);
+            const tId = String(link.target_id);
+            if ((this.hidden.ids.has(oId) && !this.hidden.frames.has(oId)) ||
+                (this.hidden.ids.has(tId) && !this.hidden.frames.has(tId))) {
+              return;
+            }
+          }
           const extras = rest[5];
           const endpoints = routeMinimizedEndpoints(this.hidden, this.controller.graph, link, startPos, endPos, extras);
           if (!endpoints) return;
@@ -1194,7 +1305,15 @@ export class LayoutOverlay {
     const cellBypass = this.cellHasNodes(currentCell)
       ? [this.isCellBypassed(currentCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frameId, cellId)]
       : null;
+    const activeTabIdx = currentCell?.tabs?.length > 1 ? activeTabIndex(currentCell) : -1;
     const actions = [
+      ['Add tab', () => edit((frame, cell) => addCellTab(frame, cellId, `Tab ${(cell.tabs?.length ?? 0) + 1}`))],
+      ...(activeTabIdx > 0 ? [['Move active tab left', () => edit(frame => moveCellTab(this.controller.frames, frame.id, cellId, activeTabIdx, { kind: 'tab', frame, cell: currentCell, tabIndex: activeTabIdx - 1 }, this.controller.metrics()))]] : []),
+      ...(activeTabIdx >= 0 && activeTabIdx < (currentCell.tabs.length - 1) ? [['Move active tab right', () => edit(frame => moveCellTab(this.controller.frames, frame.id, cellId, activeTabIdx, { kind: 'tab', frame, cell: currentCell, tabIndex: activeTabIdx + 1 }, this.controller.metrics()))]] : []),
+      ...(currentCell?.tabs?.length > 0 ? [['Close active tab', () => edit((frame, cell) => removeCellTab(frame, cellId, activeTabIndex(cell)))]] : []),
+      [currentFrame?.maximizedCellId === cellId ? 'Restore panel' : 'Maximize panel', () => edit(frame => toggleMaximizeCell(frame, cellId))],
+      [currentCell?.collapsed === true ? 'Expand panel' : 'Collapse panel', () => edit(frame => toggleCellCollapse(frame, cellId))],
+      ...(this.cellHasNodes(currentCell) ? [[this.areCellNodesFolded(currentCell) ? 'Unfold nodes in panel' : 'Fold nodes in panel', () => this.toggleCellAccordion(frameId, cellId)]] : []),
       ['Delete cell (keep nodes)', () => edit(frame => deleteCell(frame, cellId))],
       ['Delete Empty Cells', () => edit(frame => deleteEmptyCells(frame))],
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x', this.controller.metrics()))],
@@ -1289,6 +1408,257 @@ export class LayoutOverlay {
   frameMenu(event, frame, options) {
     const actions = this.frameActions(frame, options);
     if (actions.length) this.showMenu(event, actions);
+  }
+  presetMenu(event, frame) {
+    frame = this.controller.frames.find(f => f.id === frame?.id);
+    if (!frame) return;
+    const actions = [
+      [frame.appMode === true ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id)],
+      ['Preset: VS Code IDE', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'vscode', this.controller.metrics()))],
+      ['Preset: Dual Sidebar Studio', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'dual-sidebar', this.controller.metrics()))],
+      ['Preset: Tabbed Dashboard', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'tabbed-dashboard', this.controller.metrics()))],
+    ];
+    this.showMenu(event, actions);
+  }
+  toggleAppMode(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      if (!frame) return;
+      if (frame.appMode === true) delete frame.appMode; else frame.appMode = true;
+    }));
+    this.refreshHidden();
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
+  }
+  areCellNodesFolded(cell) {
+    const graph = this.controller.graph;
+    if (!cell || cell.children) return false;
+    const activeIds = cell.tabs?.length > 0
+      ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
+      : cell.nodes;
+    const nodes = activeIds.map(id => graph?.getNodeById(id)).filter(Boolean);
+    return nodes.length > 0 && nodes.every(node => node.flags?.collapsed === true);
+  }
+  toggleCellAccordion(frameId, cellId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      const cell = frame && findCell(frame.root, cellId);
+      if (!cell || cell.children) return;
+      const graph = this.controller.graph;
+      const activeIds = cell.tabs?.length > 0
+        ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
+        : cell.nodes;
+      const nodes = activeIds.map(id => graph?.getNodeById(id)).filter(Boolean);
+      if (!nodes.length) return;
+      const allFolded = nodes.every(node => node.flags?.collapsed === true);
+      for (const node of nodes) {
+        if (allFolded) this.controller.adapter.unfold(node);
+        else this.controller.adapter.fold(node);
+      }
+    }));
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
+  }
+  tabTitle(label, frameId, cellId, tabIndex) {
+    const span = element('span', 'clt-cell-tab-label', label);
+    span.title = 'Double-click to rename tab';
+    span.ondblclick = event => {
+      event.preventDefault(); event.stopPropagation();
+      this.closeMenu();
+      const graph = this.controller.graph;
+      const input = element('input', 'clt-title-input');
+      input.type = 'text'; input.value = label; input.maxLength = 120;
+      input.setAttribute('aria-label', 'Tab title');
+      let finished = false;
+      const finish = save => {
+        if (finished) return;
+        finished = true; this.editing = null; this.signature = null;
+        const value = input.value.trim();
+        if (save && value && value !== label && graph === this.controller.graph) {
+          this.safe(() => this.controller.edit(() => {
+            const frame = this.controller.frames.find(f => f.id === frameId);
+            if (frame) renameCellTab(frame, cellId, tabIndex, value);
+          }));
+        }
+      };
+      this.editing = { graph, frameId, cellId, cancel: () => finish(false) };
+      input.onpointerdown = e => e.stopPropagation();
+      input.ondblclick = e => e.stopPropagation();
+      input.onkeydown = e => {
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); finish(true); }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      };
+      input.onblur = () => finish(true);
+      span.replaceWith(input); input.focus(); input.select();
+    };
+    return span;
+  }
+  tabMenu(event, frameId, cellId, tabIndex) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const currentFrame = this.controller.frames.find(f => f.id === frameId);
+    const currentCell = currentFrame && findCell(currentFrame.root, cellId);
+    const tab = currentCell?.tabs?.[tabIndex];
+    if (!currentFrame || !currentCell || !tab) return;
+    const edit = action => {
+      this.controller.edit(() => {
+        const f = this.controller.frames.find(item => item.id === frameId);
+        const c = f && findCell(f.root, cellId);
+        if (f && c) action(f, c);
+      });
+      this.refreshHidden();
+      this.signature = null;
+    };
+    const actions = [
+      ...(tabIndex > 0 ? [['Move tab left', () => edit((f, c) => moveCellTab(this.controller.frames, f.id, c.id, tabIndex, { kind: 'tab', frame: f, cell: c, tabIndex: tabIndex - 1 }, this.controller.metrics()))]] : []),
+      ...(tabIndex < currentCell.tabs.length - 1 ? [['Move tab right', () => edit((f, c) => moveCellTab(this.controller.frames, f.id, c.id, tabIndex, { kind: 'tab', frame: f, cell: c, tabIndex: tabIndex + 1 }, this.controller.metrics()))]] : []),
+      ['Rename tab…', () => this.dialog('Rename tab', [{ name: 'label', label: 'Tab name', value: tab.label }], ({ label }) => edit(f => renameCellTab(f, cellId, tabIndex, label)))],
+      ['Add tab', () => edit((f, c) => addCellTab(f, cellId, `Tab ${(c.tabs?.length ?? 0) + 1}`))],
+      ['Close tab', () => edit(f => removeCellTab(f, cellId, tabIndex))],
+    ];
+    this.showMenu(event, actions);
+  }
+  startTabDrag(event, frame, cell, tabIndex) {
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('.clt-cell-tab-close,input')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeMenu();
+    this.safe(() => {
+      let targetFrame = this.controller.frames.find(f => f.id === frame.id);
+      if (!targetFrame || targetFrame.lock === true) return;
+      let targetCell = findCell(targetFrame.root, cell.id);
+      if (!targetCell) return;
+      if (activeTabIndex(targetCell) !== tabIndex) {
+        this.controller.edit(() => {
+          const f = this.controller.frames.find(item => item.id === frame.id);
+          if (f) selectCellTab(f, cell.id, tabIndex);
+        });
+        this.refreshHidden();
+        this.signature = null;
+        targetFrame = this.controller.frames.find(f => f.id === frame.id);
+        targetCell = targetFrame && findCell(targetFrame.root, cell.id);
+        if (!targetFrame || !targetCell) return;
+      }
+      this.controller.begin();
+      this.drag = {
+        kind: 'tab-drag',
+        frame: targetFrame,
+        cell: targetCell,
+        tabIndex,
+        moved: false,
+        start: this.controller.adapter.point(event),
+        graph: this.controller.graph,
+        pointerId: event.pointerId,
+      };
+    });
+  }
+  getTabHit(pointer) {
+    if (!pointer || !this.plane) return null;
+    const [px, py] = pointer;
+    for (const cellEl of this.plane.querySelectorAll?.('.clt-cell') ?? []) {
+      const cellId = cellEl.dataset?.cellId || cellEl.getAttribute?.('data-cell-id');
+      const frameEl = cellEl.closest?.('.clt-frame');
+      const frameId = frameEl?.dataset?.frameId || frameEl?.getAttribute?.('data-frame-id');
+      if (!cellId) continue;
+      const tabEls = [...(cellEl.querySelectorAll?.('.clt-cell-tab') ?? [])];
+      if (!tabEls.length) continue;
+      const cellLeft = parseFloat(cellEl.style?.left) || 0;
+      const cellTop = parseFloat(cellEl.style?.top) || 0;
+      const cellWidth = parseFloat(cellEl.style?.width) || 0;
+      if (px < cellLeft - 12 || px > cellLeft + cellWidth + 12) continue;
+      if (py < cellTop - 28 || py > cellTop + CELL_TITLE + 28) continue;
+
+      const tabs = tabEls.map((el, i) => {
+        const idx = Number(el.dataset?.tabIndex ?? el.getAttribute?.('data-tab-index') ?? i);
+        let left = cellLeft + 8 + i * 86;
+        let right = left + 82;
+        if (typeof el.getBoundingClientRect === 'function') {
+          const box = el.getBoundingClientRect();
+          if (box.width > 0) {
+            const p1 = this.controller.adapter.point({ clientX: box.left, clientY: box.top });
+            const p2 = this.controller.adapter.point({ clientX: box.right, clientY: box.bottom });
+            left = p1[0];
+            right = p2[0];
+          }
+        }
+        return { index: idx, left, right, midX: (left + right) / 2 };
+      });
+
+      const onHeaderY = py >= cellTop - 8 && py <= cellTop + CELL_TITLE + 8;
+      const direct = tabs.find(t => px >= t.left && px <= t.right);
+      if (direct && onHeaderY) {
+        return {
+          frameId,
+          cellId,
+          tabIndex: direct.index,
+          reorderIndex: direct.index,
+          onTabPill: true,
+          afterHalf: px > direct.midX,
+        };
+      }
+
+      let reorderIndex = tabs.length - 1;
+      for (const t of tabs) {
+        if (px <= t.right) {
+          reorderIndex = t.index;
+          break;
+        }
+      }
+      const pastLastPill = px > (tabs.at(-1)?.right ?? cellLeft);
+      return {
+        frameId,
+        cellId,
+        tabIndex: pastLastPill ? tabs.length : reorderIndex,
+        reorderIndex,
+        onTabPill: false,
+      };
+    }
+    return null;
+  }
+  resolveTabDragTarget(layouts, point) {
+    const tabHit = this.getTabHit(point);
+    const preview = resolveDropTarget(layouts, [point[0] - 80, point[1] - 20, 160, 60], {
+      pointer: point,
+      enableCompass: true,
+      isTabDrag: true,
+      tabHit,
+    });
+    if (this.drag?.kind === 'tab-drag') {
+      const srcFrame = this.drag.frame;
+      const srcCell = this.drag.cell;
+      const srcLayout = layouts.find(l => l.frame?.id === srcFrame?.id);
+      const srcCellEntry = srcLayout?.cells?.find(c => c.cell?.id === srcCell?.id);
+      if (srcCellEntry && Array.isArray(srcCell?.tabs) && srcCell.tabs.length > 0) {
+        const [cx, cy, cw, ch] = srcCellEntry.rect;
+        const isSplit = String(preview?.kind ?? '').startsWith('split-') || preview?.kind === 'bottom-row';
+        const overSourceCell = preview?.cell?.id === srcCell.id || (
+          point[0] >= cx - 16 &&
+          point[0] <= cx + cw + 16 &&
+          point[1] >= cy - 36 &&
+          point[1] <= cy + CELL_TITLE + 36
+        );
+        if (overSourceCell && !isSplit) {
+          const pad = srcFrame.appMode === true ? 6 : PAD;
+          const slotW = Math.min(96, Math.max(40, (cw - 80) / srcCell.tabs.length));
+          const fallbackIdx = Math.max(0, Math.min(srcCell.tabs.length - 1, Math.floor((point[0] - (cx + 8)) / slotW)));
+          const reorderIndex = tabHit?.cellId === srcCell.id && Number.isInteger(tabHit.reorderIndex)
+            ? tabHit.reorderIndex
+            : fallbackIdx;
+          return {
+            kind: 'tab',
+            ghostType: 'tab',
+            frame: srcFrame,
+            cell: srcCell,
+            rect: srcCellEntry.rect,
+            tabIndex: reorderIndex,
+            previewRect: [cx + pad, cy + CELL_TITLE + pad, cw - pad * 2, Math.max(48, ch - CELL_TITLE - pad * 2)],
+          };
+        }
+      }
+    }
+    return preview;
   }
   // Both toggles edit through the controller so the change lands in the
   // workflow's undo history like every other frame edit.
@@ -1390,6 +1760,7 @@ export class LayoutOverlay {
     return resolveDropTarget(layouts, [node.pos[0], node.pos[1], node.size[0], node.size[1]], {
       excludeIds: dragged.map(n => n.id),
       pointer,
+      tabHit: dragged.length === 1 ? this.getTabHit(pointer) : null,
       titleHeight: this.controller.adapter?.classicTitle ?? 30,
     });
   }
@@ -1424,14 +1795,69 @@ export class LayoutOverlay {
     this.app.canvas?.setDirty(true, true);
   }
   // Node draws and link draws consult this per item, so it is rebuilt once
-  // per animation frame (and right after minimize toggles), not per lookup.
+  // per animation frame (and right after minimize/tab/collapse toggles), not per lookup.
   refreshHidden() {
-    const ids = new Set(), frames = new Map();
+    const ids = new Set(), frames = new Map(), appModeFrames = new Map();
     for (const frame of this.controller.frames ?? []) {
-      if (frame.minimized !== true) continue;
-      for (const cell of leaves(frame.root)) for (const n of cell.nodes) { ids.add(String(n)); frames.set(String(n), frame); }
+      const isAppMode = frame.appMode === true;
+      const maxCellId = frame.maximizedCellId ? String(frame.maximizedCellId) : null;
+      const hasMaxCell = maxCellId ? Boolean(findCell(frame.root, maxCellId)) : false;
+      for (const cell of leaves(frame.root)) {
+        for (const n of cell.nodes) {
+          if (isAppMode) appModeFrames.set(String(n), frame);
+          if (frame.minimized === true) {
+            ids.add(String(n));
+            frames.set(String(n), frame);
+          }
+        }
+        if (frame.minimized === true) continue;
+        if (hasMaxCell && cell.id !== maxCellId) {
+          for (const n of cell.nodes) ids.add(String(n));
+          continue;
+        }
+        if (cell.collapsed === true) {
+          for (const n of cell.nodes) ids.add(String(n));
+          continue;
+        }
+        if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+          const activeIdx = activeTabIndex(cell);
+          const activeSet = new Set((cell.tabs[activeIdx]?.nodes ?? []).map(String));
+          for (const n of cell.nodes) {
+            if (!activeSet.has(String(n))) ids.add(String(n));
+          }
+        }
+      }
     }
-    this.hidden = { ids, frames };
+    if (this.nativeNode?.id != null) ids.delete(String(this.nativeNode.id));
+    for (const d of this.draggedNodes()) {
+      if (d?.id != null) ids.delete(String(d.id));
+    }
+    this.hidden = { ids, frames, appModeFrames };
+    if (typeof document !== 'undefined') {
+      for (const el of document.querySelectorAll?.('.lg-node, .vf-nb-node-bar') ?? []) {
+        const id = el.dataset?.nodeId || el.getAttribute?.('data-node-id');
+        if (id && ids.has(String(id))) {
+          el.classList?.add?.('clt-node-hidden');
+        } else {
+          el.classList?.remove?.('clt-node-hidden');
+        }
+      }
+    }
+    const graph = this.controller.graph;
+    if (graph && typeof graph.getNodeOnPos === 'function' && !graph._cltWrappedGetNodeOnPos) {
+      const origGetNodeOnPos = graph.getNodeOnPos;
+      const overlay = this;
+      const wrapped = function (x, y, nodes_list, margin) {
+        const list = nodes_list ?? this._nodes ?? this.nodes;
+        if (Array.isArray(list) && overlay.hidden?.ids?.size) {
+          const filtered = list.filter(n => n && !overlay.hidden.ids.has(String(n.id)));
+          return origGetNodeOnPos.call(this, x, y, filtered, margin);
+        }
+        return origGetNodeOnPos.call(this, x, y, nodes_list, margin);
+      };
+      wrapped._cltWrappedGetNodeOnPos = true;
+      graph.getNodeOnPos = wrapped;
+    }
     return this.hidden;
   }
   get hiddenNodeIds() { return this.hidden.ids; }
@@ -1554,7 +1980,9 @@ export class LayoutOverlay {
   nativeDown(event) {
     if (this.menu && !this.menu.contains(event.target)) this.closeMenu();
     if (this.isGhostActive()) return;
-    if (event.button !== 0 || this.drag || event.target.closest?.('.clt-overlay,.clt-menu,.clt-dialog,input,textarea,button,select,[contenteditable="true"]')) return;
+    if (event.button !== 0 || this.drag) return;
+    if (event.target.closest?.('.clt-overlay,.clt-menu,.clt-dialog,.selection-toolbox,input,textarea,select,[contenteditable="true"]')) return;
+    if (event.target.closest?.('button') && !event.target.closest?.('.lg-node')) return;
     const container = this.app.canvas.canvas.parentElement;
     if (!container.contains(event.target) || this.app.configuringGraph) return;
     // Start before the native renderer moves anything. Its nested history
@@ -1565,7 +1993,7 @@ export class LayoutOverlay {
       const domNodeId = event.target?.closest?.('.lg-node')?.dataset?.nodeId;
       this.nativeNode = (domNodeId != null && this.controller.graph.getNodeById(domNodeId)) || this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
       this.controller.begin();
-      this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId };
+      this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId, pointer };
     });
   }
   move(event) {
@@ -1573,6 +2001,16 @@ export class LayoutOverlay {
       event.preventDefault(); event.stopPropagation();
       if (this.drag.graph !== this.controller.graph) return this.up(null, true);
       const point = this.controller.adapter.point(event), dx = point[0] - this.drag.start[0], dy = point[1] - this.drag.start[1];
+      if (this.drag.kind === 'tab-drag') {
+        if (!this.drag.moved && Math.hypot(dx, dy) < 4) return;
+        this.drag.moved = true;
+        this.drag.pointer = point;
+        const layouts = this.controller.geometry();
+        const preview = this.resolveTabDragTarget(layouts, point);
+        this.dropPreview = preview;
+        this.hover = preview?.cell?.id ?? null;
+        return;
+      }
       this.safe(() => {
         try {
           this.controller.edit(() => {
@@ -1612,18 +2050,40 @@ export class LayoutOverlay {
   }
   up(event, cancelled = false) {
     if (this.drag && (!event || event.pointerId === this.drag.pointerId)) {
-      this.drag = null; this.controller.end(); this.signature = null;
+      const activeDrag = this.drag;
+      if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && activeDrag.kind === 'tab-drag' && activeDrag.moved) {
+        activeDrag.pointer = this.controller.adapter.point(event);
+        this.dropPreview = this.resolveTabDragTarget(this.controller.geometry(), activeDrag.pointer);
+      }
+      const preview = this.dropPreview;
+      this.drag = null;
+      this.dropPreview = null;
+      this.hover = null;
+      if (!cancelled && activeDrag.kind === 'tab-drag' && activeDrag.moved && preview && activeDrag.graph === this.controller.graph) {
+        this.safe(() => this.controller.edit(() => {
+          moveCellTab(this.controller.frames, activeDrag.frame.id, activeDrag.cell.id, activeDrag.tabIndex, preview, this.controller.metrics());
+        }));
+      }
+      this.controller.end();
+      this.refreshHidden();
+      this.signature = null;
     }
     if (this.nativeDrag && (!event || event.pointerId === this.nativeDrag.pointerId)) {
       const pending = this.nativeDrag;
       if (pending.finishing) return;
+      if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+        pending.pointer = this.controller.adapter.point(event);
+      }
+      const tabHit = pending.pointer ? this.getTabHit(pending.pointer) : null;
       pending.finishing = true; this.nativeNode = null; this.hover = null; this.dropPreview = null;
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
-          if (!cancelled && pending.graph === this.controller.graph) this.controller.finishNativeDrag(pending.before);
+          if (!cancelled && pending.graph === this.controller.graph) {
+            this.controller.finishNativeDrag(pending.before, pending.pointer ?? null, { tabHit });
+          }
         });
-        this.nativeDrag = null; this.controller.end(); this.signature = null;
+        this.nativeDrag = null; this.controller.end(); this.refreshHidden(); this.signature = null;
       });
     }
   }
@@ -1643,11 +2103,16 @@ export class LayoutOverlay {
           const preview = this.computeDropPreview(layouts, dragged);
           this.dropPreview = preview;
           this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
+        } else if (this.drag?.kind === 'tab-drag' && this.drag.moved && this.drag.pointer) {
+          const point = this.drag.pointer;
+          const preview = this.resolveTabDragTarget(layouts, point);
+          this.dropPreview = preview;
+          this.hover = preview?.cell?.id ?? null;
         } else if (!this.nativeDrag) {
           this.dropPreview = null;
         }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
-        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.previewRect] : null;
+        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.compassZone, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.tabIndex, this.dropPreview.previewRect, this.drag?.moved] : null;
         const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, previewSig, autohidden, this.bypassedNodeIds()]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
@@ -1689,7 +2154,8 @@ export class LayoutOverlay {
     for (const layout of layouts) {
       const { frame } = layout;
       if (this.isFrameAutohidden(frame, selectedIds, dragged)) continue;
-      const el = element('section', 'clt-frame'); el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
+      const el = element('section', `clt-frame${frame.appMode === true ? ' clt-app-mode' : ''}`);
+      el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
       rectStyle(el, [...frame.pos, ...frame.size]);
       applyBorder(el, frame.border);
       const header = element('div', 'clt-frame-header');
@@ -1701,17 +2167,38 @@ export class LayoutOverlay {
       });
       const badge = element('span', 'clt-emoji', '🌀');
       badge.setAttribute('aria-hidden', 'true');
+      badge.style.backgroundImage = `url("${VF_LOGO_DATA_URI}")`;
       header.append(badge);
       header.append(this.title(frame.label, frame.id));
       if (frame.lock === true) header.style.cursor = 'default';
+
+      const minimized = frame.minimized === true;
+      const collapsed = frame.collapsed === true;
+
+      const presetBtn = button('IDE presets', e => this.presetMenu(e, frame), '◫');
+      presetBtn.classList.add('clt-preset-btn');
+      if (minimized || collapsed) {
+        presetBtn.hidden = true;
+        presetBtn.style.display = 'none';
+      }
+      header.append(presetBtn);
+
+      const appMode = frame.appMode === true;
+      const appModeBtn = button(appMode ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id), '▣');
+      appModeBtn.classList.add('clt-appmode');
+      appModeBtn.setAttribute('aria-pressed', String(appMode));
+      if (minimized || collapsed) {
+        appModeBtn.hidden = true;
+        appModeBtn.style.display = 'none';
+      }
+      header.append(appModeBtn);
+
       const locked = frame.lock === true;
       const lock = button(locked ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id), locked ? '🔒' : '🔓');
       lock.classList.add('clt-lock');
       lock.setAttribute('aria-pressed', String(locked));
       header.append(lock);
 
-      const minimized = frame.minimized === true;
-      const collapsed = frame.collapsed === true;
       const empty = !this.frameHasNodes(frame);
       const autohide = frame.autohide === true && !empty;
       const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
@@ -1808,10 +2295,72 @@ export class LayoutOverlay {
       leftEdge.onpointerdown = event => this.startDrag(event, 'resize-left', {frame});
       el.append(leftEdge);
       fragment.append(el);
-      for (const { cell, rect } of layout.cells) {
-        const cellEl = element('div', `clt-cell${this.hover === cell.id ? ' clt-target' : ''}`);
+      for (const { cell, rect, parentAxis } of layout.cells) {
+        const isCollapsedX = cell.collapsed === true && parentAxis !== 'y';
+        const isCollapsedY = cell.collapsed === true && parentAxis === 'y';
+        const cellEl = element(
+          'div',
+          `clt-cell${this.hover === cell.id ? ' clt-target' : ''}${isCollapsedX ? ' clt-cell-collapsed-x' : ''}${isCollapsedY ? ' clt-cell-collapsed-y' : ''}`
+        );
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
         applyBorder(cellEl, cell.border);
+
+        if (isCollapsedX) {
+          const activityBar = element('div', 'clt-activity-bar');
+          activityBar.addEventListener('pointerdown', e => e.stopPropagation());
+          const expandBtn = button('Expand panel', () => {
+            this.safe(() => this.controller.edit(() => {
+              const f = this.controller.frames.find(item => item.id === frame.id);
+              if (f) toggleCellCollapse(f, cell.id);
+            }));
+            this.refreshHidden();
+            this.signature = null;
+          }, '▶');
+          expandBtn.classList.add('clt-expand-cell');
+          activityBar.append(expandBtn);
+
+          if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+            const activeIdx = activeTabIndex(cell);
+            cell.tabs.forEach((tab, idx) => {
+              const iconChar = tab.icon || [...(tab.label || 'T')][0] || '•';
+              const tabBtn = element('button', `clt-activity-icon${idx === activeIdx ? ' active' : ''}`, iconChar);
+              tabBtn.type = 'button';
+              tabBtn.title = `Open ${tab.label}`;
+              tabBtn.setAttribute('aria-label', `Open ${tab.label}`);
+              tabBtn.dataset.tabIndex = String(idx);
+              tabBtn.onclick = e => {
+                e.stopPropagation();
+                this.safe(() => this.controller.edit(() => {
+                  const f = this.controller.frames.find(item => item.id === frame.id);
+                  if (f) {
+                    selectCellTab(f, cell.id, idx);
+                    toggleCellCollapse(f, cell.id);
+                  }
+                }));
+                this.refreshHidden();
+                this.signature = null;
+              };
+              activityBar.append(tabBtn);
+            });
+          }
+
+          const vertLabel = element('span', 'clt-activity-label', cell.label || 'Panel');
+          vertLabel.title = 'Click to expand panel';
+          vertLabel.onclick = e => {
+            e.stopPropagation();
+            this.safe(() => this.controller.edit(() => {
+              const f = this.controller.frames.find(item => item.id === frame.id);
+              if (f) toggleCellCollapse(f, cell.id);
+            }));
+            this.refreshHidden();
+            this.signature = null;
+          };
+          activityBar.append(vertLabel);
+          cellEl.append(activityBar);
+          fragment.append(cellEl);
+          continue;
+        }
+
         const cellHeader = element('div', `clt-cell-header${autohide ? ' clt-cell-header-floating' : ''}`);
         cellHeader.addEventListener('pointerdown', e => e.stopPropagation());
         applyHeaderStyle(cellHeader, {
@@ -1820,7 +2369,110 @@ export class LayoutOverlay {
           fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
           headerOpacity: normalizeOpacity(cell.headerOpacity) ?? normalizeOpacity(frame.headerOpacity),
         });
-        cellHeader.append(this.title(cell.label, frame.id, cell.id));
+
+        if (isCollapsedY) {
+          const expandBtn = button('Expand panel', () => {
+            this.safe(() => this.controller.edit(() => {
+              const f = this.controller.frames.find(item => item.id === frame.id);
+              if (f) toggleCellCollapse(f, cell.id);
+            }));
+            this.refreshHidden();
+            this.signature = null;
+          }, '▼');
+          expandBtn.classList.add('clt-expand-cell');
+          cellHeader.append(expandBtn);
+          cellHeader.append(this.title(cell.label, frame.id, cell.id));
+          cellEl.append(cellHeader);
+          fragment.append(cellEl);
+          continue;
+        }
+
+        if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+          const tabBar = element('div', 'clt-tab-bar');
+          const activeIdx = activeTabIndex(cell);
+          const isTabDragOnThisCell = this.drag?.kind === 'tab-drag' && this.drag.moved && this.dropPreview?.kind === 'tab' && this.dropPreview?.cell?.id === cell.id;
+          const isSameCellTabDrag = isTabDragOnThisCell && this.drag.cell?.id === cell.id;
+          const isNodeDropIntoTab = this.dropPreview?.kind === 'tab-into' && this.dropPreview?.cell?.id === cell.id;
+          cell.tabs.forEach((tab, idx) => {
+            const tabEl = element('div', `clt-cell-tab${idx === activeIdx ? ' active' : ''}`);
+            if (this.drag?.kind === 'tab-drag' && this.drag.moved && this.drag.cell?.id === cell.id && this.drag.tabIndex === idx) {
+              tabEl.classList.add('dragging');
+            }
+            if (isNodeDropIntoTab && this.dropPreview.tabIndex === idx) {
+              tabEl.classList.add('clt-tab-drop-target');
+            } else if (isSameCellTabDrag && Number.isInteger(this.dropPreview.tabIndex) && this.dropPreview.tabIndex === idx && idx !== this.drag.tabIndex) {
+              tabEl.classList.add(idx < this.drag.tabIndex ? 'clt-tab-insert-before' : 'clt-tab-insert-after');
+            } else if (isTabDragOnThisCell && !isSameCellTabDrag && Number.isInteger(this.dropPreview.tabIndex)) {
+              if (this.dropPreview.tabIndex === idx) tabEl.classList.add('clt-tab-insert-before');
+              else if (this.dropPreview.tabIndex >= cell.tabs.length && idx === cell.tabs.length - 1) tabEl.classList.add('clt-tab-insert-after');
+            }
+            tabEl.dataset.tabId = tab.id;
+            tabEl.dataset.tabIndex = String(idx);
+            tabEl.setAttribute('role', 'tab');
+            tabEl.setAttribute('aria-selected', String(idx === activeIdx));
+            if (tab.icon) {
+              const iconSpan = element('span', 'clt-cell-tab-icon', tab.icon);
+              tabEl.append(iconSpan);
+            }
+            tabEl.append(this.tabTitle(tab.label, frame.id, cell.id, idx));
+            const closeTab = element('span', 'clt-cell-tab-close', '×');
+            closeTab.title = `Close ${tab.label}`;
+            closeTab.setAttribute('aria-label', `Close ${tab.label}`);
+            closeTab.onclick = e => {
+              e.stopPropagation();
+              this.safe(() => this.controller.edit(() => {
+                const f = this.controller.frames.find(item => item.id === frame.id);
+                if (f) removeCellTab(f, cell.id, idx);
+              }));
+              this.refreshHidden();
+              this.signature = null;
+            };
+            tabEl.append(closeTab);
+            tabEl.onpointerdown = e => this.startTabDrag(e, frame, cell, idx);
+            tabEl.oncontextmenu = e => this.tabMenu(e, frame.id, cell.id, idx);
+            tabBar.append(tabEl);
+          });
+          cellHeader.append(tabBar);
+        } else {
+          cellHeader.append(this.title(cell.label, frame.id, cell.id));
+        }
+
+        const addTabBtn = button('Add tab', () => {
+          this.safe(() => this.controller.edit(() => {
+            const f = this.controller.frames.find(item => item.id === frame.id);
+            const c = f && findCell(f.root, cell.id);
+            if (f && c) addCellTab(f, cell.id, `Tab ${(c.tabs?.length ?? 0) + 1}`);
+          }));
+          this.refreshHidden();
+          this.signature = null;
+        }, '+');
+        addTabBtn.classList.add('clt-add-tab');
+        cellHeader.append(addTabBtn);
+
+        const isMaximized = frame.maximizedCellId === cell.id;
+        const maxBtn = button(isMaximized ? 'Restore panel' : 'Maximize panel', () => {
+          this.safe(() => this.controller.edit(() => {
+            const f = this.controller.frames.find(item => item.id === frame.id);
+            if (f) toggleMaximizeCell(f, cell.id);
+          }));
+          this.refreshHidden();
+          this.signature = null;
+        }, isMaximized ? '⤡' : '⤢');
+        maxBtn.classList.add('clt-maximize-cell');
+        maxBtn.setAttribute('aria-pressed', String(isMaximized));
+        cellHeader.append(maxBtn);
+
+        const collapsePanelBtn = button('Collapse panel', () => {
+          this.safe(() => this.controller.edit(() => {
+            const f = this.controller.frames.find(item => item.id === frame.id);
+            if (f) toggleCellCollapse(f, cell.id);
+          }));
+          this.refreshHidden();
+          this.signature = null;
+        }, parentAxis === 'y' ? '▲' : '◀');
+        collapsePanelBtn.classList.add('clt-collapse-cell');
+        cellHeader.append(collapsePanelBtn);
+
         const cellEmpty = !this.cellHasNodes(cell);
         const cellBypassed = this.isCellBypassed(cell);
         const cellBypassBtn = button(cellBypassed ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, cell.id), '↱');
@@ -1835,10 +2487,14 @@ export class LayoutOverlay {
         cellOptionsBtn.classList.add('clt-cell-options');
         cellHeader.append(cellOptionsBtn);
         cellEl.append(cellHeader);
-        if (!cell.nodes.length) cellEl.append(element('div', 'clt-hint', 'Drop nodes here'));
+
+        const activeNodeList = Array.isArray(cell.tabs) && cell.tabs.length > 0
+          ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
+          : cell.nodes;
+        if (!activeNodeList.length) cellEl.append(element('div', 'clt-hint', 'Drop nodes here'));
         fragment.append(cellEl);
       }
-      for (const divider of layout.dividers.filter(divider => divider.cell.axis === 'x')) {
+      for (const divider of layout.dividers) {
         const el = element('div', `clt-divider clt-divider-${divider.cell.axis}`); rectStyle(el, divider.rect);
         el.title = 'Drag to resize cells'; el.setAttribute('aria-label', 'Resize cell divider');
         el.onpointerdown = e => this.startDrag(e, 'divider', { frame, cell: divider.cell, index: divider.index, weights: [...divider.cell.ratios], available: divider.available });
@@ -1846,14 +2502,37 @@ export class LayoutOverlay {
       }
     }
     if (this.dropPreview?.previewRect) {
-      const ghost = element(
-        'div',
-        `clt-drop-preview ${this.dropPreview.ghostType === 'cell' ? 'clt-ghost-cell' : 'clt-ghost-node'}`
-      );
+      const ghostClass = this.dropPreview.ghostType === 'tab'
+        ? 'clt-ghost-tab'
+        : (this.dropPreview.ghostType === 'cell' ? 'clt-ghost-cell' : 'clt-ghost-node');
+      const ghost = element('div', `clt-drop-preview ${ghostClass}`);
       ghost.dataset.dropKind = this.dropPreview.kind;
       ghost.dataset.ghostType = this.dropPreview.ghostType;
       rectStyle(ghost, this.dropPreview.previewRect);
       fragment.append(ghost);
+    }
+    if (this.dropPreview?.compassRect) {
+      const compass = element('div', 'clt-compass');
+      compass.setAttribute('aria-label', 'Docking compass');
+      rectStyle(compass, this.dropPreview.compassRect);
+      const zones = [
+        ['top', '▲', 'Split top'],
+        ['left', '◀', 'Split left'],
+        ['center', '⊞', 'Dock as tab'],
+        ['right', '▶', 'Split right'],
+        ['bottom', '▼', 'Split bottom'],
+      ];
+      for (const [zone, symbol, titleText] of zones) {
+        const seg = element(
+          'div',
+          `clt-compass-zone clt-compass-${zone}${this.dropPreview.compassZone === zone ? ' active' : ''}`,
+          symbol
+        );
+        seg.dataset.compassZone = zone;
+        seg.title = titleText;
+        compass.append(seg);
+      }
+      fragment.append(compass);
     }
     this.plane.replaceChildren(fragment);
     this.app.canvas?.setDirty(true, true);

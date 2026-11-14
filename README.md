@@ -40,6 +40,9 @@ Then restart ComfyUI and refresh with **Ctrl+F5** so the browser loads the new v
 ## Features
 
 - **Frames and cells**: Add a grid frame from the canvas menu, or wrap selected nodes in one. Split cells into columns, rows, and grids, with draggable dividers and edges.
+- **IDE UI Builder & 1-Click Presets**: Build VS Code-style workspaces out of ComfyUI nodes using **🧩 IDE Presets** (`VS Code IDE`, `Dual Sidebar Studio`, `Tabbed Dashboard`) and **🖥 Clean App View** (1px splitters with internal wires hidden).
+- **Tabbed panels & draggable tabs**: Drop a node onto any cell header or the center of the **5-Way Docking Compass Rose** (or click `+`) to create tabs. Supports single-node quick tabs and multi-node stacked tabs, stable **Max-of-All-Tabs** sizing, and draggable tabs that can reorder, move between panels, split cells, or detach.
+- **Smart collapsing panels & Activity Bar**: Collapse any column into a **36px Activity Bar strip** with clickable tab icons (while sibling columns expand to fill the space), or collapse any row into a **26px header bar**. Use **⤢ Maximize panel** for Zen Focus on a single panel.
 - **Drop to fit**: Drag a node onto a cell and it attaches, snaps to the cell width, and the frame grows to fit. Drop several nodes into one cell to stack them.
 - **Drop previews**: While you drag, a dashed ghost shows where the node will land: in a cell, beside a cell as a new column, or below the grid as a new full-width row.
 - **Autohide**: Grids hide their frame and cell bars until you need them, so the canvas stays clean. Toggle it from the selection toolbox or the frame header.

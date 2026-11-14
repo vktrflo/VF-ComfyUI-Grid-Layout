@@ -6,6 +6,7 @@ export class NodeAdapter {
     this.imposedWidths = new WeakMap();
     this.bases = new Map();
     this.appliedHeights = new Map();
+    this.renderedHeights = new Map();
   }
   // Fill tracking is keyed by node id, not object identity: undo/redo can
   // swap node instances, and the tracked heights must survive that.
@@ -28,25 +29,31 @@ export class NodeAdapter {
     const imposed = this.imposedWidths.get(node);
     const computed = Math.abs((minimum[0] || 140) - imposed) < 0.1 ? 0 : minimum[0] || 140;
     this.widths.set(node, Math.max(this.widths.get(node) ?? 140, computed, node.min_size?.[0] ?? 0));
+    const key = this.trackKey(node);
     let renderedMinimum = 0;
     let renderedHeight = 0;
     if (globalThis.LiteGraph?.vueNodesMode && globalThis.document) {
       const element = document.querySelector(`.lg-node[data-node-id="${CSS.escape(String(node.id))}"]`);
       if (element) {
         renderedMinimum = parseFloat(getComputedStyle(element).minWidth) || 0;
-        // Nodes 2.0 lets content (image previews, media) grow the element past
-        // node.size. offsetHeight ignores the canvas zoom transform, so it is in
-        // graph units. It includes the title bar, which placements add separately.
-        renderedHeight = Math.max(0, (element.offsetHeight || 0) - this.classicTitle);
+        const isHidden = Boolean(element.classList?.contains?.('clt-node-hidden'));
+        if (!isHidden) {
+          // Nodes 2.0 lets content (image previews, media) grow the element past
+          // node.size. offsetHeight ignores the canvas zoom transform, so it is in
+          // graph units. It includes the title bar, which placements add separately.
+          renderedHeight = Math.max(0, (element.offsetHeight || 0) - this.classicTitle);
+          if (renderedHeight > 0) this.renderedHeights.set(key, renderedHeight);
+        } else {
+          renderedHeight = this.renderedHeights.get(key) ?? 0;
+        }
       }
     }
     const collapsed = node.flags?.collapsed;
     // Track the intrinsic (pre-stretch) height: a fill stretch we applied is not
     // content, so the layout never reads its own stretch back as node size.
     const size = node.size[1] || 0;
-    const key = this.trackKey(node);
     const applied = this.appliedHeights.get(key);
-    if (applied === undefined || Math.abs(size - applied) > 0.5) this.bases.set(key, size);
+    if (size > 0 && (applied === undefined || Math.abs(size - applied) > 0.5)) this.bases.set(key, size);
     const base = this.bases.get(key) ?? size;
     // A filled node's element follows our stretch, so only trust the rendered
     // height when no stretch is applied.
@@ -62,6 +69,10 @@ export class NodeAdapter {
   }
   apply(node, placement) {
     node.pos = [placement.x, placement.y];
+    if (placement.hidden) {
+      node.setDirtyCanvas?.(true, true);
+      return;
+    }
     // Record the stretch before resizing: setSize can synchronously trigger
     // a re-entrant measure (resize callbacks, re-render). Without the marker
     // already in place, that measure would mistake our stretch for content

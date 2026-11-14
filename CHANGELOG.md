@@ -2,6 +2,23 @@
 
 All notable changes to **VF Grid Layout** (`vf-comfyui-grid-layout`) are documented in this file.
 
+## [1.3.0] - 2026-11-14
+
+### Added
+- **IDE UI Builder Workspace & 1-Click Presets**: Transform any Grid Frame into a custom IDE-style workspace directly on the ComfyUI canvas (`🧩` header menu and **🌀 Add IDE Workspace (VS Code)** canvas context menu), with 1-click presets for **VS Code IDE** (Left Sidebar + Editor + Bottom Panel), **Dual Sidebar Studio**, and **Tabbed Dashboard**.
+- **Tabbed Panels & Draggable Tabs**:
+  - Seamless tab promotion: cells stay clean until a node is dropped onto the cell header/tab bar or center compass hotspot (or `+` is clicked), promoting existing nodes to Tab 1 and creating Tab 2.
+  - Supports both 1-node quick tabs (auto-labeled with the node's title) and multi-node stacked tabs.
+  - **Max-of-All-Tabs** sizing keeps frame and sibling panel dimensions stable when switching tabs, while parking inactive tabs' nodes hidden.
+  - Drag tabs to reorder within a tab bar, move tabs across panels, split panels via hotspots, or detach back onto the canvas.
+- **Smart Axis-Aware Collapsing Panels & VS Code Activity Bar**:
+  - Column panels (`axis: 'x'`) collapse horizontally into a slim **36px Activity Bar strip** with pinned tab icon buttons and rotated vertical title while sibling columns expand to reclaim the freed width. Clicking any tab icon on the Activity Bar expands the sidebar directly to that tab.
+  - Row panels (`axis: 'y'`) collapse vertically into a slim **26px header bar**.
+  - Added **Fold / Unfold nodes in panel** accordion action in the cell menu.
+- **5-Way Docking Compass Rose HUD**: Hovering a cell while dragging a node or tab displays a 5-way Docking Compass Rose (`Top`, `Bottom`, `Left`, `Right` panel splits + `Center` tab dock) with orange `.clt-ghost-tab` and teal `.clt-ghost-cell` previews.
+- **Zen Focus Panel Maximize (`⤢` / `⤡`)**: Expand any single panel to fill the entire Grid Frame body and restore the split layout on second click.
+- **Clean "App View" Mode (`🖥`)**: Zeroes out cell gaps/padding into crisp 1px IDE splitters, keeps Tab Bars and Activity Bars interactive, and hides internal frame connection wires.
+
 ## [1.2.0] - 2026-11-03
 
 ### Added
