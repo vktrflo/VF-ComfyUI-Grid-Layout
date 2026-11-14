@@ -25,6 +25,8 @@ import {
   contains,
   KEY,
   LEGACY_KEY,
+  PAD,
+  CELL_TITLE,
   COLLAPSED_CELL_WIDTH,
   COLLAPSED_CELL_HEIGHT,
   activeTabIndex,
@@ -138,9 +140,14 @@ const STYLE = `
 .selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"],.selection-toolbox button.clt-toolbox-autohide.clt-autohide-off [class~="icon-[lucide--eye]"]{color:#8b5cf6 !important}
 .clt-tab-bar{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;height:100%}
 .clt-tab-bar::-webkit-scrollbar{display:none}
-.clt-cell-tab{display:inline-flex;align-items:center;gap:3px;height:21px;padding:0 5px;border-radius:3px 3px 0 0;background:rgba(17,27,32,.65);color:#9fb0b7;border:1px solid transparent;border-bottom:none;font:inherit;font-size:11px;cursor:grab;user-select:none;flex-shrink:0;max-width:130px;transition:background .12s ease,color .12s ease}
+.clt-cell-tab{position:relative;display:inline-flex;align-items:center;gap:3px;height:21px;padding:0 5px;border-radius:3px 3px 0 0;background:rgba(17,27,32,.65);color:#9fb0b7;border:1px solid transparent;border-bottom:none;font:inherit;font-size:11px;cursor:grab;user-select:none;flex-shrink:0;max-width:130px;transition:background .12s ease,color .12s ease}
 .clt-cell-tab:hover{background:rgba(52,83,97,.65);color:#f4f6f7}
 .clt-cell-tab.active{background:rgba(112,216,190,.16);color:#70d8be;border-color:#70d8be66;font-weight:600}
+.clt-cell-tab.dragging{opacity:.42;border-color:#70d8be;border-style:dashed}
+.clt-cell-tab.clt-tab-drop-target{background:rgba(245,158,11,.28);border-color:#f59e0b;color:#fff;box-shadow:0 0 0 1px rgba(245,158,11,.55)}
+.clt-cell-tab.clt-tab-insert-before::after,.clt-cell-tab.clt-tab-insert-after::after{content:"";position:absolute;top:1px;bottom:1px;width:2px;background:#f59e0b;border-radius:1px;box-shadow:0 0 6px #f59e0b;pointer-events:none}
+.clt-cell-tab.clt-tab-insert-before::after{left:-2px}
+.clt-cell-tab.clt-tab-insert-after::after{right:-2px}
 .clt-cell-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px}
 .clt-cell-tab-close{font-size:11px;line-height:1;opacity:.65;padding:0 2px;border-radius:2px;cursor:pointer}
 .clt-cell-tab-close:hover{opacity:1;background:rgba(239,68,68,.28);color:#fca5a5}
@@ -441,6 +448,12 @@ export const MENU_ICONS = {
   'Rename cell…': '✎',
   'Add tab': '+',
   'Close active tab': '✕',
+  'Close tab': '✕',
+  'Move tab left': '◀',
+  'Move tab right': '▶',
+  'Move active tab left': '◀',
+  'Move active tab right': '▶',
+  'Rename tab…': '✎',
   'Maximize panel': '⤢',
   'Restore panel': '⤡',
   'Collapse panel': '◀',
@@ -672,6 +685,14 @@ export class LayoutOverlay {
             const originFrame = this.hidden.appModeFrames.get(String(link.origin_id));
             const targetFrame = this.hidden.appModeFrames.get(String(link.target_id));
             if (originFrame && originFrame === targetFrame) return;
+          }
+          if (link && this.hidden?.ids?.size) {
+            const oId = String(link.origin_id);
+            const tId = String(link.target_id);
+            if ((this.hidden.ids.has(oId) && !this.hidden.frames.has(oId)) ||
+                (this.hidden.ids.has(tId) && !this.hidden.frames.has(tId))) {
+              return;
+            }
           }
           const extras = rest[5];
           const endpoints = routeMinimizedEndpoints(this.hidden, this.controller.graph, link, startPos, endPos, extras);
@@ -1284,8 +1305,11 @@ export class LayoutOverlay {
     const cellBypass = this.cellHasNodes(currentCell)
       ? [this.isCellBypassed(currentCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frameId, cellId)]
       : null;
+    const activeTabIdx = currentCell?.tabs?.length > 1 ? activeTabIndex(currentCell) : -1;
     const actions = [
       ['Add tab', () => edit((frame, cell) => addCellTab(frame, cellId, `Tab ${(cell.tabs?.length ?? 0) + 1}`))],
+      ...(activeTabIdx > 0 ? [['Move active tab left', () => edit(frame => moveCellTab(this.controller.frames, frame.id, cellId, activeTabIdx, { kind: 'tab', frame, cell: currentCell, tabIndex: activeTabIdx - 1 }, this.controller.metrics()))]] : []),
+      ...(activeTabIdx >= 0 && activeTabIdx < (currentCell.tabs.length - 1) ? [['Move active tab right', () => edit(frame => moveCellTab(this.controller.frames, frame.id, cellId, activeTabIdx, { kind: 'tab', frame, cell: currentCell, tabIndex: activeTabIdx + 1 }, this.controller.metrics()))]] : []),
       ...(currentCell?.tabs?.length > 0 ? [['Close active tab', () => edit((frame, cell) => removeCellTab(frame, cellId, activeTabIndex(cell)))]] : []),
       [currentFrame?.maximizedCellId === cellId ? 'Restore panel' : 'Maximize panel', () => edit(frame => toggleMaximizeCell(frame, cellId))],
       [currentCell?.collapsed === true ? 'Expand panel' : 'Collapse panel', () => edit(frame => toggleCellCollapse(frame, cellId))],
@@ -1470,15 +1494,41 @@ export class LayoutOverlay {
     };
     return span;
   }
+  tabMenu(event, frameId, cellId, tabIndex) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const currentFrame = this.controller.frames.find(f => f.id === frameId);
+    const currentCell = currentFrame && findCell(currentFrame.root, cellId);
+    const tab = currentCell?.tabs?.[tabIndex];
+    if (!currentFrame || !currentCell || !tab) return;
+    const edit = action => {
+      this.controller.edit(() => {
+        const f = this.controller.frames.find(item => item.id === frameId);
+        const c = f && findCell(f.root, cellId);
+        if (f && c) action(f, c);
+      });
+      this.refreshHidden();
+      this.signature = null;
+    };
+    const actions = [
+      ...(tabIndex > 0 ? [['Move tab left', () => edit((f, c) => moveCellTab(this.controller.frames, f.id, c.id, tabIndex, { kind: 'tab', frame: f, cell: c, tabIndex: tabIndex - 1 }, this.controller.metrics()))]] : []),
+      ...(tabIndex < currentCell.tabs.length - 1 ? [['Move tab right', () => edit((f, c) => moveCellTab(this.controller.frames, f.id, c.id, tabIndex, { kind: 'tab', frame: f, cell: c, tabIndex: tabIndex + 1 }, this.controller.metrics()))]] : []),
+      ['Rename tab…', () => this.dialog('Rename tab', [{ name: 'label', label: 'Tab name', value: tab.label }], ({ label }) => edit(f => renameCellTab(f, cellId, tabIndex, label)))],
+      ['Add tab', () => edit((f, c) => addCellTab(f, cellId, `Tab ${(c.tabs?.length ?? 0) + 1}`))],
+      ['Close tab', () => edit(f => removeCellTab(f, cellId, tabIndex))],
+    ];
+    this.showMenu(event, actions);
+  }
   startTabDrag(event, frame, cell, tabIndex) {
     if (event.button !== 0) return;
     if (event.target?.closest?.('.clt-cell-tab-close,input')) return;
+    event.preventDefault();
     event.stopPropagation();
     this.closeMenu();
     this.safe(() => {
-      const targetFrame = this.controller.frames.find(f => f.id === frame.id);
+      let targetFrame = this.controller.frames.find(f => f.id === frame.id);
       if (!targetFrame || targetFrame.lock === true) return;
-      const targetCell = findCell(targetFrame.root, cell.id);
+      let targetCell = findCell(targetFrame.root, cell.id);
       if (!targetCell) return;
       if (activeTabIndex(targetCell) !== tabIndex) {
         this.controller.edit(() => {
@@ -1487,6 +1537,9 @@ export class LayoutOverlay {
         });
         this.refreshHidden();
         this.signature = null;
+        targetFrame = this.controller.frames.find(f => f.id === frame.id);
+        targetCell = targetFrame && findCell(targetFrame.root, cell.id);
+        if (!targetFrame || !targetCell) return;
       }
       this.controller.begin();
       this.drag = {
@@ -1500,6 +1553,112 @@ export class LayoutOverlay {
         pointerId: event.pointerId,
       };
     });
+  }
+  getTabHit(pointer) {
+    if (!pointer || !this.plane) return null;
+    const [px, py] = pointer;
+    for (const cellEl of this.plane.querySelectorAll?.('.clt-cell') ?? []) {
+      const cellId = cellEl.dataset?.cellId || cellEl.getAttribute?.('data-cell-id');
+      const frameEl = cellEl.closest?.('.clt-frame');
+      const frameId = frameEl?.dataset?.frameId || frameEl?.getAttribute?.('data-frame-id');
+      if (!cellId) continue;
+      const tabEls = [...(cellEl.querySelectorAll?.('.clt-cell-tab') ?? [])];
+      if (!tabEls.length) continue;
+      const cellLeft = parseFloat(cellEl.style?.left) || 0;
+      const cellTop = parseFloat(cellEl.style?.top) || 0;
+      const cellWidth = parseFloat(cellEl.style?.width) || 0;
+      if (px < cellLeft - 12 || px > cellLeft + cellWidth + 12) continue;
+      if (py < cellTop - 28 || py > cellTop + CELL_TITLE + 28) continue;
+
+      const tabs = tabEls.map((el, i) => {
+        const idx = Number(el.dataset?.tabIndex ?? el.getAttribute?.('data-tab-index') ?? i);
+        let left = cellLeft + 8 + i * 86;
+        let right = left + 82;
+        if (typeof el.getBoundingClientRect === 'function') {
+          const box = el.getBoundingClientRect();
+          if (box.width > 0) {
+            const p1 = this.controller.adapter.point({ clientX: box.left, clientY: box.top });
+            const p2 = this.controller.adapter.point({ clientX: box.right, clientY: box.bottom });
+            left = p1[0];
+            right = p2[0];
+          }
+        }
+        return { index: idx, left, right, midX: (left + right) / 2 };
+      });
+
+      const onHeaderY = py >= cellTop - 8 && py <= cellTop + CELL_TITLE + 8;
+      const direct = tabs.find(t => px >= t.left && px <= t.right);
+      if (direct && onHeaderY) {
+        return {
+          frameId,
+          cellId,
+          tabIndex: direct.index,
+          reorderIndex: direct.index,
+          onTabPill: true,
+          afterHalf: px > direct.midX,
+        };
+      }
+
+      let reorderIndex = tabs.length - 1;
+      for (const t of tabs) {
+        if (px <= t.right) {
+          reorderIndex = t.index;
+          break;
+        }
+      }
+      const pastLastPill = px > (tabs.at(-1)?.right ?? cellLeft);
+      return {
+        frameId,
+        cellId,
+        tabIndex: pastLastPill ? tabs.length : reorderIndex,
+        reorderIndex,
+        onTabPill: false,
+      };
+    }
+    return null;
+  }
+  resolveTabDragTarget(layouts, point) {
+    const tabHit = this.getTabHit(point);
+    const preview = resolveDropTarget(layouts, [point[0] - 80, point[1] - 20, 160, 60], {
+      pointer: point,
+      enableCompass: true,
+      isTabDrag: true,
+      tabHit,
+    });
+    if (this.drag?.kind === 'tab-drag') {
+      const srcFrame = this.drag.frame;
+      const srcCell = this.drag.cell;
+      const srcLayout = layouts.find(l => l.frame?.id === srcFrame?.id);
+      const srcCellEntry = srcLayout?.cells?.find(c => c.cell?.id === srcCell?.id);
+      if (srcCellEntry && Array.isArray(srcCell?.tabs) && srcCell.tabs.length > 0) {
+        const [cx, cy, cw, ch] = srcCellEntry.rect;
+        const isSplit = String(preview?.kind ?? '').startsWith('split-') || preview?.kind === 'bottom-row';
+        const overSourceCell = preview?.cell?.id === srcCell.id || (
+          point[0] >= cx - 16 &&
+          point[0] <= cx + cw + 16 &&
+          point[1] >= cy - 36 &&
+          point[1] <= cy + CELL_TITLE + 36
+        );
+        if (overSourceCell && !isSplit) {
+          const pad = srcFrame.appMode === true ? 6 : PAD;
+          const slotW = Math.min(96, Math.max(40, (cw - 80) / srcCell.tabs.length));
+          const fallbackIdx = Math.max(0, Math.min(srcCell.tabs.length - 1, Math.floor((point[0] - (cx + 8)) / slotW)));
+          const reorderIndex = tabHit?.cellId === srcCell.id && Number.isInteger(tabHit.reorderIndex)
+            ? tabHit.reorderIndex
+            : fallbackIdx;
+          return {
+            kind: 'tab',
+            ghostType: 'tab',
+            frame: srcFrame,
+            cell: srcCell,
+            rect: srcCellEntry.rect,
+            tabIndex: reorderIndex,
+            previewRect: [cx + pad, cy + CELL_TITLE + pad, cw - pad * 2, Math.max(48, ch - CELL_TITLE - pad * 2)],
+          };
+        }
+      }
+    }
+    return preview;
   }
   // Both toggles edit through the controller so the change lands in the
   // workflow's undo history like every other frame edit.
@@ -1601,6 +1760,7 @@ export class LayoutOverlay {
     return resolveDropTarget(layouts, [node.pos[0], node.pos[1], node.size[0], node.size[1]], {
       excludeIds: dragged.map(n => n.id),
       pointer,
+      tabHit: dragged.length === 1 ? this.getTabHit(pointer) : null,
       titleHeight: this.controller.adapter?.classicTitle ?? 30,
     });
   }
@@ -1668,7 +1828,36 @@ export class LayoutOverlay {
         }
       }
     }
+    if (this.nativeNode?.id != null) ids.delete(String(this.nativeNode.id));
+    for (const d of this.draggedNodes()) {
+      if (d?.id != null) ids.delete(String(d.id));
+    }
     this.hidden = { ids, frames, appModeFrames };
+    if (typeof document !== 'undefined') {
+      for (const el of document.querySelectorAll?.('.lg-node, .vf-nb-node-bar') ?? []) {
+        const id = el.dataset?.nodeId || el.getAttribute?.('data-node-id');
+        if (id && ids.has(String(id))) {
+          el.classList?.add?.('clt-node-hidden');
+        } else {
+          el.classList?.remove?.('clt-node-hidden');
+        }
+      }
+    }
+    const graph = this.controller.graph;
+    if (graph && typeof graph.getNodeOnPos === 'function' && !graph._cltWrappedGetNodeOnPos) {
+      const origGetNodeOnPos = graph.getNodeOnPos;
+      const overlay = this;
+      const wrapped = function (x, y, nodes_list, margin) {
+        const list = nodes_list ?? this._nodes ?? this.nodes;
+        if (Array.isArray(list) && overlay.hidden?.ids?.size) {
+          const filtered = list.filter(n => n && !overlay.hidden.ids.has(String(n.id)));
+          return origGetNodeOnPos.call(this, x, y, filtered, margin);
+        }
+        return origGetNodeOnPos.call(this, x, y, nodes_list, margin);
+      };
+      wrapped._cltWrappedGetNodeOnPos = true;
+      graph.getNodeOnPos = wrapped;
+    }
     return this.hidden;
   }
   get hiddenNodeIds() { return this.hidden.ids; }
@@ -1791,7 +1980,9 @@ export class LayoutOverlay {
   nativeDown(event) {
     if (this.menu && !this.menu.contains(event.target)) this.closeMenu();
     if (this.isGhostActive()) return;
-    if (event.button !== 0 || this.drag || event.target.closest?.('.clt-overlay,.clt-menu,.clt-dialog,input,textarea,button,select,[contenteditable="true"]')) return;
+    if (event.button !== 0 || this.drag) return;
+    if (event.target.closest?.('.clt-overlay,.clt-menu,.clt-dialog,.selection-toolbox,input,textarea,select,[contenteditable="true"]')) return;
+    if (event.target.closest?.('button') && !event.target.closest?.('.lg-node')) return;
     const container = this.app.canvas.canvas.parentElement;
     if (!container.contains(event.target) || this.app.configuringGraph) return;
     // Start before the native renderer moves anything. Its nested history
@@ -1802,7 +1993,7 @@ export class LayoutOverlay {
       const domNodeId = event.target?.closest?.('.lg-node')?.dataset?.nodeId;
       this.nativeNode = (domNodeId != null && this.controller.graph.getNodeById(domNodeId)) || this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
       this.controller.begin();
-      this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId };
+      this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId, pointer };
     });
   }
   move(event) {
@@ -1811,14 +2002,11 @@ export class LayoutOverlay {
       if (this.drag.graph !== this.controller.graph) return this.up(null, true);
       const point = this.controller.adapter.point(event), dx = point[0] - this.drag.start[0], dy = point[1] - this.drag.start[1];
       if (this.drag.kind === 'tab-drag') {
-        if (!this.drag.moved && Math.hypot(dx, dy) < 5) return;
+        if (!this.drag.moved && Math.hypot(dx, dy) < 4) return;
         this.drag.moved = true;
         this.drag.pointer = point;
         const layouts = this.controller.geometry();
-        const preview = resolveDropTarget(layouts, [point[0] - 80, point[1] - 20, 160, 60], {
-          pointer: point,
-          enableCompass: true,
-        });
+        const preview = this.resolveTabDragTarget(layouts, point);
         this.dropPreview = preview;
         this.hover = preview?.cell?.id ?? null;
         return;
@@ -1863,6 +2051,10 @@ export class LayoutOverlay {
   up(event, cancelled = false) {
     if (this.drag && (!event || event.pointerId === this.drag.pointerId)) {
       const activeDrag = this.drag;
+      if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && activeDrag.kind === 'tab-drag' && activeDrag.moved) {
+        activeDrag.pointer = this.controller.adapter.point(event);
+        this.dropPreview = this.resolveTabDragTarget(this.controller.geometry(), activeDrag.pointer);
+      }
       const preview = this.dropPreview;
       this.drag = null;
       this.dropPreview = null;
@@ -1879,11 +2071,17 @@ export class LayoutOverlay {
     if (this.nativeDrag && (!event || event.pointerId === this.nativeDrag.pointerId)) {
       const pending = this.nativeDrag;
       if (pending.finishing) return;
+      if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+        pending.pointer = this.controller.adapter.point(event);
+      }
+      const tabHit = pending.pointer ? this.getTabHit(pending.pointer) : null;
       pending.finishing = true; this.nativeNode = null; this.hover = null; this.dropPreview = null;
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
-          if (!cancelled && pending.graph === this.controller.graph) this.controller.finishNativeDrag(pending.before, pending.pointer ?? null);
+          if (!cancelled && pending.graph === this.controller.graph) {
+            this.controller.finishNativeDrag(pending.before, pending.pointer ?? null, { tabHit });
+          }
         });
         this.nativeDrag = null; this.controller.end(); this.refreshHidden(); this.signature = null;
       });
@@ -1907,17 +2105,14 @@ export class LayoutOverlay {
           this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
         } else if (this.drag?.kind === 'tab-drag' && this.drag.moved && this.drag.pointer) {
           const point = this.drag.pointer;
-          const preview = resolveDropTarget(layouts, [point[0] - 80, point[1] - 20, 160, 60], {
-            pointer: point,
-            enableCompass: true,
-          });
+          const preview = this.resolveTabDragTarget(layouts, point);
           this.dropPreview = preview;
           this.hover = preview?.cell?.id ?? null;
         } else if (!this.nativeDrag) {
           this.dropPreview = null;
         }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
-        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.compassZone, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.previewRect] : null;
+        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.compassZone, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.tabIndex, this.dropPreview.previewRect, this.drag?.moved] : null;
         const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, previewSig, autohidden, this.bypassedNodeIds()]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
@@ -2195,8 +2390,22 @@ export class LayoutOverlay {
         if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
           const tabBar = element('div', 'clt-tab-bar');
           const activeIdx = activeTabIndex(cell);
+          const isTabDragOnThisCell = this.drag?.kind === 'tab-drag' && this.drag.moved && this.dropPreview?.kind === 'tab' && this.dropPreview?.cell?.id === cell.id;
+          const isSameCellTabDrag = isTabDragOnThisCell && this.drag.cell?.id === cell.id;
+          const isNodeDropIntoTab = this.dropPreview?.kind === 'tab-into' && this.dropPreview?.cell?.id === cell.id;
           cell.tabs.forEach((tab, idx) => {
             const tabEl = element('div', `clt-cell-tab${idx === activeIdx ? ' active' : ''}`);
+            if (this.drag?.kind === 'tab-drag' && this.drag.moved && this.drag.cell?.id === cell.id && this.drag.tabIndex === idx) {
+              tabEl.classList.add('dragging');
+            }
+            if (isNodeDropIntoTab && this.dropPreview.tabIndex === idx) {
+              tabEl.classList.add('clt-tab-drop-target');
+            } else if (isSameCellTabDrag && Number.isInteger(this.dropPreview.tabIndex) && this.dropPreview.tabIndex === idx && idx !== this.drag.tabIndex) {
+              tabEl.classList.add(idx < this.drag.tabIndex ? 'clt-tab-insert-before' : 'clt-tab-insert-after');
+            } else if (isTabDragOnThisCell && !isSameCellTabDrag && Number.isInteger(this.dropPreview.tabIndex)) {
+              if (this.dropPreview.tabIndex === idx) tabEl.classList.add('clt-tab-insert-before');
+              else if (this.dropPreview.tabIndex >= cell.tabs.length && idx === cell.tabs.length - 1) tabEl.classList.add('clt-tab-insert-after');
+            }
             tabEl.dataset.tabId = tab.id;
             tabEl.dataset.tabIndex = String(idx);
             tabEl.setAttribute('role', 'tab');
@@ -2220,6 +2429,7 @@ export class LayoutOverlay {
             };
             tabEl.append(closeTab);
             tabEl.onpointerdown = e => this.startTabDrag(e, frame, cell, idx);
+            tabEl.oncontextmenu = e => this.tabMenu(e, frame.id, cell.id, idx);
             tabBar.append(tabEl);
           });
           cellHeader.append(tabBar);

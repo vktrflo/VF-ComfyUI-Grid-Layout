@@ -214,14 +214,75 @@ export function resolveDropTarget(layouts, node, options = {}) {
 
     const { cell, rect: cellRect } = pick;
     const [cx, cy, cw, ch] = cellRect;
-    const activeNodes = Array.isArray(cell.tabs) && cell.tabs.length
+    const hasTabs = Array.isArray(cell.tabs) && cell.tabs.length > 0;
+    const activeNodes = hasTabs
       ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
       : cell.nodes;
     const others = activeNodes.filter(id => !moving.has(String(id)));
-    const hasAnyOtherContent = others.length > 0 || (Array.isArray(cell.tabs) && cell.tabs.length > 0);
+    const hasAnyOtherContent = others.length > 0 || hasTabs;
+    const isTabDrag = Boolean(options?.isTabDrag);
+    const showCompass = Boolean(options?.enableCompass || (!hasTabs && others.length > 0));
+    const compassRect = showCompass ? computeCompassRect(cellRect, cellTitle) : null;
 
-    // 1. Check 5-way Docking Compass Rose when pointer is present and cell has content (or options.enableCompass)
-    const compassRect = (hasAnyOtherContent || options?.enableCompass) ? computeCompassRect(cellRect, cellTitle) : null;
+    // 1. Check Cell Header / Tab Bar drop hotspot first (when pointer is over the cell header / tab bar)
+    const headerZoneHeight = Math.max(CELL_TITLE, cellTitle);
+    const tabHit = options?.tabHit?.cellId === cell.id ? options.tabHit : null;
+    if (
+      hasAnyOtherContent &&
+      pointer &&
+      pointer[0] >= cx - 8 &&
+      pointer[0] <= cx + cw + 8 &&
+      pointer[1] >= cy - (isTabDrag ? 20 : 4) &&
+      pointer[1] <= cy + headerZoneHeight + (isTabDrag ? 12 : 4)
+    ) {
+      if (!isTabDrag && hasTabs) {
+        if (tabHit && tabHit.onTabPill && Number.isInteger(tabHit.tabIndex)) {
+          return {
+            kind: 'tab-into',
+            compassRect,
+            ghostType: 'tab',
+            frame,
+            cell,
+            rect: cellRect,
+            tabIndex: Math.max(0, Math.min(cell.tabs.length - 1, tabHit.tabIndex)),
+            previewRect: [cx + pad, cy + cellTitle + pad, cw - pad * 2, Math.max(48, ch - cellTitle - pad * 2)],
+          };
+        }
+        if (Number.isInteger(options?.targetTabIndex)) {
+          return {
+            kind: 'tab-into',
+            compassRect,
+            ghostType: 'tab',
+            frame,
+            cell,
+            rect: cellRect,
+            tabIndex: Math.max(0, Math.min(cell.tabs.length - 1, options.targetTabIndex)),
+            previewRect: [cx + pad, cy + cellTitle + pad, cw - pad * 2, Math.max(48, ch - cellTitle - pad * 2)],
+          };
+        }
+      }
+      let tabInsertIndex = hasTabs ? cell.tabs.length : 1;
+      if (isTabDrag && hasTabs) {
+        if (tabHit && Number.isInteger(tabHit.reorderIndex)) {
+          tabInsertIndex = tabHit.reorderIndex;
+        } else {
+          const slotW = Math.min(96, Math.max(40, (cw - 80) / cell.tabs.length));
+          tabInsertIndex = Math.max(0, Math.min(cell.tabs.length - 1, Math.floor((pointer[0] - (cx + 8)) / slotW)));
+        }
+      }
+      return {
+        kind: 'tab',
+        compassRect,
+        ghostType: 'tab',
+        frame,
+        cell,
+        rect: cellRect,
+        tabIndex: tabInsertIndex,
+        previewRect: [cx + pad, cy + cellTitle + pad, cw - pad * 2, Math.max(48, ch - cellTitle - pad * 2)],
+      };
+    }
+
+    // 2. Check 5-way Docking Compass Rose when active for this cell
     const compassZone = pointer && compassRect ? hitTestCompass(compassRect, pointer) : null;
 
     if (compassZone === 'center') {
@@ -289,29 +350,6 @@ export function resolveDropTarget(layouts, node, options = {}) {
       };
     }
 
-    // 2. Check Cell Header / Tab Bar drop hotspot (when pointer is over the cell header / tab bar)
-    const headerZoneHeight = Math.max(CELL_TITLE, cellTitle);
-    if (
-      hasAnyOtherContent &&
-      pointer &&
-      pointer[0] >= cx &&
-      pointer[0] <= cx + cw &&
-      pointer[1] >= cy &&
-      pointer[1] <= cy + headerZoneHeight + 4
-    ) {
-      let tabInsertIndex = Array.isArray(cell.tabs) ? cell.tabs.length : 1;
-      return {
-        kind: 'tab',
-        compassRect,
-        ghostType: 'tab',
-        frame,
-        cell,
-        rect: cellRect,
-        tabIndex: tabInsertIndex,
-        previewRect: [cx + pad, cy + cellTitle + pad, cw - pad * 2, Math.max(48, ch - cellTitle - pad * 2)],
-      };
-    }
-
     if (!others.length) {
       const previewY = cy + cellTitle + pad;
       const previewH = Math.min(ghostHeight, Math.max(48, ch - cellTitle - pad * 2));
@@ -327,29 +365,31 @@ export function resolveDropTarget(layouts, node, options = {}) {
       };
     }
 
-    const edgeThreshold = Math.min(72, Math.max(36, cw * 0.22));
-    const splitPreviewWidth = Math.min(Math.round(cw * 0.45), Math.max(72, Math.round(edgeThreshold * 1.4)));
-    if (center[0] <= cx + edgeThreshold) {
-      return {
-        kind: 'split-left',
-        compassRect,
-        ghostType: 'cell',
-        frame,
-        cell,
-        rect: cellRect,
-        previewRect: [cx, cy, splitPreviewWidth, ch],
-      };
-    }
-    if (center[0] >= cx + cw - edgeThreshold) {
-      return {
-        kind: 'split-right',
-        compassRect,
-        ghostType: 'cell',
-        frame,
-        cell,
-        rect: cellRect,
-        previewRect: [cx + cw - splitPreviewWidth, cy, splitPreviewWidth, ch],
-      };
+    if (!hasTabs) {
+      const edgeThreshold = Math.min(72, Math.max(36, cw * 0.22));
+      const splitPreviewWidth = Math.min(Math.round(cw * 0.45), Math.max(72, Math.round(edgeThreshold * 1.4)));
+      if (center[0] <= cx + edgeThreshold) {
+        return {
+          kind: 'split-left',
+          compassRect,
+          ghostType: 'cell',
+          frame,
+          cell,
+          rect: cellRect,
+          previewRect: [cx, cy, splitPreviewWidth, ch],
+        };
+      }
+      if (center[0] >= cx + cw - edgeThreshold) {
+        return {
+          kind: 'split-right',
+          compassRect,
+          ghostType: 'cell',
+          frame,
+          cell,
+          rect: cellRect,
+          previewRect: [cx + cw - splitPreviewWidth, cy, splitPreviewWidth, ch],
+        };
+      }
     }
 
     const nodePlacements = others
@@ -627,6 +667,30 @@ export function dropNodesIntoTab(frames, frameId, cellId, nodeIds, options = {})
   return newTab;
 }
 
+export function dropNodesIntoExistingTab(frames, frameId, cellId, nodeIds, tabIndex, metrics) {
+  const target = frames.find(f => f.id === frameId);
+  const cell = target && findCell(target.root, cellId);
+  if (!target || !cell || cell.children || !Array.isArray(cell.tabs) || !cell.tabs.length) {
+    return dropNodes(frames, frameId, cellId, nodeIds, Infinity, metrics);
+  }
+  const pad = target.appMode === true ? 6 : PAD;
+  const framePad = target.appMode === true ? 4 : PAD;
+  const gap = target.appMode === true ? 4 : GAP;
+  const initialInnerWidth = metrics ? Math.max(contentMinimumWidth(target.root, metrics, pad, gap), target.size[0] - framePad * 2) : 0;
+  const ids = [...new Set(nodeIds)];
+  const moving = new Set(ids.map(String));
+  for (const frame of frames) for (const leaf of leaves(frame.root)) {
+    removeNodeFromCell(leaf, moving);
+  }
+  const idx = Math.max(0, Math.min(cell.tabs.length - 1, Number(tabIndex) || 0));
+  cell.activeTab = idx;
+  const tab = cell.tabs[idx];
+  tab.nodes.push(...ids);
+  syncCellTabs(cell);
+  if (metrics) preserveSplitWidths(target, cellId, metrics, initialInnerWidth);
+  return tab;
+}
+
 export function addCellTab(frame, cellId, label = '', icon = undefined) {
   const cell = findCell(frame?.root, cellId);
   if (!cell || cell.children) throw new Error('Choose an unsplit cell to add a tab.');
@@ -706,8 +770,13 @@ export function moveCellTab(frames, sourceFrameId, sourceCellId, tabIndex, targe
   const tabLabel = tab.label;
   const tabIcon = tab.icon;
 
-  // Reordering within the same cell's tab bar
-  if (target?.kind === 'tab' && target.frame?.id === sourceFrameId && target.cell?.id === sourceCellId) {
+  // Reordering within the same cell (any non-split drop on the source cell reorders rather than deleting the tab)
+  if (
+    target?.frame?.id === sourceFrameId &&
+    target?.cell?.id === sourceCellId &&
+    !String(target?.kind ?? '').startsWith('split-') &&
+    target?.kind !== 'bottom-row'
+  ) {
     const destIdx = Number.isInteger(target.tabIndex)
       ? Math.max(0, Math.min(srcCell.tabs.length - 1, target.tabIndex))
       : srcCell.tabs.length - 1;

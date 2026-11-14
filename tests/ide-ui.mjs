@@ -202,6 +202,97 @@ try {
   assert.equal(await page.locator('.clt-frame.clt-app-mode').count(), 1, 'Clean App View adds .clt-app-mode to frame');
   await page.screenshot({ path: 'test-results/ide-vscode-appview.png' });
 
+  // 5. Test Tab Reordering via Drag-and-Drop and Context Menu
+  const editorCell = page.locator('.clt-cell').nth(1);
+  // Add a 3rd tab so we have 3 tabs in Editor: Main View, Pipeline, Tab 3
+  await editorCell.getByRole('button', { name: 'Add tab', exact: true }).click();
+  await settle();
+  const initialTabLabels = await editorCell.locator('.clt-cell-tab-label').allTextContents();
+  assert.equal(initialTabLabels.length, 3, 'Editor panel has 3 tabs');
+
+  // Drag 3rd tab pill onto the left side of the 1st tab pill to reorder it to index 0
+  const firstTabBox = await editorCell.locator('.clt-cell-tab').nth(0).boundingBox();
+  const thirdTabBox = await editorCell.locator('.clt-cell-tab').nth(2).boundingBox();
+  await page.mouse.move(thirdTabBox.x + 12, thirdTabBox.y + thirdTabBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(firstTabBox.x + 6, firstTabBox.y + firstTabBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await settle();
+
+  const reorderedTabLabels = await editorCell.locator('.clt-cell-tab-label').allTextContents();
+  assert.equal(reorderedTabLabels[0], initialTabLabels[2], 'dragging 3rd tab to first position reorders tabs in place');
+
+  // Right-click first tab pill -> Move tab right
+  await editorCell.locator('.clt-cell-tab').nth(0).click({ button: 'right' });
+  await settle();
+  await page.getByRole('menuitem', { name: 'Move tab right' }).click();
+  await settle();
+  const afterMenuMoveLabels = await editorCell.locator('.clt-cell-tab-label').allTextContents();
+  assert.equal(afterMenuMoveLabels[1], initialTabLabels[2], 'context menu Move tab right shifts the tab to index 1');
+
+  // 6. Test dragging a Vue 2.0 node (via its inner <button> widget or body) into an empty tab body and onto an existing tab pill
+  const outsideNodeId = await page.evaluate(() => {
+    const app = window.comfyAPI.app.app;
+    const node = window.LiteGraph.createNode('CLIPTextEncode');
+    node.title = 'Load CLIP Test';
+    node.pos = [1250, 260];
+    node.size = [260, 130];
+    app.graph.add(node);
+    app.canvas.setDirty(true, true);
+    return node.id;
+  });
+  await settle();
+
+  // Switch Editor to empty "Tab 3" (now at index 1)
+  await editorCell.locator('.clt-cell-tab').nth(1).click();
+  await settle();
+
+  const editorBox = await editorCell.boundingBox();
+  const nodeLoc = page.locator(`.lg-node[data-node-id="${outsideNodeId}"]`);
+  await nodeLoc.waitFor({ state: 'visible', timeout: 5000 });
+  const nodeBox = await nodeLoc.boundingBox();
+
+  // Drag the node into the center of the empty Tab 3 body
+  await page.mouse.move(nodeBox.x + nodeBox.width / 2, nodeBox.y + 14);
+  await page.mouse.down();
+  await page.mouse.move(editorBox.x + editorBox.width / 2, editorBox.y + editorBox.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await settle();
+
+  const tabBodyDropState = await page.evaluate(id => {
+    const app = window.comfyAPI.app.app;
+    const frame = app.graph.extra.comfyui_grid_layout.frames[0];
+    const editor = frame.root.children[1].children[0];
+    return {
+      activeTab: editor.activeTab,
+      tabNodes: editor.tabs[editor.activeTab].nodes.map(String),
+      expected: String(id),
+    };
+  }, outsideNodeId);
+  assert.equal(tabBodyDropState.tabNodes.includes(tabBodyDropState.expected), true, 'dragging node into empty tab body snaps it into the active tab');
+
+  // Drag the same node onto the "Pipeline" tab pill (index 2) to move it into that existing tab
+  const nodeBoxAfter = await nodeLoc.boundingBox();
+  const pipelineTabBox = await editorCell.locator('.clt-cell-tab').nth(2).boundingBox();
+  await page.mouse.move(nodeBoxAfter.x + nodeBoxAfter.width / 2, nodeBoxAfter.y + 14);
+  await page.mouse.down();
+  await page.mouse.move(pipelineTabBox.x + pipelineTabBox.width / 2, pipelineTabBox.y + pipelineTabBox.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await settle();
+
+  const tabPillDropState = await page.evaluate(id => {
+    const app = window.comfyAPI.app.app;
+    const frame = app.graph.extra.comfyui_grid_layout.frames[0];
+    const editor = frame.root.children[1].children[0];
+    return {
+      activeTab: editor.activeTab,
+      pipelineNodes: editor.tabs[2].nodes.map(String),
+      expected: String(id),
+    };
+  }, outsideNodeId);
+  assert.equal(tabPillDropState.activeTab, 2, 'dropping node onto existing tab pill activates that tab');
+  assert.equal(tabPillDropState.pipelineNodes.includes(tabPillDropState.expected), true, 'dropping node onto existing tab pill moves node into that tab');
+
   assert.deepEqual(errors, [], 'no browser runtime errors during IDE UI verification');
   console.log('IDE UI Builder browser verification passed!');
 } finally {

@@ -449,3 +449,83 @@ test('LayoutOverlay renders tabs, Activity Bar, 5-way Docking Compass Rose, and 
     globalThis.document = prevDoc;
   }
 });
+
+test('Tab body drops, tab-into drops, tab reordering, and hidden node size preservation', async () => {
+  const { NodeAdapter } = await import('../web/core/adapter.js');
+  const frame = engine.createFrame([100, 100]);
+  delete frame.autohide;
+  const cell = frame.root;
+  cell.tabs = [
+    { id: 't_define', label: 'Define', nodes: [1] },
+    { id: 't_models', label: 'Models', nodes: [] },
+    { id: 't_enhancers', label: 'Enhancers', nodes: [] },
+  ];
+  cell.activeTab = 1; // 'Models' tab is active and empty
+  engine.syncCellTabs(cell);
+  const metrics = new Map([
+    [1, metric(240, 160)],
+    [2, metric(260, 140)],
+    [3, metric(220, 120)],
+  ]);
+
+  const layout = { frame, ...engine.layoutFrame(frame, metrics) };
+  const cellRect = layout.cells[0].rect;
+  const cx = cellRect[0] + cellRect[2] / 2;
+  const cy = cellRect[1] + cellRect[3] / 2;
+
+  // 1. Dragging a node into the center of a tabbed panel body drops directly into the active tab ('Models')
+  // rather than showing the 5-way Docking Compass Rose
+  const bodyDrop = engine.resolveDropTarget([layout], [cx - 80, cy - 40, 160, 80], { pointer: [cx, cy] });
+  assert.equal(bodyDrop?.kind, 'cell', 'dropping into an empty active tab body resolves to kind="cell"');
+  assert.equal(bodyDrop?.ghostType, 'node', 'previews node slot in active tab');
+
+  engine.dropNodes([frame], frame.id, cell.id, [2], null, metrics);
+  assert.deepEqual(cell.tabs[1].nodes, [2], 'node 2 is placed inside active Models tab');
+  assert.deepEqual(cell.nodes, [1, 2], 'cell.nodes tracks all tab nodes in the cell');
+
+  // 2. Dragging a node onto an existing tab pill resolves to kind="tab-into" and drops into that tab
+  const layoutAfter = { frame, ...engine.layoutFrame(frame, metrics) };
+  const rectAfter = layoutAfter.cells[0].rect;
+  const tabIntoDrop = engine.resolveDropTarget([layoutAfter], [rectAfter[0] + 40, rectAfter[1], 140, 60], {
+    pointer: [rectAfter[0] + 50, rectAfter[1] + 12],
+    tabHit: { cellId: cell.id, onTabPill: true, tabIndex: 2, reorderIndex: 2 },
+  });
+  assert.equal(tabIntoDrop?.kind, 'tab-into', 'hovering an existing tab pill with a node resolves to tab-into');
+  assert.equal(tabIntoDrop?.tabIndex, 2);
+
+  engine.dropNodesIntoExistingTab([frame], frame.id, cell.id, [3], 2, metrics);
+  assert.deepEqual(cell.tabs[2].nodes, [3], 'node 3 is dropped into Enhancers tab (index 2)');
+  assert.equal(cell.activeTab, 2, 'Enhancers tab becomes active after dropping node into it');
+
+  // 3. Reordering tabs via tab drag (isTabDrag: true) and moveCellTab
+  const reorderDrop = engine.resolveDropTarget([layoutAfter], [rectAfter[0] + 10, rectAfter[1], 80, 24], {
+    pointer: [rectAfter[0] + 15, rectAfter[1] + 12],
+    isTabDrag: true,
+    enableCompass: true,
+    tabHit: { cellId: cell.id, onTabPill: true, tabIndex: 0, reorderIndex: 0, insertBefore: true },
+  });
+  assert.equal(reorderDrop?.kind, 'tab');
+  assert.equal(reorderDrop?.tabIndex, 0, 'tab drag over first tab pill resolves to tabIndex 0');
+
+  // Even if cursor drifts slightly into cell body during tab drag, moveCellTab on same cell reorders rather than deleting the tab
+  engine.moveCellTab([frame], frame.id, cell.id, 2, { kind: 'cell', frame, cell, tabIndex: 0 }, metrics);
+  assert.equal(cell.tabs.length, 3, 'tab count is preserved when reordering within same cell');
+  assert.deepEqual(cell.tabs.map(t => t.label), ['Enhancers', 'Define', 'Models'], 'Enhancers tab moved to index 0');
+  assert.equal(cell.activeTab, 0, 'moved tab remains active at index 0');
+
+  // 4. NodeAdapter.apply preserves node.size when placement.hidden is true
+  const app = { canvas: { ds: { scale: 1, offset: [0, 0] } } };
+  const adapter = new NodeAdapter(app);
+  const hiddenNode = {
+    id: 1,
+    pos: [0, 0],
+    size: [240, 160],
+    computeSize: () => [200, 80],
+    setSize(s) { this.size = s; },
+  };
+  const hiddenPlacement = layoutAfter.placements.find(p => p.nodeId === 1);
+  assert.equal(hiddenPlacement.hidden, true);
+  adapter.apply(hiddenNode, hiddenPlacement);
+  assert.deepEqual(hiddenNode.size, [240, 160], 'hidden inactive-tab node retains its size instead of being zeroed out');
+  assert.equal(adapter.measure(hiddenNode).height, 160, 'subsequent measure retains full node height');
+});

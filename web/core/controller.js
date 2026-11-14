@@ -11,6 +11,7 @@ import {
   contains,
   dropNodes,
   dropNodesIntoTab,
+  dropNodesIntoExistingTab,
   insertColumnCell,
   insertRowCell,
   addBottomRow,
@@ -186,7 +187,12 @@ export class LayoutController {
       const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
       for (const id of allIds) {
         const node = this.graph.getNodeById(id);
-        if (node) result.set(id, this.adapter.measure(node));
+        if (node) {
+          const m = this.adapter.measure(node);
+          result.set(id, m);
+          result.set(node.id, m);
+          result.set(String(node.id), m);
+        }
       }
     }
     return result;
@@ -233,6 +239,8 @@ export class LayoutController {
           const metric = { ...this.adapter.measure(node), width: node.size?.[0] ?? 0 };
           metrics.set(id, metric);
           metrics.set(node.id, metric);
+          metrics.set(String(id), metric);
+          metrics.set(String(node.id), metric);
           const title = String(node.title || node.type || `Node ${node.id}`).trim();
           nodeTitles.set(String(id), title);
           nodeTitles.set(String(node.id), title);
@@ -244,6 +252,10 @@ export class LayoutController {
       }
       if (resolved?.kind === 'split-top' || resolved?.kind === 'split-bottom') {
         insertRowCell(this.frames, resolved.frame.id, resolved.cell.id, resolved.kind === 'split-top' ? 'top' : 'bottom', nodeIds, metrics);
+        return;
+      }
+      if (resolved?.kind === 'tab-into' && resolved?.frame && resolved?.cell) {
+        dropNodesIntoExistingTab(this.frames, resolved.frame.id, resolved.cell.id, nodeIds, resolved.tabIndex, metrics);
         return;
       }
       if (resolved?.kind === 'tab' && resolved?.frame && resolved?.cell) {
@@ -288,7 +300,7 @@ export class LayoutController {
   snapshot() {
     return new Map((this.graph?._nodes ?? this.graph?.nodes ?? []).map(n => [n.id, { pos: [...n.pos], size: [...n.size], mode: n.mode }]));
   }
-  finishNativeDrag(before, pointer = null) {
+  finishNativeDrag(before, pointer = null, options = {}) {
     const moved = [], resized = [];
     for (const [id, previous] of before) {
       const node = this.graph.getNodeById(id);
@@ -306,6 +318,7 @@ export class LayoutController {
         const pick = resolveDropTarget(layouts, rect, {
           excludeIds: movingIds,
           pointer: moved.length === 1 ? pointer : null,
+          tabHit: moved.length === 1 ? (options?.tabHit ?? null) : null,
           titleHeight: this.adapter.classicTitle,
         });
         const key = pick ? `${pick.kind}:${pick.frame.id}:${pick.cell?.id ?? 'row'}:${pick.position ?? ''}:${pick.tabIndex ?? ''}` : 'outside';
