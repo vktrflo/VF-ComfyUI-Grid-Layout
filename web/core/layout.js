@@ -965,10 +965,10 @@ export function applyIdePreset(frame, preset = 'vscode', metrics) {
     frame.fill = true;
 
     const sidebar = createCell('Sidebar');
-    sidebar.icon = '📁';
+    sidebar.icon = '◫';
     sidebar.tabs = [
-      { id: id(), label: 'Explorer', icon: '📁', nodes: [] },
-      { id: id(), label: 'Controls', icon: '🎛️', nodes: [] },
+      { id: id(), label: 'Explorer', icon: '◫', nodes: [] },
+      { id: id(), label: 'Controls', icon: '☰', nodes: [] },
     ];
     sidebar.activeTab = 0;
     syncCellTabs(sidebar);
@@ -976,17 +976,17 @@ export function applyIdePreset(frame, preset = 'vscode', metrics) {
     const editor = createCell('Editor');
     editor.fill = true;
     editor.tabs = [
-      { id: id(), label: 'Main View', icon: '✨', nodes: existingNodes },
-      { id: id(), label: 'Pipeline', icon: '🔧', nodes: [] },
+      { id: id(), label: 'Main View', icon: '◈', nodes: existingNodes },
+      { id: id(), label: 'Pipeline', icon: '⚙', nodes: [] },
     ];
     editor.activeTab = 0;
     syncCellTabs(editor);
 
     const bottomPanel = createCell('Panel');
-    bottomPanel.icon = '🖥️';
+    bottomPanel.icon = '▣';
     bottomPanel.tabs = [
-      { id: id(), label: 'Output', icon: '🖼️', nodes: [] },
-      { id: id(), label: 'Console', icon: '⌨️', nodes: [] },
+      { id: id(), label: 'Output', icon: '▣', nodes: [] },
+      { id: id(), label: 'Console', icon: '⌘', nodes: [] },
     ];
     bottomPanel.activeTab = 0;
     syncCellTabs(bottomPanel);
@@ -1005,10 +1005,10 @@ export function applyIdePreset(frame, preset = 'vscode', metrics) {
     frame.fill = true;
 
     const leftSidebar = createCell('Inputs');
-    leftSidebar.icon = '📥';
+    leftSidebar.icon = '⊞';
     leftSidebar.tabs = [
-      { id: id(), label: 'Loaders', icon: '📥', nodes: [] },
-      { id: id(), label: 'Prompts', icon: '📝', nodes: [] },
+      { id: id(), label: 'Loaders', icon: '⊞', nodes: [] },
+      { id: id(), label: 'Prompts', icon: '✎', nodes: [] },
     ];
     leftSidebar.activeTab = 0;
     syncCellTabs(leftSidebar);
@@ -1018,10 +1018,10 @@ export function applyIdePreset(frame, preset = 'vscode', metrics) {
     center.nodes = existingNodes;
 
     const rightSidebar = createCell('Inspector');
-    rightSidebar.icon = '⚙️';
+    rightSidebar.icon = '⚙';
     rightSidebar.tabs = [
-      { id: id(), label: 'Parameters', icon: '🎛️', nodes: [] },
-      { id: id(), label: 'Advanced', icon: '🔬', nodes: [] },
+      { id: id(), label: 'Parameters', icon: '☰', nodes: [] },
+      { id: id(), label: 'Advanced', icon: '◈', nodes: [] },
     ];
     rightSidebar.activeTab = 0;
     syncCellTabs(rightSidebar);
@@ -1037,9 +1037,9 @@ export function applyIdePreset(frame, preset = 'vscode', metrics) {
 
     const left = createCell('Controls');
     left.tabs = [
-      { id: id(), label: 'Prompt & Seed', icon: '✨', nodes: existingNodes },
-      { id: id(), label: 'Model & LoRA', icon: '🧠', nodes: [] },
-      { id: id(), label: 'Sampling', icon: '🎲', nodes: [] },
+      { id: id(), label: 'Prompt & Seed', icon: '✎', nodes: existingNodes },
+      { id: id(), label: 'Model & LoRA', icon: '◈', nodes: [] },
+      { id: id(), label: 'Sampling', icon: '⚙', nodes: [] },
     ];
     left.activeTab = 0;
     syncCellTabs(left);
@@ -1047,8 +1047,8 @@ export function applyIdePreset(frame, preset = 'vscode', metrics) {
     const right = createCell('Preview');
     right.fill = true;
     right.tabs = [
-      { id: id(), label: 'Live Output', icon: '🖼️', nodes: [] },
-      { id: id(), label: 'Comparison', icon: '🔍', nodes: [] },
+      { id: id(), label: 'Live Output', icon: '▣', nodes: [] },
+      { id: id(), label: 'Comparison', icon: '◎', nodes: [] },
     ];
     right.activeTab = 0;
     syncCellTabs(right);

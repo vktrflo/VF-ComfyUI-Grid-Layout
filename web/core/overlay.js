@@ -53,7 +53,14 @@ const STYLE = `
 .clt-port-in{left:-6px;top:calc(50% - 6px)}
 .clt-port-out{right:-6px;top:calc(50% - 6px)}
 .clt-label{flex:1;min-height:1em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.03em}
-.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize,.clt-bypass{flex:none}
+.clt-emoji,.clt-lock,.clt-autohide,.clt-collapse,.clt-minimize,.clt-bypass,.clt-preset-btn,.clt-appmode{flex:none}
+.clt-emoji{font-size:0;width:15px;height:15px;display:inline-block;background-position:center;background-repeat:no-repeat;background-size:contain}
+.clt-lock,.clt-autohide{font-size:0 !important;width:24px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0 !important}
+.clt-lock::before,.clt-autohide::before{content:'';width:14px;height:14px;display:inline-block;background-color:currentColor;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
+.clt-lock[aria-pressed="false"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 9.9-1'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 9.9-1'/%3E%3C/svg%3E")}
+.clt-lock[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E")}
+.clt-autohide[aria-pressed="false"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
+.clt-autohide[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E")}
 .clt-bypass[aria-pressed="true"]{background:rgba(168,85,247,.28);border-color:#a855f7;color:#e9d5ff}
 .lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
@@ -131,10 +138,10 @@ const STYLE = `
 .selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"],.selection-toolbox button.clt-toolbox-autohide.clt-autohide-off [class~="icon-[lucide--eye]"]{color:#8b5cf6 !important}
 .clt-tab-bar{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;height:100%}
 .clt-tab-bar::-webkit-scrollbar{display:none}
-.clt-cell-tab{display:inline-flex;align-items:center;gap:4px;height:21px;padding:0 7px;border-radius:3px 3px 0 0;background:rgba(17,27,32,.65);color:#9fb0b7;border:1px solid transparent;border-bottom:none;font:inherit;font-size:11px;cursor:grab;user-select:none;flex-shrink:0;max-width:140px;transition:background .12s ease,color .12s ease}
+.clt-cell-tab{display:inline-flex;align-items:center;gap:3px;height:21px;padding:0 5px;border-radius:3px 3px 0 0;background:rgba(17,27,32,.65);color:#9fb0b7;border:1px solid transparent;border-bottom:none;font:inherit;font-size:11px;cursor:grab;user-select:none;flex-shrink:0;max-width:130px;transition:background .12s ease,color .12s ease}
 .clt-cell-tab:hover{background:rgba(52,83,97,.65);color:#f4f6f7}
 .clt-cell-tab.active{background:rgba(112,216,190,.16);color:#70d8be;border-color:#70d8be66;font-weight:600}
-.clt-cell-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px}
+.clt-cell-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px}
 .clt-cell-tab-close{font-size:11px;line-height:1;opacity:.65;padding:0 2px;border-radius:2px;cursor:pointer}
 .clt-cell-tab-close:hover{opacity:1;background:rgba(239,68,68,.28);color:#fca5a5}
 .clt-cell.clt-cell-collapsed-x{display:flex;flex-direction:column;align-items:center;background:var(--comfy-menu-bg,#1b2226);pointer-events:auto;overflow:hidden}
@@ -152,8 +159,8 @@ const STYLE = `
 .clt-compass-right{grid-column:3;grid-row:2}
 .clt-compass-bottom{grid-column:2;grid-row:3}
 .clt-ghost-tab{border:2px solid #f59e0b;background:rgba(245,158,11,.15);box-shadow:inset 0 25px 0 rgba(245,158,11,.28),0 0 0 1px rgba(245,158,11,.35)}
-.clt-frame.clt-app-mode{border-radius:4px;border-width:1px;background:rgba(18,24,28,.92)}
-.clt-frame.clt-app-mode .clt-cell{border-radius:0;border-color:rgba(113,151,165,.35)}
+.clt-frame.clt-app-mode{border-radius:4px;border-width:1px}
+.clt-frame.clt-app-mode .clt-cell{border-radius:0;border-color:rgba(113,151,165,.45)}
 .clt-frame.clt-app-mode .clt-cell-header{border-radius:0}
 .clt-appmode[aria-pressed="true"],.clt-maximize-cell[aria-pressed="true"]{background:rgba(112,216,190,.24);border-color:#70d8be;color:#70d8be}
 `;
@@ -407,44 +414,44 @@ function button(label, action, text = label) {
 export const LOGO_PURPLE = '#8b5cf6';
 const SELECTION_ACTION_LABEL = 'Create grid layout from selected nodes';
 export const MENU_ICONS = {
-  'Change Appearance…': '🎨',
-  'Shrink grid to content': '📐',
-  'Add bottom row': '➕',
-  'Fill cell height': '↕️',
-  'Undo Fill cell height': '↩️',
-  'Fill cell height (all columns)': '↕️',
-  'Undo Fill cell height (all columns)': '↩️',
-  'Fill cell height (this column)': '↕️',
-  'Undo Fill cell height (this column)': '↩️',
-  'Bypass cell': '⏭️',
-  'Unbypass cell': '▶️',
-  'Lock frame': '🔒',
-  'Unlock frame': '🔓',
-  'Minimize grid': '➖',
-  'Restore grid': '◻️',
-  'Collapse grid': '🔼',
-  'Expand grid': '🔽',
-  'Export empty template': '📤',
-  'Remove grid (keep nodes)': '🗑️',
-  'Delete cell (keep nodes)': '🗑️',
-  'Delete Empty Cells': '🧹',
-  'Split into left / right': '↔️',
-  'Split into top / bottom': '↕️',
-  'Create grid…': '🪟',
-  'Rename cell…': '✏️',
-  'Add tab': '➕',
-  'Close active tab': '✖️',
+  'Change Appearance…': '◈',
+  'Shrink grid to content': '⤡',
+  'Add bottom row': '+',
+  'Fill cell height': '↕',
+  'Undo Fill cell height': '↩',
+  'Fill cell height (all columns)': '↕',
+  'Undo Fill cell height (all columns)': '↩',
+  'Fill cell height (this column)': '↕',
+  'Undo Fill cell height (this column)': '↩',
+  'Bypass cell': '↱',
+  'Unbypass cell': '▶',
+  'Lock frame': '●',
+  'Unlock frame': '○',
+  'Minimize grid': '−',
+  'Restore grid': '◻',
+  'Collapse grid': '▴',
+  'Expand grid': '▾',
+  'Export empty template': '→',
+  'Remove grid (keep nodes)': '✕',
+  'Delete cell (keep nodes)': '✕',
+  'Delete Empty Cells': '⊗',
+  'Split into left / right': '↔',
+  'Split into top / bottom': '↕',
+  'Create grid…': '⊞',
+  'Rename cell…': '✎',
+  'Add tab': '+',
+  'Close active tab': '✕',
   'Maximize panel': '⤢',
   'Restore panel': '⤡',
-  'Collapse panel': '◀️',
-  'Expand panel': '▶️',
-  'Fold nodes in panel': '🪗',
-  'Unfold nodes in panel': '🪗',
-  'Enable App View': '🖥',
-  'Disable App View': '🖥',
-  'Preset: VS Code IDE': '🧩',
-  'Preset: Dual Sidebar Studio': '🧩',
-  'Preset: Tabbed Dashboard': '🧩',
+  'Collapse panel': '◀',
+  'Expand panel': '▶',
+  'Fold nodes in panel': '≡',
+  'Unfold nodes in panel': '≡',
+  'Enable App View': '▣',
+  'Disable App View': '▣',
+  'Preset: VS Code IDE': '◫',
+  'Preset: Dual Sidebar Studio': '◫',
+  'Preset: Tabbed Dashboard': '◫',
 };
 export const VF_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="VKTRFLO"><defs><linearGradient id="ring" x1="9" y1="8" x2="119" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#52d1a5"/><stop offset="0.34" stop-color="#78d7bd"/><stop offset="0.64" stop-color="#8b5cf6"/><stop offset="1" stop-color="#c084fc"/></linearGradient><filter id="shadow" x="-8" y="-8" width="144" height="144" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.32"/><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000000" flood-opacity="0.5"/></filter></defs><rect x="9" y="9" width="110" height="110" rx="29" fill="none" stroke="url(#ring)" stroke-width="15" filter="url(#shadow)"/></svg>')}`;
 
@@ -1965,6 +1972,7 @@ export class LayoutOverlay {
       });
       const badge = element('span', 'clt-emoji', '🌀');
       badge.setAttribute('aria-hidden', 'true');
+      badge.style.backgroundImage = `url("${VF_LOGO_DATA_URI}")`;
       header.append(badge);
       header.append(this.title(frame.label, frame.id));
       if (frame.lock === true) header.style.cursor = 'default';
@@ -1972,7 +1980,7 @@ export class LayoutOverlay {
       const minimized = frame.minimized === true;
       const collapsed = frame.collapsed === true;
 
-      const presetBtn = button('IDE presets', e => this.presetMenu(e, frame), '🧩');
+      const presetBtn = button('IDE presets', e => this.presetMenu(e, frame), '◫');
       presetBtn.classList.add('clt-preset-btn');
       if (minimized || collapsed) {
         presetBtn.hidden = true;
@@ -1981,7 +1989,7 @@ export class LayoutOverlay {
       header.append(presetBtn);
 
       const appMode = frame.appMode === true;
-      const appModeBtn = button(appMode ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id), '🖥');
+      const appModeBtn = button(appMode ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id), '▣');
       appModeBtn.classList.add('clt-appmode');
       appModeBtn.setAttribute('aria-pressed', String(appMode));
       if (minimized || collapsed) {
