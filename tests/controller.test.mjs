@@ -318,4 +318,16 @@ test('Nodes 2.0 measure uses the rendered element height when content grows past
   }
 });
 
+test('controller.begin handles circular references in graph.extra without stack overflow', () => {
+  const { controller, graph } = host();
+  const cyclic = { name: 'third-party' };
+  cyclic.self = cyclic;
+  graph.extra.thirdPartyCyclic = cyclic;
+  assert.doesNotThrow(() => {
+    controller.create([100, 100]);
+  });
+  assert.equal(graph.extra.thirdPartyCyclic, cyclic);
+});
+
+
 

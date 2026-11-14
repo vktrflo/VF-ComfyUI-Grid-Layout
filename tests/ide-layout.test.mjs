@@ -529,3 +529,33 @@ test('Tab body drops, tab-into drops, tab reordering, and hidden node size prese
   assert.deepEqual(hiddenNode.size, [240, 160], 'hidden inactive-tab node retains its size instead of being zeroed out');
   assert.equal(adapter.measure(hiddenNode).height, 160, 'subsequent measure retains full node height');
 });
+
+test('refreshHidden wraps graph.getNodeOnPos only once even across thousands of ticks', async () => {
+  const { LayoutOverlay } = await import('../web/core/overlay.js');
+  let callCount = 0;
+  const origFn = function (x, y, list) {
+    callCount++;
+    return (list ?? this._nodes)?.[0] ?? null;
+  };
+  const graph = {
+    _nodes: [{ id: 1 }, { id: 2 }],
+    getNodeOnPos: origFn,
+  };
+  const fakeOverlay = {
+    controller: { frames: [], graph },
+    nativeNode: null,
+    draggedNodes: () => [],
+    hidden: { ids: new Set(), frames: new Map() },
+  };
+  for (let i = 0; i < 20000; i++) {
+    LayoutOverlay.prototype.refreshHidden.call(fakeOverlay);
+  }
+  const firstWrapped = graph.getNodeOnPos;
+  assert.equal(firstWrapped._cltWrappedGetNodeOnPos, true);
+  assert.equal(firstWrapped._cltOrigGetNodeOnPos, origFn, 'original getNodeOnPos is preserved without chaining');
+  fakeOverlay.hidden.ids.add('1');
+  const hit = graph.getNodeOnPos(0, 0);
+  assert.equal(hit?.id, 2, 'hidden node 1 is filtered out');
+  assert.equal(callCount, 1, 'underlying getNodeOnPos called exactly once without stack overflow');
+});
+
