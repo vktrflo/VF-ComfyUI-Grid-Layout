@@ -1,4 +1,29 @@
-import { KEY, LEGACY_KEY, VERSION, createFrame, createCell, shrinkFrame, PAD, FRAME_TITLE, gridCell, contains, dropNodes, insertColumnCell, addBottomRow, exportTemplate, importTemplate, layoutFrame, leaves, pickCell, targetCellForNode, resolveDropTarget, validateFrame } from './layout.js';
+import {
+  KEY,
+  LEGACY_KEY,
+  VERSION,
+  createFrame,
+  createCell,
+  shrinkFrame,
+  PAD,
+  FRAME_TITLE,
+  gridCell,
+  contains,
+  dropNodes,
+  dropNodesIntoTab,
+  insertColumnCell,
+  insertRowCell,
+  addBottomRow,
+  applyIdePreset,
+  exportTemplate,
+  importTemplate,
+  layoutFrame,
+  leaves,
+  pickCell,
+  targetCellForNode,
+  resolveDropTarget,
+  validateFrame,
+} from './layout.js';
 import { NodeAdapter } from './adapter.js';
 
 // Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
@@ -74,6 +99,15 @@ export class LayoutController {
   create(pos) {
     return this.edit(() => { const frame = createFrame(pos); this.pendingAutohide.add(frame.id); gridCell(frame, frame.root.id, 1, this.defaultColumns); this.ensureData().frames.push(frame); return frame; });
   }
+  createPreset(pos, preset = 'vscode') {
+    return this.edit(() => {
+      const frame = createFrame(pos);
+      delete frame.autohide;
+      applyIdePreset(frame, preset, this.metrics());
+      this.ensureData().frames.push(frame);
+      return frame;
+    });
+  }
   selectedNodes() {
     const selection = this.app.canvas.selected_nodes ?? {};
     const values = selection instanceof Map ? [...selection.values()] : selection instanceof Set ? [...selection] : Object.values(selection);
@@ -116,7 +150,12 @@ export class LayoutController {
       };
       const cells=columns.map(column=>{const cell=createCell('');cell.nodes=column.nodes.sort((a,b)=>a.pos[1]-b.pos[1]||a.pos[0]-b.pos[0]).map(node=>node.id);return cell;});
       const moving=new Set(nodes.map(node=>String(node.id)));
-      for (const oldFrame of this.frames) for (const cell of leaves(oldFrame.root)) cell.nodes=cell.nodes.filter(id=>!moving.has(String(id)));
+      for (const oldFrame of this.frames) for (const cell of leaves(oldFrame.root)) {
+        cell.nodes=cell.nodes.filter(id=>!moving.has(String(id)));
+        if (Array.isArray(cell.tabs)) {
+          for (const tab of cell.tabs) tab.nodes = (tab.nodes ?? []).filter(id => !moving.has(String(id)));
+        }
+      }
       frame.root=build(cells);this.ensureData().frames.push(frame);
       const metrics = this.metrics();
       for (const node of nodes) {
@@ -143,9 +182,12 @@ export class LayoutController {
   }
   metrics() {
     const result = new Map();
-    for (const frame of this.frames) for (const cell of leaves(frame.root)) for (const id of cell.nodes) {
-      const node = this.graph.getNodeById(id);
-      if (node) result.set(id, this.adapter.measure(node));
+    for (const frame of this.frames) for (const cell of leaves(frame.root)) {
+      const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
+      for (const id of allIds) {
+        const node = this.graph.getNodeById(id);
+        if (node) result.set(id, this.adapter.measure(node));
+      }
     }
     return result;
   }
@@ -172,7 +214,7 @@ export class LayoutController {
   target(point) {
     for (const layout of this.geometry().reverse()) {
       if (layout.frame?.lock === true) continue;
-      const target = layout.cells.find(({ rect }) => contains(rect, point));
+      const target = layout.cells.find(({ cell, rect }) => cell?.collapsed !== true && contains(rect, point));
       if (target) return { frame: layout.frame, ...target };
     }
     return null;
@@ -184,16 +226,36 @@ export class LayoutController {
     return this.edit(() => {
       const resolved = target === undefined ? this.target(point) : target;
       const metrics = this.metrics();
+      const nodeTitles = new Map();
       for (const id of nodeIds) {
         const node = this.graph.getNodeById(id);
         if (node) {
           const metric = { ...this.adapter.measure(node), width: node.size?.[0] ?? 0 };
           metrics.set(id, metric);
           metrics.set(node.id, metric);
+          const title = String(node.title || node.type || `Node ${node.id}`).trim();
+          nodeTitles.set(String(id), title);
+          nodeTitles.set(String(node.id), title);
         }
       }
       if (resolved?.kind === 'split-left' || resolved?.kind === 'split-right') {
         insertColumnCell(this.frames, resolved.frame.id, resolved.cell.id, resolved.kind === 'split-left' ? 'left' : 'right', nodeIds, metrics);
+        return;
+      }
+      if (resolved?.kind === 'split-top' || resolved?.kind === 'split-bottom') {
+        insertRowCell(this.frames, resolved.frame.id, resolved.cell.id, resolved.kind === 'split-top' ? 'top' : 'bottom', nodeIds, metrics);
+        return;
+      }
+      if (resolved?.kind === 'tab' && resolved?.frame && resolved?.cell) {
+        const firstExistingId = resolved.cell.nodes?.[0];
+        const existingNode = firstExistingId != null ? this.graph?.getNodeById(firstExistingId) : null;
+        const existingLabel = existingNode ? String(existingNode.title || existingNode.type || 'Tab 1').trim() : undefined;
+        dropNodesIntoTab(this.frames, resolved.frame.id, resolved.cell.id, nodeIds, {
+          tabIndex: resolved.tabIndex,
+          nodeTitles,
+          existingLabel,
+          metrics,
+        });
         return;
       }
       if (resolved?.kind === 'bottom-row') {
@@ -210,7 +272,10 @@ export class LayoutController {
         return;
       }
       const moving = new Set(nodeIds.map(String));
-      const others = resolved?.cell?.nodes.filter(id => !moving.has(String(id))) ?? [];
+      const activeNodes = Array.isArray(resolved?.cell?.tabs) && resolved.cell.tabs.length
+        ? (resolved.cell.tabs[resolved.cell.activeTab ?? 0]?.nodes ?? [])
+        : (resolved?.cell?.nodes ?? []);
+      const others = activeNodes.filter(id => !moving.has(String(id)));
       const index = Number.isInteger(resolved?.index)
         ? resolved.index
         : others.findIndex(id => {
@@ -223,7 +288,7 @@ export class LayoutController {
   snapshot() {
     return new Map((this.graph?._nodes ?? this.graph?.nodes ?? []).map(n => [n.id, { pos: [...n.pos], size: [...n.size], mode: n.mode }]));
   }
-  finishNativeDrag(before) {
+  finishNativeDrag(before, pointer = null) {
     const moved = [], resized = [];
     for (const [id, previous] of before) {
       const node = this.graph.getNodeById(id);
@@ -238,8 +303,12 @@ export class LayoutController {
       const layouts = this.geometry();
       for (const node of moved) {
         const rect = [node.pos[0], node.pos[1], node.size[0], node.size[1]];
-        const pick = resolveDropTarget(layouts, rect, { excludeIds: movingIds, titleHeight: this.adapter.classicTitle });
-        const key = pick ? `${pick.kind}:${pick.frame.id}:${pick.cell?.id ?? 'row'}:${pick.position ?? ''}` : 'outside';
+        const pick = resolveDropTarget(layouts, rect, {
+          excludeIds: movingIds,
+          pointer: moved.length === 1 ? pointer : null,
+          titleHeight: this.adapter.classicTitle,
+        });
+        const key = pick ? `${pick.kind}:${pick.frame.id}:${pick.cell?.id ?? 'row'}:${pick.position ?? ''}:${pick.tabIndex ?? ''}` : 'outside';
         // The node's own center anchors the insertion order; resolveDropTarget
         // resolved the destination (null = detach).
         if (!destinations.has(key)) destinations.set(key, { target: pick, point: [rect[0] + rect[2] / 2, rect[1] + rect[3] / 2], nodes: [] });
