@@ -1359,9 +1359,14 @@ export function layoutFrame(frame, metrics) {
     function layoutCollapsed(cell, x, width, y) {
       if (!cell.children) {
         syncCellTabs(cell);
+        const activeIdx = activeTabIndex(cell);
+        const activeNodes = Array.isArray(cell.tabs) && cell.tabs.length
+          ? (cell.tabs[activeIdx]?.nodes ?? [])
+          : cell.nodes;
+        const activeSet = new Set(activeNodes.map(String));
         let currentY = y;
         const placements = [];
-        const cellNodes = cell.nodes.filter(n => metrics.has(n));
+        const cellNodes = activeNodes.filter(n => metrics.has(n));
         for (const nodeId of cellNodes) {
           const metric = metrics.get(nodeId);
           const title = metric.titleHeight;
@@ -1373,6 +1378,23 @@ export function layoutFrame(frame, metrics) {
             height: 0,
           });
           currentY += title;
+        }
+        if (Array.isArray(cell.tabs) && cell.tabs.length) {
+          for (const tab of cell.tabs) {
+            for (const nodeId of tab.nodes) {
+              if (activeSet.has(String(nodeId))) continue;
+              const metric = metrics.get(nodeId);
+              if (!metric) continue;
+              placements.push({
+                nodeId,
+                x: x + pad,
+                y: y + metric.titleHeight,
+                width: Math.max(40, width - pad * 2),
+                height: 0,
+                hidden: true,
+              });
+            }
+          }
         }
         return {
           placements,

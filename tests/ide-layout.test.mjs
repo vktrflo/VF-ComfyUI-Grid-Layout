@@ -559,3 +559,165 @@ test('refreshHidden wraps graph.getNodeOnPos only once even across thousands of 
   assert.equal(callCount, 1, 'underlying getNodeOnPos called exactly once without stack overflow');
 });
 
+test('routeMinimizedEndpoints routes inactive tab and collapsed cell links to their visible anchors and suppresses same-tab internal wires', async () => {
+  const { LayoutOverlay, routeMinimizedEndpoints } = await import('../web/core/overlay.js');
+  const frame = engine.createFrame([100, 100]);
+  delete frame.autohide;
+  engine.gridCell(frame, frame.root.id, 1, 2);
+  const [leftCell, rightCell] = engine.leaves(frame.root);
+  leftCell.tabs = [
+    { id: 't0', label: 'Tab 1', nodes: [1, 4] },
+    { id: 't1', label: 'Tab 2', nodes: [2] },
+  ];
+  leftCell.activeTab = 1; // Tab 2 (node 2) is active; Tab 1 (nodes 1 and 4) is inactive
+  engine.syncCellTabs(leftCell);
+  rightCell.nodes = [3];
+
+  const graph = {
+    extra: { [engine.KEY]: { version: engine.VERSION, frames: [frame] } },
+    _nodes: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+    getNodeById(id) { return this._nodes.find(n => String(n.id) === String(id)) ?? null; },
+  };
+  const fakeOverlay = {
+    controller: { frames: [frame], graph },
+    nativeNode: null,
+    draggedNodes: () => [],
+    plane: {
+      querySelector(sel) {
+        if (sel === `.clt-cell[data-cell-id="${leftCell.id}"]`) {
+          return {
+            style: { left: '112px', top: '148px', width: '280px', height: '300px' },
+            querySelector(tabSel) {
+              if (tabSel === '.clt-cell-tab[data-tab-index="0"]') {
+                return { offsetLeft: 8, offsetTop: 3, offsetWidth: 74, offsetHeight: 20 };
+              }
+              return null;
+            },
+          };
+        }
+        if (sel === `.clt-cell[data-cell-id="${rightCell.id}"]`) {
+          return { style: { left: '404px', top: '148px', width: '280px', height: '300px' } };
+        }
+        return null;
+      },
+    },
+    hidden: { ids: new Set(), frames: new Map(), targets: new Map() },
+  };
+
+  const hidden = LayoutOverlay.prototype.refreshHidden.call(fakeOverlay);
+  assert.equal(hidden.ids.has('1'), true, 'node 1 in inactive Tab 1 is hidden');
+  assert.equal(hidden.ids.has('4'), true, 'node 4 in inactive Tab 1 is hidden');
+  assert.equal(hidden.ids.has('2'), false, 'node 2 in active Tab 2 is visible');
+  assert.equal(hidden.ids.has('3'), false, 'node 3 in rightCell is visible');
+
+  // Wire from inactive Tab 1 (node 1) to visible rightCell (node 3) stays visible and anchors startPos to Tab 1 pill
+  const linkOut = { id: 10, origin_id: 1, target_id: 3 };
+  const routedOut = routeMinimizedEndpoints(hidden, graph, linkOut, [150, 220], [420, 220]);
+  assert.ok(routedOut, 'wire from inactive tab to visible node is not suppressed');
+  assert.deepEqual(routedOut[0], [112 + 8 + 74, 148 + 3 + 10], 'origin endpoint snaps to right edge of Tab 1 pill');
+  assert.deepEqual(routedOut[1], [420, 220], 'visible target endpoint is unchanged');
+
+  // Wire from visible node 2 (active Tab 2) to inactive Tab 1 (node 1) stays visible and anchors endPos to Tab 1 pill
+  const linkIn = { id: 11, origin_id: 2, target_id: 1 };
+  const routedIn = routeMinimizedEndpoints(hidden, graph, linkIn, [350, 220], [150, 220]);
+  assert.ok(routedIn, 'wire from active tab to inactive tab in same cell is not suppressed');
+  assert.deepEqual(routedIn[0], [350, 220], 'visible origin endpoint is unchanged');
+  assert.deepEqual(routedIn[1], [112 + 8, 148 + 3 + 10], 'target endpoint snaps to left edge of Tab 1 pill');
+
+  // Wire between two nodes (1 -> 4) both inside the same inactive Tab 1 is suppressed
+  const linkInternal = { id: 12, origin_id: 1, target_id: 4 };
+  assert.equal(routeMinimizedEndpoints(hidden, graph, linkInternal, [150, 200], [150, 260]), null, 'internal wire within same inactive tab is suppressed');
+
+  // Collapsing rightCell routes wires connected to node 3 to the collapsed cell rect
+  engine.toggleCellCollapse(frame, rightCell.id);
+  const hiddenCollapsed = LayoutOverlay.prototype.refreshHidden.call(fakeOverlay);
+  assert.equal(hiddenCollapsed.ids.has('3'), true);
+  const routedCollapsed = routeMinimizedEndpoints(hiddenCollapsed, graph, { id: 13, origin_id: 2, target_id: 3 }, [350, 220], [420, 220]);
+  assert.ok(routedCollapsed, 'wire to collapsed panel stays visible');
+  assert.deepEqual(routedCollapsed[1], [404, 148 + 150], 'target endpoint snaps to collapsed cell left edge');
+});
+
+test('collapsed nodes docked in a grid maintain full cell width across Classic and Nodes 2.0 modes and release when detached', async () => {
+  const { NodeAdapter } = await import('../web/core/adapter.js');
+  const prevLiteGraph = globalThis.LiteGraph;
+  const prevDoc = globalThis.document;
+  const prevCSS = globalThis.CSS;
+  try {
+    const styleProps = new Map();
+    const fakeDomNode = {
+      style: {
+        setProperty(k, v) { styleProps.set(k, v); },
+        removeProperty(k) { styleProps.delete(k); },
+      },
+    };
+    globalThis.LiteGraph = { vueNodesMode: true };
+    globalThis.CSS = { escape: s => String(s) };
+    globalThis.document = {
+      querySelector(sel) {
+        if (sel === '.lg-node[data-node-id="1"]') return fakeDomNode;
+        return null;
+      },
+    };
+
+    const app = { canvas: { ds: { scale: 1, offset: [0, 0] } } };
+    const adapter = new NodeAdapter(app);
+    const node = {
+      id: 1,
+      pos: [100, 100],
+      size: [220, 180],
+      flags: { collapsed: true },
+      computeSize: () => [200, 80],
+      setSize(s) { this.size = s; },
+    };
+
+    // Apply docked placement with cell width 420 while node is collapsed
+    adapter.apply(node, { nodeId: 1, x: 112, y: 178, width: 420, height: 0 });
+    assert.equal(node.size[0], 420, 'collapsed node width updates to full cell width (420)');
+    assert.equal(node.size[1], 180, 'collapsed node preserves pre-collapse body height (180)');
+    assert.equal(node._collapsed_width, 420, 'Classic LiteGraph _collapsed_width equals cell width');
+    // Classic LiteGraph drawNode attempts to overwrite node._collapsed_width with title text width (~115)
+    node._collapsed_width = 115;
+    assert.equal(node._collapsed_width, 420, 'locked _collapsed_width resists Classic LiteGraph drawNode shrinking');
+    assert.equal(styleProps.get('--node-width'), '420px', 'Nodes 2.0 DOM wrapper receives --node-width: 420px');
+
+    // Detaching node releases the docked width lock
+    adapter.releaseDockedWidth(node);
+    node._collapsed_width = 115;
+    assert.equal(node._collapsed_width, 115, 'detached node restores normal mutable _collapsed_width');
+    assert.equal(styleProps.has('--node-width'), false, 'detached collapsed node removes --node-width override');
+  } finally {
+    globalThis.LiteGraph = prevLiteGraph;
+    globalThis.document = prevDoc;
+    globalThis.CSS = prevCSS;
+  }
+});
+
+test('toggleFrameBypass toggles node.mode across all cells in the grid frame', async () => {
+  const { LayoutOverlay } = await import('../web/core/overlay.js');
+  const n1 = { id: 1, mode: 0, pos: [0, 0], size: [200, 100], computeSize: () => [200, 100], setSize(s) { this.size = s; } };
+  const n2 = { id: 2, mode: 0, pos: [300, 0], size: [200, 100], computeSize: () => [200, 100], setSize(s) { this.size = s; } };
+  const graph = {
+    extra: {},
+    _nodes: [n1, n2],
+    getNodeById: id => [n1, n2].find(n => String(n.id) === String(id)) ?? null,
+    setDirtyCanvas() {},
+  };
+  const app = { canvas: { graph, selected_nodes: {}, ds: { scale: 1, offset: [0, 0] }, setDirty() {} }, graph, configuringGraph: false };
+  const controller = new LayoutController(app, { defaultColumns: 2 });
+  const frame = controller.createFromNodes([1, 2], 'columns');
+  const overlay = Object.create(LayoutOverlay.prototype);
+  Object.assign(overlay, { controller, app, safe: fn => fn() });
+
+  assert.equal(overlay.isFrameBypassed(frame), false);
+  overlay.toggleFrameBypass(frame.id);
+  assert.equal(n1.mode, 4);
+  assert.equal(n2.mode, 4);
+  assert.equal(overlay.isFrameBypassed(frame), true);
+
+  overlay.toggleFrameBypass(frame.id);
+  assert.equal(n1.mode, 0);
+  assert.equal(n2.mode, 0);
+  assert.equal(overlay.isFrameBypassed(frame), false);
+});
+
+

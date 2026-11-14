@@ -18,7 +18,10 @@ const base = process.env.COMFYUI_URL ?? 'http://127.0.0.1:8188';
 const exampleWorkflow = JSON.parse(await readFile(new URL('../examples/two-column.workflow.json', import.meta.url), 'utf8'));
 const prefix = '/extensions/VF-ComfyUI-Grid-Layout/';
 const FRAME_TITLE = 36, PAD = 12;
-const browser = await playwright.chromium.launch({ headless: true });
+const browser = await playwright.chromium.launch({
+  headless: true,
+  ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}),
+});
 await mkdir('test-results', { recursive: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });

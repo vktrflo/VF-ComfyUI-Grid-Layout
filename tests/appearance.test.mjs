@@ -482,6 +482,7 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
     'Add bottom row',
     'Delete Empty Cells',
     'Fill cell height (all columns)',
+    'Bypass grid',
     'Fill cell height (this column)',
     'Bypass cell',
     'Lock frame',
