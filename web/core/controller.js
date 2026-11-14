@@ -29,9 +29,22 @@ import { NodeAdapter } from './adapter.js';
 
 // Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
 // reuses string values, so embedded background images aren't re-encoded.
-function copy(value) {
-  if (Array.isArray(value)) return value.map(copy);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, copy(item)]));
+// Uses a WeakMap visited guard so circular references never overflow the stack.
+function copy(value, seen = new WeakMap()) {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return seen.get(value);
+    const out = [];
+    seen.set(value, out);
+    for (let i = 0; i < value.length; i++) out[i] = copy(value[i], seen);
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    if (seen.has(value)) return seen.get(value);
+    const out = {};
+    seen.set(value, out);
+    for (const [key, item] of Object.entries(value)) out[key] = copy(item, seen);
+    return out;
+  }
   return value;
 }
 
@@ -68,7 +81,17 @@ export class LayoutController {
     if (this.transaction) return false;
     this.ensureData();
     const graph = this.graph;
-    this.transaction = { graph, extra: copy(graph.extra), nodes: this.snapshot() };
+    const extra = graph.extra ?? {};
+    const hasKey = Object.prototype.hasOwnProperty.call(extra, KEY);
+    const hasLegacy = Object.prototype.hasOwnProperty.call(extra, LEGACY_KEY);
+    this.transaction = {
+      graph,
+      hasKey,
+      hasLegacy,
+      data: hasKey ? copy(extra[KEY]) : undefined,
+      legacyData: hasLegacy ? copy(extra[LEGACY_KEY]) : undefined,
+      nodes: this.snapshot(),
+    };
     this.app.canvas.emitBeforeChange?.();
     return true;
   }
@@ -85,7 +108,11 @@ export class LayoutController {
       return result;
     } catch (error) {
       if (this.transaction) {
-        this.transaction.graph.extra = this.transaction.extra;
+        const extra = (this.transaction.graph.extra ??= {});
+        if (this.transaction.hasKey) extra[KEY] = this.transaction.data;
+        else delete extra[KEY];
+        if (this.transaction.hasLegacy) extra[LEGACY_KEY] = this.transaction.legacyData;
+        else delete extra[LEGACY_KEY];
         for (const [id, state] of this.transaction.nodes) {
           const node = this.transaction.graph.getNodeById(id);
           if (node) {

@@ -751,6 +751,12 @@ export class LayoutOverlay {
   safe(action) {
     try { return action(); } catch (error) { this.message(error.message); }
   }
+  message(text) {
+    if (typeof document !== 'undefined' && document.querySelector?.('dialog.clt-dialog[open]')) {
+      return;
+    }
+    this.dialog('Grid Layout', [], () => {}, text);
+  }
   title(label, frameId, cellId = null) {
     const title = element('span', 'clt-label', label);
     title.title = 'Double-click to rename';
@@ -784,9 +790,6 @@ export class LayoutOverlay {
       title.replaceWith(input); input.focus(); input.select();
     };
     return title;
-  }
-  message(text) {
-    this.dialog('Grid Layout', [], () => {}, text);
   }
   dialog(title, fields, submit, message = '') {
     const dialog = element('dialog', 'clt-dialog');
@@ -1844,18 +1847,30 @@ export class LayoutOverlay {
       }
     }
     const graph = this.controller.graph;
-    if (graph && typeof graph.getNodeOnPos === 'function' && !graph._cltWrappedGetNodeOnPos) {
-      const origGetNodeOnPos = graph.getNodeOnPos;
+    if (graph && typeof graph.getNodeOnPos === 'function' && !graph._cltWrappedGetNodeOnPos && !graph.getNodeOnPos._cltWrappedGetNodeOnPos) {
+      let origGetNodeOnPos = graph.getNodeOnPos;
+      while (typeof origGetNodeOnPos?._cltOrigGetNodeOnPos === 'function') {
+        origGetNodeOnPos = origGetNodeOnPos._cltOrigGetNodeOnPos;
+      }
       const overlay = this;
+      let inCall = false;
       const wrapped = function (x, y, nodes_list, margin) {
-        const list = nodes_list ?? this._nodes ?? this.nodes;
-        if (Array.isArray(list) && overlay.hidden?.ids?.size) {
-          const filtered = list.filter(n => n && !overlay.hidden.ids.has(String(n.id)));
-          return origGetNodeOnPos.call(this, x, y, filtered, margin);
+        if (inCall) return origGetNodeOnPos.call(this, x, y, nodes_list, margin);
+        inCall = true;
+        try {
+          const list = nodes_list ?? this._nodes ?? this.nodes;
+          if (Array.isArray(list) && overlay.hidden?.ids?.size) {
+            const filtered = list.filter(n => n && !overlay.hidden.ids.has(String(n.id)));
+            return origGetNodeOnPos.call(this, x, y, filtered, margin);
+          }
+          return origGetNodeOnPos.call(this, x, y, nodes_list, margin);
+        } finally {
+          inCall = false;
         }
-        return origGetNodeOnPos.call(this, x, y, nodes_list, margin);
       };
       wrapped._cltWrappedGetNodeOnPos = true;
+      wrapped._cltOrigGetNodeOnPos = origGetNodeOnPos;
+      graph._cltWrappedGetNodeOnPos = true;
       graph.getNodeOnPos = wrapped;
     }
     return this.hidden;
@@ -1987,14 +2002,19 @@ export class LayoutOverlay {
     if (!container.contains(event.target) || this.app.configuringGraph) return;
     // Start before the native renderer moves anything. Its nested history
     // events are then grouped with our drop/reflow into the same undo step.
-    this.safe(() => {
+    try {
       if (!this.controller.frames.length) return;
       const pointer = this.controller.adapter.point(event);
       const domNodeId = event.target?.closest?.('.lg-node')?.dataset?.nodeId;
       this.nativeNode = (domNodeId != null && this.controller.graph.getNodeById(domNodeId)) || this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
       this.controller.begin();
       this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId, pointer };
-    });
+    } catch (error) {
+      this.nativeNode = null;
+      this.nativeDrag = null;
+      this.controller.end();
+      console.error('[Grid Layout] nativeDown error:', error);
+    }
   }
   move(event) {
     if (this.drag && event.pointerId === this.drag.pointerId) {
