@@ -99,6 +99,11 @@ Header slider/picker update: all 60 unit tests pass. Dedicated tests/header-ui.m
 
 Selected-node layout creation: 63 unit tests pass. Browser selection-ui.mjs passes in classic and Nodes 2.0 for the real canvas context menu, column detection, single stack, unchanged execution prompt, and undo/redo.
 
+## IDE UI Builder expansion (v1.3.0, 2026-11-14)
+
+- Unit: 137 tests pass (`npm test`), including `tests/ide-layout.test.mjs` covering seamless tab promotion, multi-node tab stacking, Max-of-All-Tabs stable sizing, hidden inactive tab placements, draggable tab reordering/transfer/split/detach (`moveCellTab`), smart axis-aware panel collapse (`COLLAPSED_CELL_WIDTH = 36` Activity Bar and `COLLAPSED_CELL_HEIGHT = 26` row header), 5-way Docking Compass Rose (`computeCompassRect`, `hitTestCompass`, `resolveDropTarget`), Zen Focus (`toggleMaximizeCell`), IDE presets (`vscode`, `dual-sidebar`, `tabbed-dashboard`), Clean App View (`frame.appMode`), and `LayoutOverlay` DOM rendering.
+- Browser: `tests/ide-ui.mjs` passes in headless Chrome against live ComfyUI (`http://127.0.0.1:8188`) with zero runtime errors, verifying tab promotion and switching, inactive tab node hiding, 36px Activity Bar collapse and direct tab-icon expansion, Zen Focus panel maximize/restore, 1-click VS Code IDE preset, 26px bottom row collapse, and Clean App View (`test-results/ide-activity-bar.png`, `test-results/ide-zen-focus.png`, `test-results/ide-vscode-appview.png`).
+
 ## VF Grid Layout rename update (2026-10-08)
 
 - Renamed package, repository, and extension to **`VF-ComfyUI-Grid-Layout`** / **`VF Grid Layout`**:

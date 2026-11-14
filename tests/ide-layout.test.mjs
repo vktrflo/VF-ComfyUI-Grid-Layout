@@ -306,3 +306,146 @@ test('LayoutController.drop routes tab, split-top, split-bottom, and createPrese
   assert.equal(ideFrame.label, 'IDE Workspace');
   assert.equal(engine.leaves(ideFrame.root).length, 3);
 });
+
+test('LayoutOverlay renders tabs, Activity Bar, 5-way Docking Compass Rose, and hides inactive tab nodes', async () => {
+  const { LayoutOverlay } = await import('../web/core/overlay.js');
+  const prevDoc = globalThis.document;
+  const domNodes = new Map();
+  const makeEl = tag => {
+    const classes = new Set();
+    const attrs = new Map();
+    const node = {
+      tagName: tag.toUpperCase(),
+      className: '',
+      dataset: {},
+      style: {},
+      children: [],
+      classList: {
+        add(...names) { names.forEach(n => classes.add(n)); },
+        remove(...names) { names.forEach(n => classes.delete(n)); },
+        contains(n) { return classes.has(n) || node.className.split(/\s+/).includes(n); },
+        toggle(n, force) {
+          const on = force === undefined ? !classes.has(n) : Boolean(force);
+          if (on) classes.add(n); else classes.delete(n);
+          return on;
+        },
+      },
+      setAttribute(k, v) { attrs.set(k, String(v)); },
+      getAttribute(k) { return attrs.get(k) ?? null; },
+      addEventListener() {},
+      append(...items) {
+        for (const item of items) {
+          if (item?.tagName === 'FRAGMENT') node.children.push(...item.children);
+          else if (item) node.children.push(item);
+        }
+      },
+      replaceChildren(...items) {
+        node.children = [];
+        node.append(...items);
+      },
+    };
+    return node;
+  };
+  for (const id of [1, 2, 3]) {
+    const el = makeEl('div');
+    el.dataset.nodeId = String(id);
+    domNodes.set(id, el);
+  }
+  try {
+    globalThis.document = {
+      createElement(tag) { return makeEl(tag); },
+      createDocumentFragment() { return makeEl('fragment'); },
+      querySelectorAll(sel) {
+        if (sel === '.lg-node') return [...domNodes.values()];
+        return [];
+      },
+    };
+    const n1 = { id: 1, title: 'ExplorerNode', pos: [100, 150], size: [220, 120], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+    const n2 = { id: 2, title: 'SearchNode', pos: [100, 300], size: [220, 120], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+    const n3 = { id: 3, title: 'EditorNode', pos: [450, 150], size: [300, 200], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
+    const graph = {
+      extra: {},
+      _nodes: [n1, n2, n3],
+      getNodeById: id => [n1, n2, n3].find(n => String(n.id) === String(id)) ?? null,
+      setDirtyCanvas() {},
+    };
+    const app = { canvas: { graph, selected_nodes: {}, ds: { scale: 1, offset: [0, 0] }, setDirty() {} }, graph, configuringGraph: false };
+    const controller = new LayoutController(app, { defaultColumns: 2 });
+    const frame = controller.createFromNodes([1, 3], 'columns');
+    delete frame.autohide;
+    const [leftCell, rightCell] = engine.leaves(frame.root);
+    controller.drop([2], [150, 160], { kind: 'tab', frame, cell: leftCell });
+
+    const overlay = Object.create(LayoutOverlay.prototype);
+    const plane = makeEl('div');
+    Object.assign(overlay, {
+      controller,
+      app,
+      plane,
+      hidden: { ids: new Set(), frames: new Map(), appModeFrames: new Map() },
+      editing: null,
+      drag: null,
+      headerPreview: null,
+      hover: null,
+      dropPreview: null,
+      nativeNode: null,
+      nativeDrag: null,
+      isGhostActive: () => false,
+      safe: fn => fn(),
+    });
+
+    // 1. Refresh hidden: n1 is in inactive Tab 0, n2 is in active Tab 1, n3 is in rightCell
+    overlay.refreshHidden();
+    assert.equal(overlay.hiddenNodeIds.has('1'), true, 'inactive tab node 1 is marked hidden');
+    assert.equal(overlay.hiddenNodeIds.has('2'), false, 'active tab node 2 is visible');
+    assert.equal(overlay.hiddenNodeIds.has('3'), false, 'sibling cell node 3 is visible');
+
+    let layouts = controller.geometry();
+    overlay.render(layouts);
+    assert.equal(domNodes.get(1).classList.contains('clt-node-hidden'), true, 'DOM node 1 receives .clt-node-hidden');
+    assert.equal(domNodes.get(2).classList.contains('clt-node-hidden'), false, 'DOM node 2 is visible');
+
+    const renderedLeftCell = plane.children.find(c => c.dataset?.cellId === leftCell.id);
+    assert.ok(renderedLeftCell, 'left cell is rendered');
+    const tabBar = renderedLeftCell.children[0].children.find(c => c.classList.contains('clt-tab-bar'));
+    assert.ok(tabBar, 'tab bar is rendered inside left cell header');
+    assert.equal(tabBar.children.length, 2, 'two tab pills rendered');
+
+    // 2. Collapse leftCell into Activity Bar strip and re-render
+    engine.toggleCellCollapse(frame, leftCell.id);
+    overlay.refreshHidden();
+    assert.equal(overlay.hiddenNodeIds.has('2'), true, 'collapsing left cell hides active tab node 2 as well');
+    layouts = controller.geometry();
+    overlay.render(layouts);
+    const collapsedCellEl = plane.children.find(c => c.dataset?.cellId === leftCell.id);
+    assert.equal(collapsedCellEl.classList.contains('clt-cell-collapsed-x'), true, 'collapsed column cell has .clt-cell-collapsed-x');
+    const activityBar = collapsedCellEl.children.find(c => c.classList.contains('clt-activity-bar'));
+    assert.ok(activityBar, 'Activity Bar strip is rendered inside collapsed cell');
+    const activityIcons = activityBar.children.filter(c => c.classList.contains('clt-activity-icon'));
+    assert.equal(activityIcons.length, 2, 'Activity Bar renders pinned icons for both tabs');
+
+    // Click first activity icon -> expands sidebar and switches to Tab 0!
+    activityIcons[0].onclick({ stopPropagation() {} });
+    assert.equal(leftCell.collapsed, undefined, 'clicking activity icon uncollapses sidebar');
+    assert.equal(leftCell.activeTab, 0, 'clicking first activity icon activates Tab 0');
+    assert.equal(overlay.hiddenNodeIds.has('1'), false, 'node 1 in Tab 0 is now visible');
+    assert.equal(overlay.hiddenNodeIds.has('2'), true, 'node 2 in Tab 1 is now hidden');
+
+    // 3. Render 5-way Docking Compass Rose during drag over rightCell
+    layouts = controller.geometry();
+    const rightRect = layouts[0].cells.find(c => c.cell.id === rightCell.id).rect;
+    const compassRect = engine.computeCompassRect(rightRect, engine.CELL_TITLE);
+    const cx = compassRect[0] + compassRect[2] / 2;
+    const cy = compassRect[1] + compassRect[3] / 2;
+    overlay.dropPreview = engine.resolveDropTarget(layouts, [cx - 50, cy - 30, 100, 60], { pointer: [cx, cy] });
+    overlay.render(layouts);
+    const compassEl = plane.children.find(c => c.classList.contains('clt-compass'));
+    assert.ok(compassEl, '5-way Docking Compass Rose HUD is rendered');
+    const centerZone = compassEl.children.find(c => c.dataset?.compassZone === 'center');
+    assert.equal(centerZone.classList.contains('active'), true, 'center compass zone is highlighted');
+    const ghostTab = plane.children.find(c => c.classList.contains('clt-drop-preview'));
+    assert.equal(ghostTab.classList.contains('clt-ghost-tab'), true, 'renders .clt-ghost-tab preview');
+  } finally {
+    globalThis.document = prevDoc;
+  }
+});

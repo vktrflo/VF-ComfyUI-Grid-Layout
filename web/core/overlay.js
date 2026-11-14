@@ -1,4 +1,42 @@
-import { findCell, splitCell, gridCell, resizeDivider, addBottomRow, shrinkFrame, deleteCell, deleteEmptyCells, resizeRightEdge, resizeLeftEdge, normalizeColor, normalizeFontSize, normalizeBorder, normalizeOpacity, normalizePattern, normalizeImage, normalizeImageMode, normalizeContainerMode, PATTERNS, MAX_IMAGE_BYTES, leaves, pickCell, resolveDropTarget, contains, KEY, LEGACY_KEY } from './layout.js';
+import {
+  findCell,
+  splitCell,
+  gridCell,
+  resizeDivider,
+  addBottomRow,
+  shrinkFrame,
+  deleteCell,
+  deleteEmptyCells,
+  resizeRightEdge,
+  resizeLeftEdge,
+  normalizeColor,
+  normalizeFontSize,
+  normalizeBorder,
+  normalizeOpacity,
+  normalizePattern,
+  normalizeImage,
+  normalizeImageMode,
+  normalizeContainerMode,
+  PATTERNS,
+  MAX_IMAGE_BYTES,
+  leaves,
+  pickCell,
+  resolveDropTarget,
+  contains,
+  KEY,
+  LEGACY_KEY,
+  COLLAPSED_CELL_WIDTH,
+  COLLAPSED_CELL_HEIGHT,
+  activeTabIndex,
+  addCellTab,
+  selectCellTab,
+  renameCellTab,
+  removeCellTab,
+  moveCellTab,
+  toggleCellCollapse,
+  toggleMaximizeCell,
+  applyIdePreset,
+} from './layout.js';
 
 import { LinkEffects } from './link-effects.js';
 
@@ -91,6 +129,33 @@ const STYLE = `
 .clt-appearance-dialog footer .clt-primary{background:#0066cc;border-color:#0088ff;color:#fff}
 .clt-appearance-dialog button:focus-visible,.clt-appearance-dialog input:focus-visible,.clt-appearance-dialog select:focus-visible{outline:2px solid #38bdf8;outline-offset:2px}
 .selection-toolbox button.clt-in-grid [class~="icon-[lucide--panels-top-left]"],.selection-toolbox button.clt-toolbox-autohide.clt-autohide-off [class~="icon-[lucide--eye]"]{color:#8b5cf6 !important}
+.clt-tab-bar{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;height:100%}
+.clt-tab-bar::-webkit-scrollbar{display:none}
+.clt-cell-tab{display:inline-flex;align-items:center;gap:4px;height:21px;padding:0 7px;border-radius:3px 3px 0 0;background:rgba(17,27,32,.65);color:#9fb0b7;border:1px solid transparent;border-bottom:none;font:inherit;font-size:11px;cursor:grab;user-select:none;flex-shrink:0;max-width:140px;transition:background .12s ease,color .12s ease}
+.clt-cell-tab:hover{background:rgba(52,83,97,.65);color:#f4f6f7}
+.clt-cell-tab.active{background:rgba(112,216,190,.16);color:#70d8be;border-color:#70d8be66;font-weight:600}
+.clt-cell-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:96px}
+.clt-cell-tab-close{font-size:11px;line-height:1;opacity:.65;padding:0 2px;border-radius:2px;cursor:pointer}
+.clt-cell-tab-close:hover{opacity:1;background:rgba(239,68,68,.28);color:#fca5a5}
+.clt-cell.clt-cell-collapsed-x{display:flex;flex-direction:column;align-items:center;background:var(--comfy-menu-bg,#1b2226);pointer-events:auto;overflow:hidden}
+.clt-activity-bar{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 2px;width:100%;height:100%;box-sizing:border-box;pointer-events:auto}
+.clt-activity-icon{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid transparent;background:rgba(255,255,255,.04);color:inherit;cursor:pointer;font-size:13px;padding:0}
+.clt-activity-icon:hover,.clt-activity-icon.active{background:rgba(112,216,190,.2);border-color:#70d8be;color:#70d8be}
+.clt-activity-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;letter-spacing:.05em;color:#9fb0b7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-top:4px;cursor:pointer}
+.clt-cell.clt-cell-collapsed-y{overflow:hidden;pointer-events:auto}
+.clt-compass{position:absolute;z-index:25;pointer-events:none;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3px;padding:4px;box-sizing:border-box;background:rgba(17,24,28,.82);border:1px solid #7197a5;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.5);backdrop-filter:blur(4px)}
+.clt-compass-zone{display:flex;align-items:center;justify-content:center;border-radius:5px;border:1px solid rgba(113,151,165,.45);background:rgba(32,40,44,.9);color:#9fb0b7;font-size:12px;font-weight:600;transition:all .1s ease}
+.clt-compass-zone.active{background:rgba(112,216,190,.32);border-color:#70d8be;color:#fff;transform:scale(1.08);box-shadow:0 0 8px rgba(112,216,190,.55)}
+.clt-compass-top{grid-column:2;grid-row:1}
+.clt-compass-left{grid-column:1;grid-row:2}
+.clt-compass-center{grid-column:2;grid-row:2}
+.clt-compass-right{grid-column:3;grid-row:2}
+.clt-compass-bottom{grid-column:2;grid-row:3}
+.clt-ghost-tab{border:2px solid #f59e0b;background:rgba(245,158,11,.15);box-shadow:inset 0 25px 0 rgba(245,158,11,.28),0 0 0 1px rgba(245,158,11,.35)}
+.clt-frame.clt-app-mode{border-radius:4px;border-width:1px;background:rgba(18,24,28,.92)}
+.clt-frame.clt-app-mode .clt-cell{border-radius:0;border-color:rgba(113,151,165,.35)}
+.clt-frame.clt-app-mode .clt-cell-header{border-radius:0}
+.clt-appmode[aria-pressed="true"],.clt-maximize-cell[aria-pressed="true"]{background:rgba(112,216,190,.24);border-color:#70d8be;color:#70d8be}
 `;
 
 const HEADER_TEXT_DARK = '#101418';
@@ -367,6 +432,19 @@ export const MENU_ICONS = {
   'Split into top / bottom': '↕️',
   'Create grid…': '🪟',
   'Rename cell…': '✏️',
+  'Add tab': '➕',
+  'Close active tab': '✖️',
+  'Maximize panel': '⤢',
+  'Restore panel': '⤡',
+  'Collapse panel': '◀️',
+  'Expand panel': '▶️',
+  'Fold nodes in panel': '🪗',
+  'Unfold nodes in panel': '🪗',
+  'Enable App View': '🖥',
+  'Disable App View': '🖥',
+  'Preset: VS Code IDE': '🧩',
+  'Preset: Dual Sidebar Studio': '🧩',
+  'Preset: Tabbed Dashboard': '🧩',
 };
 export const VF_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="VKTRFLO"><defs><linearGradient id="ring" x1="9" y1="8" x2="119" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#52d1a5"/><stop offset="0.34" stop-color="#78d7bd"/><stop offset="0.64" stop-color="#8b5cf6"/><stop offset="1" stop-color="#c084fc"/></linearGradient><filter id="shadow" x="-8" y="-8" width="144" height="144" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.32"/><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000000" flood-opacity="0.5"/></filter></defs><rect x="9" y="9" width="110" height="110" rx="29" fill="none" stroke="url(#ring)" stroke-width="15" filter="url(#shadow)"/></svg>')}`;
 
@@ -583,6 +661,11 @@ export class LayoutOverlay {
       if (canvas.renderLink) {
         this.origRenderLink = canvas.renderLink;
         canvas.renderLink = (ctx, startPos, endPos, link, ...rest) => {
+          if (link && this.hidden?.appModeFrames) {
+            const originFrame = this.hidden.appModeFrames.get(String(link.origin_id));
+            const targetFrame = this.hidden.appModeFrames.get(String(link.target_id));
+            if (originFrame && originFrame === targetFrame) return;
+          }
           const extras = rest[5];
           const endpoints = routeMinimizedEndpoints(this.hidden, this.controller.graph, link, startPos, endPos, extras);
           if (!endpoints) return;
@@ -1195,6 +1278,11 @@ export class LayoutOverlay {
       ? [this.isCellBypassed(currentCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frameId, cellId)]
       : null;
     const actions = [
+      ['Add tab', () => edit((frame, cell) => addCellTab(frame, cellId, `Tab ${(cell.tabs?.length ?? 0) + 1}`))],
+      ...(currentCell?.tabs?.length > 0 ? [['Close active tab', () => edit((frame, cell) => removeCellTab(frame, cellId, activeTabIndex(cell)))]] : []),
+      [currentFrame?.maximizedCellId === cellId ? 'Restore panel' : 'Maximize panel', () => edit(frame => toggleMaximizeCell(frame, cellId))],
+      [currentCell?.collapsed === true ? 'Expand panel' : 'Collapse panel', () => edit(frame => toggleCellCollapse(frame, cellId))],
+      ...(this.cellHasNodes(currentCell) ? [[this.areCellNodesFolded(currentCell) ? 'Unfold nodes in panel' : 'Fold nodes in panel', () => this.toggleCellAccordion(frameId, cellId)]] : []),
       ['Delete cell (keep nodes)', () => edit(frame => deleteCell(frame, cellId))],
       ['Delete Empty Cells', () => edit(frame => deleteEmptyCells(frame))],
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x', this.controller.metrics()))],
@@ -1289,6 +1377,122 @@ export class LayoutOverlay {
   frameMenu(event, frame, options) {
     const actions = this.frameActions(frame, options);
     if (actions.length) this.showMenu(event, actions);
+  }
+  presetMenu(event, frame) {
+    frame = this.controller.frames.find(f => f.id === frame?.id);
+    if (!frame) return;
+    const actions = [
+      [frame.appMode === true ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id)],
+      ['Preset: VS Code IDE', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'vscode', this.controller.metrics()))],
+      ['Preset: Dual Sidebar Studio', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'dual-sidebar', this.controller.metrics()))],
+      ['Preset: Tabbed Dashboard', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'tabbed-dashboard', this.controller.metrics()))],
+    ];
+    this.showMenu(event, actions);
+  }
+  toggleAppMode(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      if (!frame) return;
+      if (frame.appMode === true) delete frame.appMode; else frame.appMode = true;
+    }));
+    this.refreshHidden();
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
+  }
+  areCellNodesFolded(cell) {
+    const graph = this.controller.graph;
+    if (!cell || cell.children) return false;
+    const activeIds = cell.tabs?.length > 0
+      ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
+      : cell.nodes;
+    const nodes = activeIds.map(id => graph?.getNodeById(id)).filter(Boolean);
+    return nodes.length > 0 && nodes.every(node => node.flags?.collapsed === true);
+  }
+  toggleCellAccordion(frameId, cellId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      const cell = frame && findCell(frame.root, cellId);
+      if (!cell || cell.children) return;
+      const graph = this.controller.graph;
+      const activeIds = cell.tabs?.length > 0
+        ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
+        : cell.nodes;
+      const nodes = activeIds.map(id => graph?.getNodeById(id)).filter(Boolean);
+      if (!nodes.length) return;
+      const allFolded = nodes.every(node => node.flags?.collapsed === true);
+      for (const node of nodes) {
+        if (allFolded) this.controller.adapter.unfold(node);
+        else this.controller.adapter.fold(node);
+      }
+    }));
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
+  }
+  tabTitle(label, frameId, cellId, tabIndex) {
+    const span = element('span', 'clt-cell-tab-label', label);
+    span.title = 'Double-click to rename tab';
+    span.ondblclick = event => {
+      event.preventDefault(); event.stopPropagation();
+      this.closeMenu();
+      const graph = this.controller.graph;
+      const input = element('input', 'clt-title-input');
+      input.type = 'text'; input.value = label; input.maxLength = 120;
+      input.setAttribute('aria-label', 'Tab title');
+      let finished = false;
+      const finish = save => {
+        if (finished) return;
+        finished = true; this.editing = null; this.signature = null;
+        const value = input.value.trim();
+        if (save && value && value !== label && graph === this.controller.graph) {
+          this.safe(() => this.controller.edit(() => {
+            const frame = this.controller.frames.find(f => f.id === frameId);
+            if (frame) renameCellTab(frame, cellId, tabIndex, value);
+          }));
+        }
+      };
+      this.editing = { graph, frameId, cellId, cancel: () => finish(false) };
+      input.onpointerdown = e => e.stopPropagation();
+      input.ondblclick = e => e.stopPropagation();
+      input.onkeydown = e => {
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); finish(true); }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      };
+      input.onblur = () => finish(true);
+      span.replaceWith(input); input.focus(); input.select();
+    };
+    return span;
+  }
+  startTabDrag(event, frame, cell, tabIndex) {
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('.clt-cell-tab-close,input')) return;
+    event.stopPropagation();
+    this.closeMenu();
+    this.safe(() => {
+      const targetFrame = this.controller.frames.find(f => f.id === frame.id);
+      if (!targetFrame || targetFrame.lock === true) return;
+      const targetCell = findCell(targetFrame.root, cell.id);
+      if (!targetCell) return;
+      if (activeTabIndex(targetCell) !== tabIndex) {
+        this.controller.edit(() => {
+          const f = this.controller.frames.find(item => item.id === frame.id);
+          if (f) selectCellTab(f, cell.id, tabIndex);
+        });
+        this.refreshHidden();
+        this.signature = null;
+      }
+      this.controller.begin();
+      this.drag = {
+        kind: 'tab-drag',
+        frame: targetFrame,
+        cell: targetCell,
+        tabIndex,
+        moved: false,
+        start: this.controller.adapter.point(event),
+        graph: this.controller.graph,
+        pointerId: event.pointerId,
+      };
+    });
   }
   // Both toggles edit through the controller so the change lands in the
   // workflow's undo history like every other frame edit.
@@ -1424,14 +1628,40 @@ export class LayoutOverlay {
     this.app.canvas?.setDirty(true, true);
   }
   // Node draws and link draws consult this per item, so it is rebuilt once
-  // per animation frame (and right after minimize toggles), not per lookup.
+  // per animation frame (and right after minimize/tab/collapse toggles), not per lookup.
   refreshHidden() {
-    const ids = new Set(), frames = new Map();
+    const ids = new Set(), frames = new Map(), appModeFrames = new Map();
     for (const frame of this.controller.frames ?? []) {
-      if (frame.minimized !== true) continue;
-      for (const cell of leaves(frame.root)) for (const n of cell.nodes) { ids.add(String(n)); frames.set(String(n), frame); }
+      const isAppMode = frame.appMode === true;
+      const maxCellId = frame.maximizedCellId ? String(frame.maximizedCellId) : null;
+      const hasMaxCell = maxCellId ? Boolean(findCell(frame.root, maxCellId)) : false;
+      for (const cell of leaves(frame.root)) {
+        for (const n of cell.nodes) {
+          if (isAppMode) appModeFrames.set(String(n), frame);
+          if (frame.minimized === true) {
+            ids.add(String(n));
+            frames.set(String(n), frame);
+          }
+        }
+        if (frame.minimized === true) continue;
+        if (hasMaxCell && cell.id !== maxCellId) {
+          for (const n of cell.nodes) ids.add(String(n));
+          continue;
+        }
+        if (cell.collapsed === true) {
+          for (const n of cell.nodes) ids.add(String(n));
+          continue;
+        }
+        if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+          const activeIdx = activeTabIndex(cell);
+          const activeSet = new Set((cell.tabs[activeIdx]?.nodes ?? []).map(String));
+          for (const n of cell.nodes) {
+            if (!activeSet.has(String(n))) ids.add(String(n));
+          }
+        }
+      }
     }
-    this.hidden = { ids, frames };
+    this.hidden = { ids, frames, appModeFrames };
     return this.hidden;
   }
   get hiddenNodeIds() { return this.hidden.ids; }
@@ -1573,6 +1803,19 @@ export class LayoutOverlay {
       event.preventDefault(); event.stopPropagation();
       if (this.drag.graph !== this.controller.graph) return this.up(null, true);
       const point = this.controller.adapter.point(event), dx = point[0] - this.drag.start[0], dy = point[1] - this.drag.start[1];
+      if (this.drag.kind === 'tab-drag') {
+        if (!this.drag.moved && Math.hypot(dx, dy) < 5) return;
+        this.drag.moved = true;
+        this.drag.pointer = point;
+        const layouts = this.controller.geometry();
+        const preview = resolveDropTarget(layouts, [point[0] - 80, point[1] - 20, 160, 60], {
+          pointer: point,
+          enableCompass: true,
+        });
+        this.dropPreview = preview;
+        this.hover = preview?.cell?.id ?? null;
+        return;
+      }
       this.safe(() => {
         try {
           this.controller.edit(() => {
@@ -1612,7 +1855,19 @@ export class LayoutOverlay {
   }
   up(event, cancelled = false) {
     if (this.drag && (!event || event.pointerId === this.drag.pointerId)) {
-      this.drag = null; this.controller.end(); this.signature = null;
+      const activeDrag = this.drag;
+      const preview = this.dropPreview;
+      this.drag = null;
+      this.dropPreview = null;
+      this.hover = null;
+      if (!cancelled && activeDrag.kind === 'tab-drag' && activeDrag.moved && preview && activeDrag.graph === this.controller.graph) {
+        this.safe(() => this.controller.edit(() => {
+          moveCellTab(this.controller.frames, activeDrag.frame.id, activeDrag.cell.id, activeDrag.tabIndex, preview, this.controller.metrics());
+        }));
+      }
+      this.controller.end();
+      this.refreshHidden();
+      this.signature = null;
     }
     if (this.nativeDrag && (!event || event.pointerId === this.nativeDrag.pointerId)) {
       const pending = this.nativeDrag;
@@ -1621,9 +1876,9 @@ export class LayoutOverlay {
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
-          if (!cancelled && pending.graph === this.controller.graph) this.controller.finishNativeDrag(pending.before);
+          if (!cancelled && pending.graph === this.controller.graph) this.controller.finishNativeDrag(pending.before, pending.pointer ?? null);
         });
-        this.nativeDrag = null; this.controller.end(); this.signature = null;
+        this.nativeDrag = null; this.controller.end(); this.refreshHidden(); this.signature = null;
       });
     }
   }
@@ -1643,11 +1898,19 @@ export class LayoutOverlay {
           const preview = this.computeDropPreview(layouts, dragged);
           this.dropPreview = preview;
           this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
+        } else if (this.drag?.kind === 'tab-drag' && this.drag.moved && this.drag.pointer) {
+          const point = this.drag.pointer;
+          const preview = resolveDropTarget(layouts, [point[0] - 80, point[1] - 20, 160, 60], {
+            pointer: point,
+            enableCompass: true,
+          });
+          this.dropPreview = preview;
+          this.hover = preview?.cell?.id ?? null;
         } else if (!this.nativeDrag) {
           this.dropPreview = null;
         }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
-        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.previewRect] : null;
+        const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.compassZone, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.previewRect] : null;
         const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, previewSig, autohidden, this.bypassedNodeIds()]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
@@ -1689,7 +1952,8 @@ export class LayoutOverlay {
     for (const layout of layouts) {
       const { frame } = layout;
       if (this.isFrameAutohidden(frame, selectedIds, dragged)) continue;
-      const el = element('section', 'clt-frame'); el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
+      const el = element('section', `clt-frame${frame.appMode === true ? ' clt-app-mode' : ''}`);
+      el.dataset.frameId = frame.id; el.setAttribute('aria-label', frame.label);
       rectStyle(el, [...frame.pos, ...frame.size]);
       applyBorder(el, frame.border);
       const header = element('div', 'clt-frame-header');
@@ -1704,14 +1968,34 @@ export class LayoutOverlay {
       header.append(badge);
       header.append(this.title(frame.label, frame.id));
       if (frame.lock === true) header.style.cursor = 'default';
+
+      const minimized = frame.minimized === true;
+      const collapsed = frame.collapsed === true;
+
+      const presetBtn = button('IDE presets', e => this.presetMenu(e, frame), '🧩');
+      presetBtn.classList.add('clt-preset-btn');
+      if (minimized || collapsed) {
+        presetBtn.hidden = true;
+        presetBtn.style.display = 'none';
+      }
+      header.append(presetBtn);
+
+      const appMode = frame.appMode === true;
+      const appModeBtn = button(appMode ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id), '🖥');
+      appModeBtn.classList.add('clt-appmode');
+      appModeBtn.setAttribute('aria-pressed', String(appMode));
+      if (minimized || collapsed) {
+        appModeBtn.hidden = true;
+        appModeBtn.style.display = 'none';
+      }
+      header.append(appModeBtn);
+
       const locked = frame.lock === true;
       const lock = button(locked ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id), locked ? '🔒' : '🔓');
       lock.classList.add('clt-lock');
       lock.setAttribute('aria-pressed', String(locked));
       header.append(lock);
 
-      const minimized = frame.minimized === true;
-      const collapsed = frame.collapsed === true;
       const empty = !this.frameHasNodes(frame);
       const autohide = frame.autohide === true && !empty;
       const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
@@ -1808,10 +2092,72 @@ export class LayoutOverlay {
       leftEdge.onpointerdown = event => this.startDrag(event, 'resize-left', {frame});
       el.append(leftEdge);
       fragment.append(el);
-      for (const { cell, rect } of layout.cells) {
-        const cellEl = element('div', `clt-cell${this.hover === cell.id ? ' clt-target' : ''}`);
+      for (const { cell, rect, parentAxis } of layout.cells) {
+        const isCollapsedX = cell.collapsed === true && parentAxis !== 'y';
+        const isCollapsedY = cell.collapsed === true && parentAxis === 'y';
+        const cellEl = element(
+          'div',
+          `clt-cell${this.hover === cell.id ? ' clt-target' : ''}${isCollapsedX ? ' clt-cell-collapsed-x' : ''}${isCollapsedY ? ' clt-cell-collapsed-y' : ''}`
+        );
         cellEl.dataset.cellId = cell.id; rectStyle(cellEl, rect);
         applyBorder(cellEl, cell.border);
+
+        if (isCollapsedX) {
+          const activityBar = element('div', 'clt-activity-bar');
+          activityBar.addEventListener('pointerdown', e => e.stopPropagation());
+          const expandBtn = button('Expand panel', () => {
+            this.safe(() => this.controller.edit(() => {
+              const f = this.controller.frames.find(item => item.id === frame.id);
+              if (f) toggleCellCollapse(f, cell.id);
+            }));
+            this.refreshHidden();
+            this.signature = null;
+          }, '▶');
+          expandBtn.classList.add('clt-expand-cell');
+          activityBar.append(expandBtn);
+
+          if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+            const activeIdx = activeTabIndex(cell);
+            cell.tabs.forEach((tab, idx) => {
+              const iconChar = tab.icon || [...(tab.label || 'T')][0] || '•';
+              const tabBtn = element('button', `clt-activity-icon${idx === activeIdx ? ' active' : ''}`, iconChar);
+              tabBtn.type = 'button';
+              tabBtn.title = `Open ${tab.label}`;
+              tabBtn.setAttribute('aria-label', `Open ${tab.label}`);
+              tabBtn.dataset.tabIndex = String(idx);
+              tabBtn.onclick = e => {
+                e.stopPropagation();
+                this.safe(() => this.controller.edit(() => {
+                  const f = this.controller.frames.find(item => item.id === frame.id);
+                  if (f) {
+                    selectCellTab(f, cell.id, idx);
+                    toggleCellCollapse(f, cell.id);
+                  }
+                }));
+                this.refreshHidden();
+                this.signature = null;
+              };
+              activityBar.append(tabBtn);
+            });
+          }
+
+          const vertLabel = element('span', 'clt-activity-label', cell.label || 'Panel');
+          vertLabel.title = 'Click to expand panel';
+          vertLabel.onclick = e => {
+            e.stopPropagation();
+            this.safe(() => this.controller.edit(() => {
+              const f = this.controller.frames.find(item => item.id === frame.id);
+              if (f) toggleCellCollapse(f, cell.id);
+            }));
+            this.refreshHidden();
+            this.signature = null;
+          };
+          activityBar.append(vertLabel);
+          cellEl.append(activityBar);
+          fragment.append(cellEl);
+          continue;
+        }
+
         const cellHeader = element('div', `clt-cell-header${autohide ? ' clt-cell-header-floating' : ''}`);
         cellHeader.addEventListener('pointerdown', e => e.stopPropagation());
         applyHeaderStyle(cellHeader, {
@@ -1820,7 +2166,95 @@ export class LayoutOverlay {
           fontSize: normalizeFontSize(cell.fontSize) ?? normalizeFontSize(frame.fontSize),
           headerOpacity: normalizeOpacity(cell.headerOpacity) ?? normalizeOpacity(frame.headerOpacity),
         });
-        cellHeader.append(this.title(cell.label, frame.id, cell.id));
+
+        if (isCollapsedY) {
+          const expandBtn = button('Expand panel', () => {
+            this.safe(() => this.controller.edit(() => {
+              const f = this.controller.frames.find(item => item.id === frame.id);
+              if (f) toggleCellCollapse(f, cell.id);
+            }));
+            this.refreshHidden();
+            this.signature = null;
+          }, '▼');
+          expandBtn.classList.add('clt-expand-cell');
+          cellHeader.append(expandBtn);
+          cellHeader.append(this.title(cell.label, frame.id, cell.id));
+          cellEl.append(cellHeader);
+          fragment.append(cellEl);
+          continue;
+        }
+
+        if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+          const tabBar = element('div', 'clt-tab-bar');
+          const activeIdx = activeTabIndex(cell);
+          cell.tabs.forEach((tab, idx) => {
+            const tabEl = element('div', `clt-cell-tab${idx === activeIdx ? ' active' : ''}`);
+            tabEl.dataset.tabId = tab.id;
+            tabEl.dataset.tabIndex = String(idx);
+            tabEl.setAttribute('role', 'tab');
+            tabEl.setAttribute('aria-selected', String(idx === activeIdx));
+            if (tab.icon) {
+              const iconSpan = element('span', 'clt-cell-tab-icon', tab.icon);
+              tabEl.append(iconSpan);
+            }
+            tabEl.append(this.tabTitle(tab.label, frame.id, cell.id, idx));
+            const closeTab = element('span', 'clt-cell-tab-close', '×');
+            closeTab.title = `Close ${tab.label}`;
+            closeTab.setAttribute('aria-label', `Close ${tab.label}`);
+            closeTab.onclick = e => {
+              e.stopPropagation();
+              this.safe(() => this.controller.edit(() => {
+                const f = this.controller.frames.find(item => item.id === frame.id);
+                if (f) removeCellTab(f, cell.id, idx);
+              }));
+              this.refreshHidden();
+              this.signature = null;
+            };
+            tabEl.append(closeTab);
+            tabEl.onpointerdown = e => this.startTabDrag(e, frame, cell, idx);
+            tabBar.append(tabEl);
+          });
+          cellHeader.append(tabBar);
+        } else {
+          cellHeader.append(this.title(cell.label, frame.id, cell.id));
+        }
+
+        const addTabBtn = button('Add tab', () => {
+          this.safe(() => this.controller.edit(() => {
+            const f = this.controller.frames.find(item => item.id === frame.id);
+            const c = f && findCell(f.root, cell.id);
+            if (f && c) addCellTab(f, cell.id, `Tab ${(c.tabs?.length ?? 0) + 1}`);
+          }));
+          this.refreshHidden();
+          this.signature = null;
+        }, '+');
+        addTabBtn.classList.add('clt-add-tab');
+        cellHeader.append(addTabBtn);
+
+        const isMaximized = frame.maximizedCellId === cell.id;
+        const maxBtn = button(isMaximized ? 'Restore panel' : 'Maximize panel', () => {
+          this.safe(() => this.controller.edit(() => {
+            const f = this.controller.frames.find(item => item.id === frame.id);
+            if (f) toggleMaximizeCell(f, cell.id);
+          }));
+          this.refreshHidden();
+          this.signature = null;
+        }, isMaximized ? '⤡' : '⤢');
+        maxBtn.classList.add('clt-maximize-cell');
+        maxBtn.setAttribute('aria-pressed', String(isMaximized));
+        cellHeader.append(maxBtn);
+
+        const collapsePanelBtn = button('Collapse panel', () => {
+          this.safe(() => this.controller.edit(() => {
+            const f = this.controller.frames.find(item => item.id === frame.id);
+            if (f) toggleCellCollapse(f, cell.id);
+          }));
+          this.refreshHidden();
+          this.signature = null;
+        }, parentAxis === 'y' ? '▲' : '◀');
+        collapsePanelBtn.classList.add('clt-collapse-cell');
+        cellHeader.append(collapsePanelBtn);
+
         const cellEmpty = !this.cellHasNodes(cell);
         const cellBypassed = this.isCellBypassed(cell);
         const cellBypassBtn = button(cellBypassed ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, cell.id), '↱');
@@ -1835,10 +2269,14 @@ export class LayoutOverlay {
         cellOptionsBtn.classList.add('clt-cell-options');
         cellHeader.append(cellOptionsBtn);
         cellEl.append(cellHeader);
-        if (!cell.nodes.length) cellEl.append(element('div', 'clt-hint', 'Drop nodes here'));
+
+        const activeNodeList = Array.isArray(cell.tabs) && cell.tabs.length > 0
+          ? (cell.tabs[activeTabIndex(cell)]?.nodes ?? [])
+          : cell.nodes;
+        if (!activeNodeList.length) cellEl.append(element('div', 'clt-hint', 'Drop nodes here'));
         fragment.append(cellEl);
       }
-      for (const divider of layout.dividers.filter(divider => divider.cell.axis === 'x')) {
+      for (const divider of layout.dividers) {
         const el = element('div', `clt-divider clt-divider-${divider.cell.axis}`); rectStyle(el, divider.rect);
         el.title = 'Drag to resize cells'; el.setAttribute('aria-label', 'Resize cell divider');
         el.onpointerdown = e => this.startDrag(e, 'divider', { frame, cell: divider.cell, index: divider.index, weights: [...divider.cell.ratios], available: divider.available });
@@ -1846,14 +2284,37 @@ export class LayoutOverlay {
       }
     }
     if (this.dropPreview?.previewRect) {
-      const ghost = element(
-        'div',
-        `clt-drop-preview ${this.dropPreview.ghostType === 'cell' ? 'clt-ghost-cell' : 'clt-ghost-node'}`
-      );
+      const ghostClass = this.dropPreview.ghostType === 'tab'
+        ? 'clt-ghost-tab'
+        : (this.dropPreview.ghostType === 'cell' ? 'clt-ghost-cell' : 'clt-ghost-node');
+      const ghost = element('div', `clt-drop-preview ${ghostClass}`);
       ghost.dataset.dropKind = this.dropPreview.kind;
       ghost.dataset.ghostType = this.dropPreview.ghostType;
       rectStyle(ghost, this.dropPreview.previewRect);
       fragment.append(ghost);
+    }
+    if (this.dropPreview?.compassRect) {
+      const compass = element('div', 'clt-compass');
+      compass.setAttribute('aria-label', 'Docking compass');
+      rectStyle(compass, this.dropPreview.compassRect);
+      const zones = [
+        ['top', '▲', 'Split top'],
+        ['left', '◀', 'Split left'],
+        ['center', '⊞', 'Dock as tab'],
+        ['right', '▶', 'Split right'],
+        ['bottom', '▼', 'Split bottom'],
+      ];
+      for (const [zone, symbol, titleText] of zones) {
+        const seg = element(
+          'div',
+          `clt-compass-zone clt-compass-${zone}${this.dropPreview.compassZone === zone ? ' active' : ''}`,
+          symbol
+        );
+        seg.dataset.compassZone = zone;
+        seg.title = titleText;
+        compass.append(seg);
+      }
+      fragment.append(compass);
     }
     this.plane.replaceChildren(fragment);
     this.app.canvas?.setDirty(true, true);
