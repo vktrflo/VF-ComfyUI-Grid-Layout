@@ -825,5 +825,89 @@ test('Classic mode DOM widgets (.dom-widget) and computeVisibleNodes hide inacti
   }
 });
 
+test('Locked frame allows switching tabs via startTabDrag without starting a tab drag', async () => {
+  const { LayoutOverlay } = await import('../web/core/overlay.js');
+  const prevDoc = globalThis.document;
+  const prevWin = globalThis.window;
+  const prevRAF = globalThis.requestAnimationFrame;
+  const prevCAF = globalThis.cancelAnimationFrame;
+  try {
+    globalThis.window = {
+      addEventListener() {},
+      removeEventListener() {},
+    };
+    globalThis.requestAnimationFrame = () => 1;
+    globalThis.cancelAnimationFrame = () => {};
+    globalThis.document = {
+      head: { append() {} },
+      addEventListener() {},
+      createElement() {
+        return {
+          style: {},
+          classList: { add() {}, remove() {}, toggle() {} },
+          append() {},
+          addEventListener() {},
+          remove() {},
+        };
+      },
+      querySelectorAll() { return []; },
+    };
+    globalThis.getComputedStyle = () => ({ position: 'relative' });
+
+    const frame = engine.createFrame([100, 100]);
+    frame.lock = true;
+    delete frame.autohide;
+    frame.root.tabs = [
+      { id: 't0', label: 'Tab 1', nodes: [1] },
+      { id: 't1', label: 'Tab 2', nodes: [2] },
+    ];
+    frame.root.activeTab = 0;
+    engine.syncCellTabs(frame.root);
+
+    const n1 = { id: 1, pos: [120, 160], size: [200, 100] };
+    const n2 = { id: 2, pos: [120, 160], size: [200, 100] };
+    const graph = {
+      extra: { [engine.KEY]: { version: engine.VERSION, frames: [frame] } },
+      _nodes: [n1, n2],
+      getNodeById(id) { return [n1, n2].find(n => String(n.id) === String(id)) ?? null; },
+    };
+    const canvas = {
+      canvas: { parentElement: { style: {}, append() {} } },
+      graph,
+      ds: { scale: 1, offset: [0, 0] },
+      setDirty() {},
+    };
+    const app = { canvas, graph, configuringGraph: false };
+    const controller = new LayoutController(app, { defaultColumns: 1 });
+    const overlay = new LayoutOverlay(controller);
+
+    const event = {
+      button: 0,
+      pointerId: 1,
+      clientX: 180,
+      clientY: 145,
+      target: { closest() { return null; } },
+      preventDefault() {},
+      stopPropagation() {},
+    };
+
+    overlay.startTabDrag(event, frame, frame.root, 1);
+
+    const updatedFrame = controller.frames.find(f => f.id === frame.id);
+    assert.equal(updatedFrame.root.activeTab, 1, 'clicking an inactive tab on a locked frame switches the active tab');
+    assert.equal(overlay.drag, null, 'locked frame does not initiate a tab reorder/dock drag');
+    assert.equal(overlay.hidden.ids.has('1'), true, 'node in newly inactive tab is hidden');
+    assert.equal(overlay.hidden.ids.has('2'), false, 'node in newly active tab is visible');
+
+    overlay.dispose();
+  } finally {
+    globalThis.document = prevDoc;
+    globalThis.window = prevWin;
+    globalThis.requestAnimationFrame = prevRAF;
+    globalThis.cancelAnimationFrame = prevCAF;
+  }
+});
+
+
 
 

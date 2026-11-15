@@ -1557,7 +1557,7 @@ export class LayoutOverlay {
     this.closeMenu();
     this.safe(() => {
       let targetFrame = this.controller.frames.find(f => f.id === frame.id);
-      if (!targetFrame || targetFrame.lock === true) return;
+      if (!targetFrame) return;
       let targetCell = findCell(targetFrame.root, cell.id);
       if (!targetCell) return;
       if (activeTabIndex(targetCell) !== tabIndex) {
@@ -1571,6 +1571,7 @@ export class LayoutOverlay {
         targetCell = targetFrame && findCell(targetFrame.root, cell.id);
         if (!targetFrame || !targetCell) return;
       }
+      if (targetFrame.lock === true) return;
       this.controller.begin();
       this.drag = {
         kind: 'tab-drag',
