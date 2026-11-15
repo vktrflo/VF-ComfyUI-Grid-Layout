@@ -317,15 +317,18 @@ export class LayoutController {
       }
       if (resolved?.kind === 'bottom-row') {
         const frame = this.frames.find(f => f.id === resolved.frame.id);
-        if (!frame) return;
+        if (!frame || frame.lock === true) return;
+        const lockedIds = this.lockedNodeIds();
+        const unlockedIds = nodeIds.filter(id => !lockedIds.has(String(id)));
+        if (!unlockedIds.length) return;
         // Dragging the only node of the bottom row below the grid again must
         // not leave that row empty behind a second new row. Reuse the row.
-        const moving = new Set(nodeIds.map(String));
+        const moving = new Set(unlockedIds.map(String));
         const last = frame.root.axis === 'y' ? frame.root.children.at(-1) : null;
         const reusable = last && !last.children && last.nodes.every(id => moving.has(String(id)));
         if (!reusable) addBottomRow(frame);
         const bottomCell = frame.root.children?.at(-1);
-        if (bottomCell) dropNodes(this.frames, frame.id, bottomCell.id, nodeIds, 0, metrics);
+        if (bottomCell) dropNodes(this.frames, frame.id, bottomCell.id, unlockedIds, 0, metrics);
         return;
       }
       const moving = new Set(nodeIds.map(String));
@@ -342,15 +345,32 @@ export class LayoutController {
       dropNodes(this.frames, resolved?.frame.id ?? null, resolved?.cell?.id ?? null, nodeIds, index === -1 ? others.length : index, metrics);
     });
   }
+  lockedNodeIds() {
+    const ids = new Set();
+    for (const frame of this.frames) {
+      if (frame?.lock !== true) continue;
+      for (const cell of leaves(frame.root)) {
+        for (const id of cell.nodes ?? []) ids.add(String(id));
+        for (const tab of cell.tabs ?? []) {
+          for (const id of tab.nodes ?? []) ids.add(String(id));
+        }
+      }
+    }
+    return ids;
+  }
   snapshot() {
     return new Map((this.graph?._nodes ?? this.graph?.nodes ?? []).map(n => [n.id, { pos: [...n.pos], size: [...n.size], mode: n.mode }]));
   }
   finishNativeDrag(before, pointer = null, options = {}) {
-    const moved = [], resized = [];
+    const lockedIds = this.lockedNodeIds();
+    const moved = [], resized = [], lockedMoved = [];
     for (const [id, previous] of before) {
       const node = this.graph.getNodeById(id);
       if (!node) continue;
-      if (Math.abs(node.pos[0] - previous.pos[0]) > 1 || Math.abs(node.pos[1] - previous.pos[1]) > 1) moved.push(node);
+      if (Math.abs(node.pos[0] - previous.pos[0]) > 1 || Math.abs(node.pos[1] - previous.pos[1]) > 1) {
+        if (lockedIds.has(String(node.id))) lockedMoved.push(node);
+        else moved.push(node);
+      }
       else if (Math.abs(node.size[0] - previous.size[0]) > 1 || Math.abs(node.size[1] - previous.size[1]) > 1) resized.push(node);
     }
     if (moved.length) {
@@ -378,6 +398,6 @@ export class LayoutController {
           this.drop(nodes.map(n => n.id), point, target);
         }
       });
-    } else if (resized.length) this.edit(() => {});
+    } else if (resized.length || lockedMoved.length) this.edit(() => {});
   }
 }

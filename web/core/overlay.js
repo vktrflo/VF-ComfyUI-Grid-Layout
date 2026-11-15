@@ -1557,7 +1557,7 @@ export class LayoutOverlay {
     this.closeMenu();
     this.safe(() => {
       let targetFrame = this.controller.frames.find(f => f.id === frame.id);
-      if (!targetFrame || targetFrame.lock === true) return;
+      if (!targetFrame) return;
       let targetCell = findCell(targetFrame.root, cell.id);
       if (!targetCell) return;
       if (activeTabIndex(targetCell) !== tabIndex) {
@@ -1571,6 +1571,7 @@ export class LayoutOverlay {
         targetCell = targetFrame && findCell(targetFrame.root, cell.id);
         if (!targetFrame || !targetCell) return;
       }
+      if (targetFrame.lock === true) return;
       this.controller.begin();
       this.drag = {
         kind: 'tab-drag',
@@ -1705,9 +1706,11 @@ export class LayoutOverlay {
       return ghost?.pos && ghost?.size ? [ghost] : [];
     }
     if (!this.nativeDrag) return [];
+    const lockedIds = this.controller.lockedNodeIds?.() ?? new Set();
     const moved = [];
     if (this.nativeDrag.before) {
       for (const [id, previous] of this.nativeDrag.before) {
+        if (lockedIds.has(String(id))) continue;
         const node = this.controller.graph?.getNodeById(id);
         if (!node?.pos || !node?.size) continue;
         if (Math.abs(node.pos[0] - previous.pos[0]) > 1 || Math.abs(node.pos[1] - previous.pos[1]) > 1) {
