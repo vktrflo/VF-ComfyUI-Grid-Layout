@@ -41,6 +41,35 @@ import {
 } from './layout.js';
 
 import { LinkEffects } from './link-effects.js';
+import {
+  BOTTOM_TAB_BAR_HEIGHT,
+  GROUP_TAB_HEADER_HEIGHT,
+  isPreviewWidget,
+  selectNodeBottomTab,
+  renameNodeBottomTab,
+  removeSingleNodeBottomTab,
+  reorderNodeBottomTab,
+  mergeNodeBottomTabs,
+  setNodeTabsSizing,
+  selectStackTab,
+  renameStackTab,
+  reorderStackTab,
+  toggleGroupTabLayoutMode,
+  setStackSizing,
+  addNodesOrGroupToStack,
+  detachStackTab,
+  getGraphGroups,
+  getGroupBounds,
+  stackNodeIds,
+} from './bottom-tabs.js';
+import {
+  BOTTOM_TABS_STYLE,
+  updateWirePeekState,
+  effectiveNodeTabIndex,
+  drawClassicNodeWithBottomTabs,
+  syncVueNodeSectionTabs,
+  openConfigureBottomTabsDialog,
+} from './bottom-tabs-ui.js';
 
 const STYLE = `
 .clt-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:20;font-family:var(--font-inter,Inter,Arial,sans-serif);font-size:13px;color:var(--fg-color,#e4e4e7)}
@@ -170,7 +199,7 @@ const STYLE = `
 .clt-frame.clt-app-mode .clt-cell{border-radius:0;border-color:rgba(113,151,165,.45)}
 .clt-frame.clt-app-mode .clt-cell-header{border-radius:0}
 .clt-appmode[aria-pressed="true"],.clt-maximize-cell[aria-pressed="true"]{background:rgba(112,216,190,.24);border-color:#70d8be;color:#70d8be}
-`;
+${BOTTOM_TABS_STYLE}`;
 
 const HEADER_TEXT_DARK = '#101418';
 const HEADER_TEXT_LIGHT = '#f4f6f7';
@@ -642,10 +671,10 @@ export function routeMinimizedEndpoints(hidden, graph, link, startPos, endPos, e
   const targetFrame = hidden.frames?.get?.(tId);
   const originTarget = originFrame
     ? { key: originFrame, outPos: [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2] }
-    : hidden.targets?.get?.(oId);
+    : (hidden.targets?.get?.(oId) ?? hidden.portTargets?.get?.(oId));
   const targetTarget = targetFrame
     ? { key: targetFrame, inPos: [targetFrame.pos[0], targetFrame.pos[1] + targetFrame.size[1] / 2] }
-    : hidden.targets?.get?.(tId);
+    : (hidden.targets?.get?.(tId) ?? hidden.portTargets?.get?.(tId));
   if (originTarget && targetTarget && originTarget.key === targetTarget.key) return null;
   // Intermediate segments must retain their reroute positions and controls.
   const startsAtReroute = extras.startControl || graph?.getReroute?.(extras.reroute?.parentId);
@@ -676,7 +705,11 @@ export class LayoutOverlay {
       this.origDrawNode = canvas.drawNode;
       canvas.drawNode = (node, ctx) => {
         if (this.hidden.ids.has(String(node.id))) return;
-        const result = this.linkEffects.renderNode(ctx, node, () => this.origDrawNode?.call(canvas, node, ctx));
+        const cfg = this.controller.nodeTabs?.[String(node.id)];
+        const effIdx = cfg ? effectiveNodeTabIndex(this.controller, node.id, cfg) : 0;
+        const result = this.linkEffects.renderNode(ctx, node, () =>
+          drawClassicNodeWithBottomTabs(node, cfg, effIdx, () => this.origDrawNode?.call(canvas, node, ctx))
+        );
         this.linkEffects.drawNodeBorder(node, ctx);
         return result;
       };
@@ -726,8 +759,9 @@ export class LayoutOverlay {
         };
       }
     }
-    this.hidden = { ids: new Set(), frames: new Map(), targets: new Map() };
+    this.hidden = { ids: new Set(), frames: new Map(), targets: new Map(), portTargets: new Map() };
     this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null; this.dropPreview = null;
+    this.lastPointer = null; this.bottomDropHover = null; this.bottomTabPreview = null;
     this.ghostNodeId = null; this.ghostHandled = new Set();
     const options = { capture: true, signal: this.abort.signal };
     document.addEventListener('pointerdown', e => this.nativeDown(e), options);
@@ -1849,7 +1883,7 @@ export class LayoutOverlay {
   // Node draws and link draws consult this per item, so it is rebuilt once
   // per animation frame (and right after minimize/tab/collapse toggles), not per lookup.
   refreshHidden() {
-    const ids = new Set(), frames = new Map(), appModeFrames = new Map(), targets = new Map();
+    const ids = new Set(), frames = new Map(), appModeFrames = new Map(), targets = new Map(), portTargets = new Map();
     for (const frame of this.controller.frames ?? []) {
       const isAppMode = frame.appMode === true;
       const maxCellId = frame.maximizedCellId ? String(frame.maximizedCellId) : null;
@@ -1957,6 +1991,58 @@ export class LayoutOverlay {
         }
       }
     }
+
+    // Track inactive pages in bottom-tabbed multi-node / ComfyUI Group stacks
+    for (const stack of this.controller.tabStacks ?? []) {
+      if (!Array.isArray(stack.tabs) || !stack.tabs.length) continue;
+      const activeIdx = Math.max(0, Math.min(stack.tabs.length - 1, stack.activeTab ?? 0));
+      const activeTab = stack.tabs[activeIdx];
+      const activeIds = activeTab?.kind === 'node'
+        ? [String(activeTab.nodeId)]
+        : (activeTab?.nodes ?? []).map(e => String(e.id));
+      const activeSet = new Set(activeIds);
+
+      const barEl = this.plane?.querySelector?.(`.clt-bottom-tab-bar[data-stack-id="${stack.id}"]`);
+      const bx = parseFloat(barEl?.style?.left);
+      const by = parseFloat(barEl?.style?.top);
+      const bw = parseFloat(barEl?.style?.width);
+      const hasBarRect = Number.isFinite(bx) && Number.isFinite(by) && Number.isFinite(bw) && bw > 0;
+      const fallbackX = stack.pos?.[0] ?? 100;
+      const fallbackW = stack.size?.[0] ?? 260;
+      const hasNestedNodeBar = activeTab?.kind === 'node' && Boolean(this.controller.nodeTabs?.[String(activeTab.nodeId)]);
+      const fallbackY = (stack.pos?.[1] ?? 100) + (stack.size?.[1] ?? 180) + (hasNestedNodeBar ? BOTTOM_TAB_BAR_HEIGHT : 0);
+
+      stack.tabs.forEach((tab, tabIdx) => {
+        if (tabIdx === activeIdx) return;
+        let inPos, outPos;
+        const tabEl = barEl?.querySelector?.(`.clt-bottom-tab[data-tab-index="${tabIdx}"]`);
+        if (hasBarRect && tabEl && tabEl.offsetWidth > 0) {
+          const tx = bx + tabEl.offsetLeft;
+          const ty = by + tabEl.offsetTop;
+          const tw = tabEl.offsetWidth;
+          const th = tabEl.offsetHeight || (BOTTOM_TAB_BAR_HEIGHT - 6);
+          inPos = [tx, ty + th / 2];
+          outPos = [tx + tw, ty + th / 2];
+        } else {
+          const baseX = hasBarRect ? bx : fallbackX;
+          const baseY = hasBarRect ? by : fallbackY;
+          const baseW = hasBarRect ? bw : fallbackW;
+          const slotW = Math.min(92, Math.max(42, (baseW - 44) / Math.max(1, stack.tabs.length)));
+          const tx = baseX + 6 + tabIdx * slotW;
+          const ty = baseY + BOTTOM_TAB_BAR_HEIGHT / 2;
+          inPos = [tx, ty];
+          outPos = [tx + Math.max(24, slotW - 4), ty];
+        }
+        const tabIds = tab.kind === 'node' ? [tab.nodeId] : (tab.nodes ?? []).map(e => e.id);
+        for (const nId of tabIds) {
+          const k = String(nId);
+          if (activeSet.has(k)) continue;
+          ids.add(k);
+          targets.set(k, { key: `btab:${stack.id}:${tabIdx}`, inPos, outPos });
+        }
+      });
+    }
+
     if (this.nativeNode?.id != null) {
       ids.delete(String(this.nativeNode.id));
       targets.delete(String(this.nativeNode.id));
@@ -1967,9 +2053,47 @@ export class LayoutOverlay {
         targets.delete(String(d.id));
       }
     }
+
+    // Route wires for visible nodes whose Ports bottom tab is currently inactive
+    for (const [nodeId, cfg] of Object.entries(this.controller.nodeTabs ?? {})) {
+      const k = String(nodeId);
+      if (ids.has(k)) continue;
+      const node = this.controller.graph?.getNodeById?.(nodeId);
+      if (!node || node.flags?.collapsed || !Array.isArray(cfg?.tabs) || !cfg.tabs.length) continue;
+      const effIdx = effectiveNodeTabIndex(this.controller, k, cfg);
+      const activeTab = cfg.tabs[effIdx] ?? cfg.tabs[0];
+      if (!activeTab || activeTab.includePorts) continue;
+      const portsIdx = Math.max(0, cfg.tabs.findIndex(t => t.includePorts));
+      const barEl = this.plane?.querySelector?.(`.clt-bottom-tab-bar[data-node-id="${k}"]`);
+      const bx = parseFloat(barEl?.style?.left);
+      const by = parseFloat(barEl?.style?.top);
+      const bw = parseFloat(barEl?.style?.width);
+      const hasBarRect = Number.isFinite(bx) && Number.isFinite(by) && Number.isFinite(bw) && bw > 0;
+      const tabEl = barEl?.querySelector?.(`.clt-bottom-tab[data-tab-index="${portsIdx}"]`);
+      let inPos, outPos;
+      if (hasBarRect && tabEl && tabEl.offsetWidth > 0) {
+        const tx = bx + tabEl.offsetLeft;
+        const ty = by + tabEl.offsetTop;
+        const tw = tabEl.offsetWidth;
+        const th = tabEl.offsetHeight || (BOTTOM_TAB_BAR_HEIGHT - 6);
+        inPos = [tx, ty + th / 2];
+        outPos = [tx + tw, ty + th / 2];
+      } else {
+        const baseX = hasBarRect ? bx : (node.pos?.[0] ?? 0);
+        const baseY = hasBarRect ? by : ((node.pos?.[1] ?? 0) + (node.size?.[1] ?? 100));
+        const baseW = hasBarRect ? bw : (node.size?.[0] ?? 220);
+        const slotW = Math.min(82, Math.max(40, (baseW - 40) / Math.max(1, cfg.tabs.length)));
+        const tx = baseX + 6 + portsIdx * slotW;
+        const ty = baseY + BOTTOM_TAB_BAR_HEIGHT / 2;
+        inPos = [tx, ty];
+        outPos = [tx + Math.max(24, slotW - 4), ty];
+      }
+      portTargets.set(k, { key: `port-tab:${k}:${portsIdx}`, inPos, outPos });
+    }
+
     const prevIds = this.hidden?.ids;
     const hiddenChanged = !prevIds || prevIds.size !== ids.size || [...ids].some(id => !prevIds.has(id));
-    this.hidden = { ids, frames, appModeFrames, targets };
+    this.hidden = { ids, frames, appModeFrames, targets, portTargets };
     if (typeof document !== 'undefined') {
       for (const el of document.querySelectorAll?.('.lg-node') ?? []) {
         const id = el.dataset?.nodeId || el.getAttribute?.('data-node-id');
@@ -1979,15 +2103,26 @@ export class LayoutOverlay {
           el.classList?.remove?.('clt-node-hidden');
         }
       }
+      syncVueNodeSectionTabs(document, this.controller, ids);
       const graph = this.controller.graph;
+      const vueMode = Boolean(globalThis.LiteGraph?.vueNodesMode);
       for (const node of graph?._nodes ?? graph?.nodes ?? []) {
         if (!node?.widgets?.length) continue;
-        const isHidden = ids.has(String(node.id));
+        const k = String(node.id);
+        const isHidden = ids.has(k);
+        const cfg = !isHidden && !vueMode && !node.flags?.collapsed ? this.controller.nodeTabs?.[k] : null;
+        const effIdx = cfg ? effectiveNodeTabIndex(this.controller, k, cfg) : 0;
+        const activeTab = cfg?.tabs?.[effIdx] ?? cfg?.tabs?.[0] ?? null;
         for (const w of node.widgets) {
           const domEl = w?.element ?? w?.inputEl;
           if (!domEl) continue;
           const wrapper = domEl.closest?.('.dom-widget') ?? domEl;
-          if (isHidden) {
+          let sectionHidden = false;
+          if (activeTab) {
+            const wName = String(w?.name ?? '').trim();
+            sectionHidden = Boolean(wName && !(activeTab.widgets?.includes(wName) || (activeTab.includePreview && isPreviewWidget(w))));
+          }
+          if (isHidden || sectionHidden) {
             wrapper.classList?.add?.('clt-node-hidden');
             if (wrapper.style) wrapper.style.display = 'none';
           } else if (wrapper.classList?.contains?.('clt-node-hidden')) {
@@ -2146,6 +2281,390 @@ export class LayoutOverlay {
       this.drag = { kind, ...data, start: this.controller.adapter.point(event), graph: this.controller.graph, pointerId: event.pointerId };
     });
   }
+  findNativeGroupAt(pointer) {
+    if (!Array.isArray(pointer)) return null;
+    const graph = this.controller.graph;
+    if (!graph) return null;
+    if (typeof graph.getGroupOnPos === 'function') {
+      const hit = graph.getGroupOnPos(pointer[0], pointer[1]);
+      if (hit) return hit;
+    }
+    const groups = getGraphGroups(graph);
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const g = groups[i];
+      const b = getGroupBounds(g);
+      if (b && pointer[0] >= b[0] && pointer[0] <= b[0] + b[2] && pointer[1] >= b[1] && pointer[1] <= b[1] + b[3]) {
+        return g;
+      }
+    }
+    return null;
+  }
+  getBottomBarHit(pointer) {
+    if (!Array.isArray(pointer) || !this.plane) return null;
+    const [px, py] = pointer;
+    for (const barEl of this.plane.querySelectorAll?.('.clt-bottom-tab-bar') ?? []) {
+      const stackId = barEl.dataset?.stackId || barEl.getAttribute?.('data-stack-id') || null;
+      const nodeId = barEl.dataset?.nodeId || barEl.getAttribute?.('data-node-id') || null;
+      const barLeft = parseFloat(barEl.style?.left) || 0;
+      const barTop = parseFloat(barEl.style?.top) || 0;
+      const barWidth = parseFloat(barEl.style?.width) || 0;
+      const barHeight = parseFloat(barEl.style?.height) || BOTTOM_TAB_BAR_HEIGHT;
+      if (px < barLeft - 10 || px > barLeft + barWidth + 10) continue;
+      if (py < barTop - 10 || py > barTop + barHeight + 10) continue;
+
+      const tabEls = [...(barEl.querySelectorAll?.('.clt-bottom-tab') ?? [])];
+      if (!tabEls.length) {
+        return { stackId, nodeId, tabIndex: 0, reorderIndex: 0, insertIndex: 0, onPill: false, onMergeZone: false };
+      }
+      const pills = tabEls.map((el, i) => {
+        const idx = Number(el.dataset?.tabIndex ?? el.getAttribute?.('data-tab-index') ?? i);
+        let left = barLeft + 6 + i * 76;
+        let right = left + 72;
+        if (typeof el.getBoundingClientRect === 'function') {
+          const box = el.getBoundingClientRect();
+          if (box.width > 0) {
+            const p1 = this.controller.adapter.point({ clientX: box.left, clientY: box.top });
+            const p2 = this.controller.adapter.point({ clientX: box.right, clientY: box.bottom });
+            left = p1[0];
+            right = p2[0];
+          }
+        }
+        const width = Math.max(12, right - left);
+        return { index: idx, left, right, width, midX: (left + right) / 2 };
+      });
+
+      const direct = pills.find(p => px >= p.left && px <= p.right);
+      if (direct) {
+        const onMergeZone = px >= direct.left + direct.width * 0.24 && px <= direct.right - direct.width * 0.24;
+        return {
+          stackId,
+          nodeId,
+          tabIndex: direct.index,
+          reorderIndex: direct.index,
+          insertIndex: px > direct.midX ? direct.index + 1 : direct.index,
+          onPill: true,
+          onMergeZone,
+        };
+      }
+      let reorderIndex = pills.length - 1;
+      for (const p of pills) {
+        if (px <= p.right) {
+          reorderIndex = p.index;
+          break;
+        }
+      }
+      const pastLast = px > (pills.at(-1)?.right ?? barLeft);
+      return {
+        stackId,
+        nodeId,
+        tabIndex: pastLast ? pills.length : reorderIndex,
+        reorderIndex,
+        insertIndex: pastLast ? pills.length : reorderIndex,
+        onPill: false,
+        onMergeZone: false,
+      };
+    }
+    return null;
+  }
+  resolveBottomTabDrag(point) {
+    if (!this.drag || this.drag.kind !== 'bottom-tab-drag' || !Array.isArray(point)) return null;
+    const hit = this.getBottomBarHit(point);
+    if (this.drag.sourceKind === 'node') {
+      const k = String(this.drag.nodeId);
+      const cfg = this.controller.nodeTabs?.[k];
+      if (!cfg?.tabs?.length) return null;
+      if (hit && String(hit.nodeId) === k) {
+        if (hit.onPill && hit.onMergeZone && hit.tabIndex !== this.drag.tabIndex) {
+          return { mode: 'merge-node', nodeId: k, targetIndex: hit.tabIndex };
+        }
+        return { mode: 'reorder-node', nodeId: k, targetIndex: hit.reorderIndex };
+      }
+      const node = this.controller.graph?.getNodeById?.(this.drag.nodeId);
+      if (node?.pos && node?.size) {
+        const slotW = Math.max(36, (node.size[0] - 32) / cfg.tabs.length);
+        const idx = Math.max(0, Math.min(cfg.tabs.length - 1, Math.floor((point[0] - node.pos[0]) / slotW)));
+        return { mode: 'reorder-node', nodeId: k, targetIndex: idx };
+      }
+      return null;
+    }
+    if (this.drag.sourceKind === 'stack') {
+      const stack = this.controller.tabStacks.find(s => s.id === this.drag.stackId);
+      if (!stack?.tabs?.length) return null;
+      if (hit?.stackId === stack.id) {
+        return { mode: 'reorder-stack', stackId: stack.id, targetIndex: hit.reorderIndex };
+      }
+      if (hit?.stackId && hit.stackId !== stack.id) {
+        return { mode: 'move-to-stack', stackId: stack.id, targetStackId: hit.stackId, insertIndex: hit.insertIndex };
+      }
+      return { mode: 'detach-stack-tab', stackId: stack.id, point };
+    }
+    return null;
+  }
+  startBottomBarMove(event, { stackId = null, nodeId = null }) {
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('.clt-bottom-tab,button,input')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeMenu();
+    this.safe(() => {
+      if (stackId) {
+        const stack = this.controller.tabStacks.find(s => s.id === stackId);
+        if (!stack) return;
+        this.controller.begin();
+        this.drag = {
+          kind: 'bottom-move',
+          stackId,
+          startPos: [...stack.pos],
+          start: this.controller.adapter.point(event),
+          graph: this.controller.graph,
+          pointerId: event.pointerId,
+        };
+      } else if (nodeId != null) {
+        if (this.controller.lockedNodeIds().has(String(nodeId))) return;
+        const ownerStack = this.controller.findStackForNode(nodeId);
+        if (ownerStack) {
+          this.controller.begin();
+          this.drag = {
+            kind: 'bottom-move',
+            stackId: ownerStack.stack.id,
+            startPos: [...ownerStack.stack.pos],
+            start: this.controller.adapter.point(event),
+            graph: this.controller.graph,
+            pointerId: event.pointerId,
+          };
+          return;
+        }
+        const node = this.controller.graph?.getNodeById?.(nodeId);
+        if (!node?.pos) return;
+        this.controller.begin();
+        this.drag = {
+          kind: 'bottom-move',
+          nodeId,
+          startPos: [...node.pos],
+          start: this.controller.adapter.point(event),
+          graph: this.controller.graph,
+          pointerId: event.pointerId,
+        };
+      }
+    });
+  }
+  startBottomTabDrag(event, { sourceKind, nodeId = null, stackId = null, tabIndex }) {
+    if (event.button !== 0) return;
+    if (event.target?.closest?.('input,button')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeMenu();
+    this.safe(() => {
+      if (sourceKind === 'node') {
+        const cfg = this.controller.nodeTabs?.[String(nodeId)];
+        if (!cfg) return;
+        if (cfg.activeTab !== tabIndex) {
+          this.controller.edit(() => selectNodeBottomTab(this.controller.ensureData(), nodeId, tabIndex));
+          this.refreshHidden();
+          this.signature = null;
+        }
+      } else if (sourceKind === 'stack') {
+        const stack = this.controller.tabStacks.find(s => s.id === stackId);
+        if (!stack) return;
+        if (stack.activeTab !== tabIndex) {
+          this.controller.edit(() => selectStackTab(this.controller.ensureData(), stackId, tabIndex));
+          this.refreshHidden();
+          this.signature = null;
+        }
+      }
+      this.controller.begin();
+      this.drag = {
+        kind: 'bottom-tab-drag',
+        sourceKind,
+        nodeId,
+        stackId,
+        tabIndex,
+        moved: false,
+        start: this.controller.adapter.point(event),
+        graph: this.controller.graph,
+        pointerId: event.pointerId,
+      };
+    });
+  }
+  bottomTabTitle(label, { sourceKind, nodeId = null, stackId = null, tabIndex }) {
+    const span = element('span', 'clt-bottom-tab-label', label);
+    span.title = `${label} — Double-click to rename, drag to reorder${sourceKind === 'node' ? ' or merge' : ' or detach'}`;
+    span.ondblclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeMenu();
+      const graph = this.controller.graph;
+      const input = element('input', 'clt-title-input');
+      input.type = 'text';
+      input.value = label;
+      input.maxLength = 120;
+      input.setAttribute('aria-label', 'Bottom tab title');
+      let finished = false;
+      const finish = save => {
+        if (finished) return;
+        finished = true;
+        this.editing = null;
+        this.signature = null;
+        const value = input.value.trim();
+        if (save && value && value !== label && graph === this.controller.graph) {
+          this.safe(() => this.controller.edit(() => {
+            if (sourceKind === 'node') renameNodeBottomTab(this.controller.ensureData(), nodeId, tabIndex, value);
+            else if (sourceKind === 'stack') renameStackTab(this.controller.ensureData(), stackId, tabIndex, value);
+          }));
+        }
+      };
+      this.editing = { graph, cancel: () => finish(false) };
+      input.onpointerdown = e => e.stopPropagation();
+      input.ondblclick = e => e.stopPropagation();
+      input.onkeydown = e => {
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); finish(true); }
+        if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      };
+      input.onblur = () => finish(true);
+      span.replaceWith(input);
+      input.focus();
+      input.select();
+    };
+    return span;
+  }
+  bottomBarMenu(event, { nodeId = null, stackId = null, tabIndex = null }) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (nodeId != null) {
+      const cfg = this.controller.nodeTabs?.[String(nodeId)];
+      if (!cfg) return;
+      const tab = tabIndex != null ? cfg.tabs?.[tabIndex] : null;
+      const nextSizing = cfg.sizing === 'compact' ? 'max' : 'compact';
+      const actions = [
+        ['Configure Tabs…', () => openConfigureBottomTabsDialog(this, { nodeId }), '⚙️'],
+        [
+          cfg.sizing === 'compact' ? 'Lock Max Height (Stationary Bar)' : 'Compact Fit per Tab',
+          () => {
+            this.controller.edit(() => setNodeTabsSizing(this.controller.ensureData(), nodeId, nextSizing));
+            this.refreshHidden();
+            this.signature = null;
+          },
+          '↕',
+        ],
+        ...(tab ? [[
+          'Rename tab…',
+          () => this.dialog('Rename bottom tab', [{ name: 'label', label: 'Tab name', value: tab.label }], ({ label }) => {
+            this.controller.edit(() => renameNodeBottomTab(this.controller.ensureData(), nodeId, tabIndex, label));
+            this.signature = null;
+          }),
+          '✎',
+        ]] : []),
+        ...(tab && cfg.tabs.length > 1 ? [[
+          'Close tab (move items to first tab)',
+          () => {
+            this.controller.edit(() => removeSingleNodeBottomTab(this.controller.ensureData(), nodeId, tabIndex));
+            this.refreshHidden();
+            this.signature = null;
+          },
+          '✕',
+        ]] : []),
+        ['Remove bottom tabs', () => {
+          this.controller.removeNodeTabs(nodeId);
+          this.refreshHidden();
+          this.signature = null;
+        }, '⌫'],
+      ];
+      this.showMenu(event, actions);
+      return;
+    }
+    if (stackId != null) {
+      const stack = this.controller.tabStacks.find(s => s.id === stackId);
+      if (!stack) return;
+      const targetIdx = tabIndex ?? stack.activeTab ?? 0;
+      const tab = stack.tabs?.[targetIdx] ?? null;
+      const nextSizing = stack.sizing === 'compact' ? 'max' : 'compact';
+      const actions = [
+        ['Configure Stack Tabs…', () => openConfigureBottomTabsDialog(this, { stackId }), '⚙️'],
+        [
+          stack.sizing === 'compact' ? 'Lock Max Height (Stationary Bar)' : 'Compact Fit per Tab',
+          () => {
+            this.controller.edit(() => setStackSizing(this.controller.ensureData(), stackId, nextSizing));
+            this.refreshHidden();
+            this.signature = null;
+          },
+          '↕',
+        ],
+        ...(tab?.kind === 'group' ? [[
+          tab.layoutMode === 'stack' ? 'Preserve relative group positions' : 'Snap group to vertical stack',
+          () => {
+            this.controller.edit(() => toggleGroupTabLayoutMode(this.controller.ensureData(), stackId, targetIdx));
+            this.signature = null;
+          },
+          '⇕',
+        ]] : []),
+        ...(tabIndex != null && tab ? [
+          [
+            'Rename tab…',
+            () => this.dialog('Rename stack tab', [{ name: 'label', label: 'Tab name', value: tab.label }], ({ label }) => {
+              this.controller.edit(() => renameStackTab(this.controller.ensureData(), stackId, tabIndex, label));
+              this.signature = null;
+            }),
+            '✎',
+          ],
+          [
+            'Detach tab to canvas',
+            () => {
+              this.controller.edit(() => {
+                const detached = detachStackTab(this.controller.ensureData(), this.controller.graph, stackId, tabIndex, null, this.controller.adapter.classicTitle);
+                if (detached) {
+                  const ids = detached.kind === 'node' ? [detached.nodeId] : (detached.nodes ?? []).map(e => e.id);
+                  for (const id of ids) {
+                    const n = this.controller.graph?.getNodeById?.(id);
+                    if (n) this.controller.adapter.releaseDockedWidth?.(n);
+                  }
+                }
+              });
+              this.refreshHidden();
+              this.signature = null;
+            },
+            '↗',
+          ],
+        ] : []),
+        ['Unpack bottom-tabbed stack', () => {
+          this.controller.unpackBottomStack(stackId);
+          this.refreshHidden();
+          this.signature = null;
+        }, '⊞'],
+      ];
+      this.showMenu(event, actions);
+    }
+  }
+  hasNodeConnections(node) {
+    if (!node) return false;
+    const hasIn = (node.inputs ?? []).some(inp => inp && inp.link != null);
+    if (hasIn) return true;
+    const hasOut = (node.outputs ?? []).some(out => out && Array.isArray(out.links) && out.links.length > 0);
+    if (hasOut) return true;
+    const links = this.controller.graph?.links;
+    if (links) {
+      const list = typeof links.values === 'function' ? links.values() : Object.values(links);
+      const k = String(node.id);
+      for (const l of list) {
+        if (l && (String(l.origin_id) === k || String(l.target_id) === k)) return true;
+      }
+    }
+    return false;
+  }
+  hasStackTabExternalLinks(tab) {
+    if (!tab) return false;
+    const ids = new Set((tab.kind === 'node' ? [tab.nodeId] : (tab.nodes ?? []).map(e => e.id)).map(String));
+    const links = this.controller.graph?.links;
+    if (!links) return false;
+    const list = typeof links.values === 'function' ? links.values() : Object.values(links);
+    for (const l of list) {
+      if (!l) continue;
+      const oIn = ids.has(String(l.origin_id));
+      const tIn = ids.has(String(l.target_id));
+      if (oIn !== tIn) return true;
+    }
+    return false;
+  }
   nativeDown(event) {
     if (this.menu && !this.menu.contains(event.target)) this.closeMenu();
     if (this.isGhostActive()) return;
@@ -2157,12 +2676,22 @@ export class LayoutOverlay {
     // Start before the native renderer moves anything. Its nested history
     // events are then grouped with our drop/reflow into the same undo step.
     try {
-      if (!this.controller.frames.length) return;
+      if (!this.controller.frames.length && !this.controller.hasBottomTabs) return;
       const pointer = this.controller.adapter.point(event);
+      this.lastPointer = pointer;
       const domNodeId = event.target?.closest?.('.lg-node')?.dataset?.nodeId;
       this.nativeNode = (domNodeId != null && this.controller.graph.getNodeById(domNodeId)) || this.controller.graph.getNodeOnPos?.(pointer[0], pointer[1]) || null;
+      const draggedGroup = !this.nativeNode ? this.findNativeGroupAt(pointer) : null;
+      const groupBeforeBounds = draggedGroup ? getGroupBounds(draggedGroup) : null;
       this.controller.begin();
-      this.nativeDrag = { before: this.controller.snapshot(), graph: this.controller.graph, pointerId: event.pointerId, pointer };
+      this.nativeDrag = {
+        before: this.controller.snapshot(),
+        graph: this.controller.graph,
+        pointerId: event.pointerId,
+        pointer,
+        draggedGroup,
+        groupBeforeBounds: groupBeforeBounds ? [...groupBeforeBounds] : null,
+      };
     } catch (error) {
       this.nativeNode = null;
       this.nativeDrag = null;
@@ -2171,6 +2700,14 @@ export class LayoutOverlay {
     }
   }
   move(event) {
+    if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && this.app?.canvas?.canvas) {
+      this.lastPointer = this.controller.adapter.point(event);
+      if (!this.drag && updateWirePeekState(this.controller, this.app.canvas, this.lastPointer)) {
+        this.controller.reflow();
+        this.refreshHidden();
+        this.signature = null;
+      }
+    }
     if (this.drag && event.pointerId === this.drag.pointerId) {
       event.preventDefault(); event.stopPropagation();
       if (this.drag.graph !== this.controller.graph) return this.up(null, true);
@@ -2183,6 +2720,32 @@ export class LayoutOverlay {
         const preview = this.resolveTabDragTarget(layouts, point);
         this.dropPreview = preview;
         this.hover = preview?.cell?.id ?? null;
+        return;
+      }
+      if (this.drag.kind === 'bottom-tab-drag') {
+        if (!this.drag.moved && Math.hypot(dx, dy) < 4) return;
+        this.drag.moved = true;
+        this.drag.pointer = point;
+        this.bottomTabPreview = this.resolveBottomTabDrag(point);
+        this.signature = null;
+        return;
+      }
+      if (this.drag.kind === 'bottom-move') {
+        this.safe(() => {
+          this.controller.edit(() => {
+            if (this.drag.stackId) {
+              const stack = this.controller.tabStacks.find(s => s.id === this.drag.stackId);
+              if (stack) stack.pos = [Math.round(this.drag.startPos[0] + dx), Math.round(this.drag.startPos[1] + dy)];
+            } else if (this.drag.nodeId != null) {
+              const node = this.controller.graph?.getNodeById?.(this.drag.nodeId);
+              if (node?.pos) {
+                node.pos[0] = Math.round(this.drag.startPos[0] + dx);
+                node.pos[1] = Math.round(this.drag.startPos[1] + dy);
+              }
+            }
+          });
+          this.app.canvas?.setDirty(true, true);
+        });
         return;
       }
       this.safe(() => {
@@ -2217,25 +2780,65 @@ export class LayoutOverlay {
     } else if (this.nativeDrag) {
       const pointer = this.controller.adapter.point(event);
       this.nativeDrag.pointer = pointer;
-      const preview = this.computeDropPreview(this.controller.geometry());
+      const bottomHit = pointer ? this.getBottomBarHit(pointer) : null;
+      this.bottomDropHover = bottomHit ? (bottomHit.stackId ? `stack:${bottomHit.stackId}` : `node:${bottomHit.nodeId}`) : null;
+      const preview = bottomHit ? null : this.computeDropPreview(this.controller.geometry());
       this.dropPreview = preview;
-      this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
+      this.hover = preview?.cell?.id ?? (!bottomHit && pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
     }
   }
   up(event, cancelled = false) {
     if (this.drag && (!event || event.pointerId === this.drag.pointerId)) {
       const activeDrag = this.drag;
-      if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && activeDrag.kind === 'tab-drag' && activeDrag.moved) {
+      if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY) && activeDrag.moved) {
         activeDrag.pointer = this.controller.adapter.point(event);
-        this.dropPreview = this.resolveTabDragTarget(this.controller.geometry(), activeDrag.pointer);
+        if (activeDrag.kind === 'tab-drag') {
+          this.dropPreview = this.resolveTabDragTarget(this.controller.geometry(), activeDrag.pointer);
+        } else if (activeDrag.kind === 'bottom-tab-drag') {
+          this.bottomTabPreview = this.resolveBottomTabDrag(activeDrag.pointer);
+        }
       }
       const preview = this.dropPreview;
+      const bottomPreview = this.bottomTabPreview;
       this.drag = null;
       this.dropPreview = null;
+      this.bottomTabPreview = null;
       this.hover = null;
       if (!cancelled && activeDrag.kind === 'tab-drag' && activeDrag.moved && preview && activeDrag.graph === this.controller.graph) {
         this.safe(() => this.controller.edit(() => {
           moveCellTab(this.controller.frames, activeDrag.frame.id, activeDrag.cell.id, activeDrag.tabIndex, preview, this.controller.metrics());
+        }));
+      } else if (!cancelled && activeDrag.kind === 'bottom-tab-drag' && activeDrag.moved && bottomPreview && activeDrag.graph === this.controller.graph) {
+        this.safe(() => this.controller.edit(() => {
+          const data = this.controller.ensureData();
+          if (bottomPreview.mode === 'merge-node') {
+            mergeNodeBottomTabs(data, bottomPreview.nodeId, activeDrag.tabIndex, bottomPreview.targetIndex);
+          } else if (bottomPreview.mode === 'reorder-node') {
+            reorderNodeBottomTab(data, bottomPreview.nodeId, activeDrag.tabIndex, bottomPreview.targetIndex);
+          } else if (bottomPreview.mode === 'reorder-stack') {
+            reorderStackTab(data, bottomPreview.stackId, activeDrag.tabIndex, bottomPreview.targetIndex);
+          } else if (bottomPreview.mode === 'move-to-stack') {
+            const srcStack = data.tabStacks?.find(s => s.id === bottomPreview.stackId);
+            const dstStack = data.tabStacks?.find(s => s.id === bottomPreview.targetStackId);
+            const movingTab = srcStack?.tabs?.[activeDrag.tabIndex];
+            if (srcStack && dstStack && movingTab) {
+              srcStack.tabs.splice(activeDrag.tabIndex, 1);
+              if (srcStack.tabs.length) srcStack.activeTab = Math.max(0, Math.min(srcStack.tabs.length - 1, srcStack.activeTab));
+              else data.tabStacks = data.tabStacks.filter(s => s.id !== srcStack.id);
+              const idx = Math.max(0, Math.min(dstStack.tabs.length, bottomPreview.insertIndex ?? dstStack.tabs.length));
+              dstStack.tabs.splice(idx, 0, movingTab);
+              dstStack.activeTab = idx;
+            }
+          } else if (bottomPreview.mode === 'detach-stack-tab') {
+            const detached = detachStackTab(data, this.controller.graph, bottomPreview.stackId, activeDrag.tabIndex, bottomPreview.point, this.controller.adapter.classicTitle);
+            if (detached) {
+              const ids = detached.kind === 'node' ? [detached.nodeId] : (detached.nodes ?? []).map(e => e.id);
+              for (const id of ids) {
+                const n = this.controller.graph?.getNodeById?.(id);
+                if (n) this.controller.adapter.releaseDockedWidth?.(n);
+              }
+            }
+          }
         }));
       }
       this.controller.end();
@@ -2249,12 +2852,24 @@ export class LayoutOverlay {
         pending.pointer = this.controller.adapter.point(event);
       }
       const tabHit = pending.pointer ? this.getTabHit(pending.pointer) : null;
-      pending.finishing = true; this.nativeNode = null; this.hover = null; this.dropPreview = null;
+      const bottomBarHit = pending.pointer ? this.getBottomBarHit(pending.pointer) : null;
+      let draggedGroup = null;
+      if (pending.draggedGroup && pending.groupBeforeBounds) {
+        const afterBounds = getGroupBounds(pending.draggedGroup);
+        if (afterBounds && (Math.abs(afterBounds[0] - pending.groupBeforeBounds[0]) > 1 || Math.abs(afterBounds[1] - pending.groupBeforeBounds[1]) > 1)) {
+          draggedGroup = pending.draggedGroup;
+        }
+      }
+      pending.finishing = true;
+      this.nativeNode = null;
+      this.hover = null;
+      this.dropPreview = null;
+      this.bottomDropHover = null;
       // Wait for the renderer's pointer-up handler to finish final snapping.
       requestAnimationFrame(() => {
         this.safe(() => {
           if (!cancelled && pending.graph === this.controller.graph) {
-            this.controller.finishNativeDrag(pending.before, pending.pointer ?? null, { tabHit });
+            this.controller.finishNativeDrag(pending.before, pending.pointer ?? null, { tabHit, bottomBarHit, draggedGroup });
           }
         });
         this.nativeDrag = null; this.controller.end(); this.refreshHidden(); this.signature = null;
@@ -2265,7 +2880,9 @@ export class LayoutOverlay {
     if (!this.root.isConnected) return;
     if (!this.app.configuringGraph) {
       try {
-        const layouts = this.controller.geometry();
+        updateWirePeekState(this.controller, this.app.canvas, this.lastPointer);
+        let layouts = this.controller.geometry();
+        let stackLayouts = this.controller.stackGeometry?.() ?? [];
         const { ds } = this.app.canvas;
         this.refreshHidden();
         this.deselectHidden();
@@ -2274,9 +2891,11 @@ export class LayoutOverlay {
         const dragged = this.draggedNodes();
         if (this.nativeDrag && !this.nativeDrag.finishing) {
           const pointer = this.nativeDrag.pointer;
-          const preview = this.computeDropPreview(layouts, dragged);
+          const bottomHit = pointer ? this.getBottomBarHit(pointer) : null;
+          this.bottomDropHover = bottomHit ? (bottomHit.stackId ? `stack:${bottomHit.stackId}` : `node:${bottomHit.nodeId}`) : null;
+          const preview = bottomHit ? null : this.computeDropPreview(layouts, dragged);
           this.dropPreview = preview;
-          this.hover = preview?.cell?.id ?? (pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
+          this.hover = preview?.cell?.id ?? (!bottomHit && pointer ? this.controller.target(pointer)?.cell.id : null) ?? null;
         } else if (this.drag?.kind === 'tab-drag' && this.drag.moved && this.drag.pointer) {
           const point = this.drag.pointer;
           const preview = this.resolveTabDragTarget(layouts, point);
@@ -2284,20 +2903,49 @@ export class LayoutOverlay {
           this.hover = preview?.cell?.id ?? null;
         } else if (!this.nativeDrag) {
           this.dropPreview = null;
+          this.bottomDropHover = null;
         }
         const autohidden = this.controller.frames.filter(f => this.isFrameAutohidden(f, selectedIds, dragged)).map(f => f.id);
         const previewSig = this.dropPreview ? [this.dropPreview.kind, this.dropPreview.ghostType, this.dropPreview.compassZone, this.dropPreview.frame?.id, this.dropPreview.cell?.id, this.dropPreview.tabIndex, this.dropPreview.previewRect, this.drag?.moved] : null;
-        const signature = signatureOf([this.controller.graph?.id, layouts, ds.scale, [...ds.offset], this.hover, previewSig, autohidden, this.bypassedNodeIds()]);
+        const standaloneNodeTabRects = Object.keys(this.controller.nodeTabs ?? {}).map(id => {
+          const n = this.controller.graph?.getNodeById?.(id);
+          return n ? [id, n.pos?.[0], n.pos?.[1], n.size?.[0], n.size?.[1], Boolean(n.flags?.collapsed)] : [id];
+        });
+        const peekSig = this.controller.peekedPortsNodes?.size ? [...this.controller.peekedPortsNodes.entries()] : null;
+        const signature = signatureOf([
+          this.controller.graph?.id,
+          layouts,
+          stackLayouts,
+          this.controller.nodeTabs ?? null,
+          standaloneNodeTabRects,
+          peekSig,
+          this.bottomDropHover,
+          this.bottomTabPreview,
+          ds.scale,
+          [...ds.offset],
+          this.hover,
+          previewSig,
+          autohidden,
+          this.bypassedNodeIds(),
+        ]);
         const data = this.controller.graph?.extra?.[KEY] ?? this.controller.graph?.extra?.[LEGACY_KEY];
         if (this.editing) {
-          const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
-          if (this.editing.graph !== this.controller.graph || !frame || (this.editing.cellId && !findCell(frame.root, this.editing.cellId))) this.editing.cancel();
+          if (this.editing.frameId) {
+            const frame = this.controller.frames.find(frame => frame.id === this.editing.frameId);
+            if (this.editing.graph !== this.controller.graph || !frame || (this.editing.cellId && !findCell(frame.root, this.editing.cellId))) this.editing.cancel();
+          } else if (this.editing.graph !== this.controller.graph) {
+            this.editing.cancel();
+          }
         }
         if (!this.editing && (signature !== this.signature || data !== this.renderedData)) {
           // Content can grow asynchronously (previews, conditional widgets,
           // Nodes 2.0 DOM measurement). Keep the attached stack coherent.
-          if (!this.drag && !this.nativeDrag && !this.isGhostActive() && this.controller.frames.length) this.controller.reflow();
-          this.signature = signature; this.renderedData = data; this.render(layouts);
+          if (!this.drag && !this.nativeDrag && !this.isGhostActive() && (this.controller.frames.length || this.controller.hasBottomTabs)) {
+            this.controller.reflow();
+            layouts = this.controller.geometry();
+            stackLayouts = this.controller.stackGeometry?.() ?? [];
+          }
+          this.signature = signature; this.renderedData = data; this.render(layouts, stackLayouts);
           this.refreshHidden();
         }
         this.previewHeader();
@@ -2311,7 +2959,7 @@ export class LayoutOverlay {
     }
     this.animation = requestAnimationFrame(this.tick);
   }
-  render(layouts) {
+  render(layouts, stackLayouts = this.controller.stackGeometry?.() ?? []) {
     const hidden = this.hiddenNodeIds;
     if (typeof document !== 'undefined') {
       for (const el of document.querySelectorAll('.lg-node')) {
@@ -2693,6 +3341,7 @@ export class LayoutOverlay {
         fragment.append(el);
       }
     }
+    this.renderBottomTabBars(fragment, stackLayouts, hidden);
     if (this.dropPreview?.previewRect) {
       const ghostClass = this.dropPreview.ghostType === 'tab'
         ? 'clt-ghost-tab'
@@ -2729,7 +3378,182 @@ export class LayoutOverlay {
     this.plane.replaceChildren(fragment);
     this.app.canvas?.setDirty(true, true);
   }
+  renderNodeBottomBar(nodeId, cfg, rect, { isInner = false } = {}) {
+    const k = String(nodeId);
+    const node = this.controller.graph?.getNodeById?.(nodeId);
+    const dropActive = this.bottomDropHover === `node:${k}`;
+    const bar = element(
+      'div',
+      `clt-bottom-tab-bar${isInner ? ' clt-bottom-inner' : ''}${dropActive ? ' clt-bottom-drop-active' : ''}`
+    );
+    bar.dataset.nodeId = k;
+    bar.setAttribute('role', 'tablist');
+    bar.setAttribute('aria-label', `${node?.title || node?.type || `Node ${k}`} bottom tabs`);
+    rectStyle(bar, rect);
+    bar.onpointerdown = e => this.startBottomBarMove(e, { nodeId });
+    bar.oncontextmenu = e => this.bottomBarMenu(e, { nodeId });
+
+    const scroll = element('div', 'clt-bottom-tab-scroll');
+    const effIdx = effectiveNodeTabIndex(this.controller, k, cfg);
+    const hasConns = this.hasNodeConnections(node);
+    const isNodeDrag = this.drag?.kind === 'bottom-tab-drag' && this.drag.moved && this.drag.sourceKind === 'node' && String(this.drag.nodeId) === k;
+
+    (cfg.tabs ?? []).forEach((tab, idx) => {
+      const active = idx === effIdx;
+      const pill = element('div', `clt-bottom-tab${active ? ' active' : ''}`);
+      pill.dataset.tabId = tab.id;
+      pill.dataset.tabIndex = String(idx);
+      pill.setAttribute('role', 'tab');
+      pill.setAttribute('aria-selected', String(active));
+      if (isNodeDrag && this.drag.tabIndex === idx) pill.classList.add('dragging');
+      if (isNodeDrag && this.bottomTabPreview && String(this.bottomTabPreview.nodeId) === k && idx !== this.drag.tabIndex) {
+        if (this.bottomTabPreview.mode === 'merge-node' && this.bottomTabPreview.targetIndex === idx) {
+          pill.classList.add('clt-tab-merge-target');
+        } else if (this.bottomTabPreview.mode === 'reorder-node' && this.bottomTabPreview.targetIndex === idx) {
+          pill.classList.add(idx < this.drag.tabIndex ? 'clt-tab-insert-before' : 'clt-tab-insert-after');
+        }
+      }
+      if (tab.icon) {
+        const iconEl = element('span', 'clt-cell-tab-icon', tab.icon);
+        pill.append(iconEl);
+      }
+      pill.append(this.bottomTabTitle(tab.label, { sourceKind: 'node', nodeId, tabIndex: idx }));
+      if (!active && tab.includePorts && hasConns) {
+        const dot = element('span', 'clt-bottom-port-dot');
+        dot.title = 'Connected wires routed to this tab';
+        pill.append(dot);
+      }
+      pill.onpointerdown = e => this.startBottomTabDrag(e, { sourceKind: 'node', nodeId, tabIndex: idx });
+      pill.oncontextmenu = e => this.bottomBarMenu(e, { nodeId, tabIndex: idx });
+      scroll.append(pill);
+    });
+
+    bar.append(scroll);
+    const menuBtn = button('Bottom tab options', e => this.bottomBarMenu(e, { nodeId }), '•••');
+    menuBtn.classList.add('clt-cell-options');
+    bar.append(menuBtn);
+    return bar;
+  }
+  renderBottomTabBars(fragment, stackLayouts, hidden) {
+    const innerNodeIds = new Set();
+
+    for (const sl of stackLayouts ?? []) {
+      const { stack, groupBoxRect, innerNodeTabBar, tabBarRect } = sl;
+      const activeIdx = Math.max(0, Math.min(stack.tabs.length - 1, stack.activeTab ?? 0));
+      const activeTab = stack.tabs[activeIdx];
+
+      // Subtle Group Box & Header when active tab is a multi-node ComfyUI Group page
+      if (groupBoxRect && activeTab?.kind === 'group') {
+        const groupColor = normalizeColor(activeTab.color) ?? '#3f789e';
+        const boxEl = element('div', 'clt-group-tab-box');
+        boxEl.dataset.stackId = stack.id;
+        rectStyle(boxEl, groupBoxRect);
+        boxEl.style.borderColor = groupColor;
+        boxEl.style.background = hexToRgba(groupColor, 0.11) ?? 'rgba(63,120,158,.11)';
+
+        const headerEl = element('div', 'clt-group-tab-header');
+        headerEl.style.background = hexToRgba(groupColor, 0.34) ?? 'rgba(63,120,158,.34)';
+        headerEl.style.color = '#f4f6f7';
+        headerEl.onpointerdown = e => this.startBottomBarMove(e, { stackId: stack.id });
+        headerEl.oncontextmenu = e => this.bottomBarMenu(e, { stackId: stack.id, tabIndex: activeIdx });
+
+        const titleSpan = element('span', 'clt-label', activeTab.label);
+        const modeBtn = button(
+          activeTab.layoutMode === 'stack' ? 'Switch to relative group positions' : 'Snap group nodes into vertical stack',
+          () => {
+            this.safe(() => this.controller.edit(() => toggleGroupTabLayoutMode(this.controller.ensureData(), stack.id, activeIdx)));
+            this.signature = null;
+          },
+          activeTab.layoutMode === 'stack' ? '⇕ Stack' : '⊹ Relative'
+        );
+        modeBtn.style.fontSize = '10px';
+        modeBtn.style.padding = '1px 5px';
+        headerEl.append(titleSpan, modeBtn);
+        boxEl.append(headerEl);
+        fragment.append(boxEl);
+      }
+
+      // Nested 2-row footer: inner node section bar directly above outer stack bar
+      if (innerNodeTabBar) {
+        innerNodeIds.add(String(innerNodeTabBar.nodeId));
+        fragment.append(this.renderNodeBottomBar(innerNodeTabBar.nodeId, innerNodeTabBar.config, innerNodeTabBar.rect, { isInner: true }));
+      }
+
+      // Outer stack bottom tab bar
+      const dropActive = this.bottomDropHover === `stack:${stack.id}` ||
+        (this.drag?.kind === 'bottom-tab-drag' && this.bottomTabPreview?.mode === 'move-to-stack' && this.bottomTabPreview.targetStackId === stack.id);
+      const bar = element('div', `clt-bottom-tab-bar${dropActive ? ' clt-bottom-drop-active' : ''}`);
+      bar.dataset.stackId = stack.id;
+      bar.setAttribute('role', 'tablist');
+      bar.setAttribute('aria-label', 'Bottom-tabbed stack');
+      rectStyle(bar, tabBarRect);
+      bar.onpointerdown = e => this.startBottomBarMove(e, { stackId: stack.id });
+      bar.oncontextmenu = e => this.bottomBarMenu(e, { stackId: stack.id });
+
+      const scroll = element('div', 'clt-bottom-tab-scroll');
+      const isSameStackDrag = this.drag?.kind === 'bottom-tab-drag' && this.drag.moved && this.drag.sourceKind === 'stack' && this.drag.stackId === stack.id;
+
+      stack.tabs.forEach((tab, idx) => {
+        const active = idx === activeIdx;
+        const pill = element('div', `clt-bottom-tab${active ? ' active' : ''}`);
+        pill.dataset.tabId = tab.id;
+        pill.dataset.tabIndex = String(idx);
+        pill.setAttribute('role', 'tab');
+        pill.setAttribute('aria-selected', String(active));
+        if (isSameStackDrag && this.drag.tabIndex === idx) pill.classList.add('dragging');
+        if (isSameStackDrag && this.bottomTabPreview?.mode === 'reorder-stack' && this.bottomTabPreview.targetIndex === idx && idx !== this.drag.tabIndex) {
+          pill.classList.add(idx < this.drag.tabIndex ? 'clt-tab-insert-before' : 'clt-tab-insert-after');
+        }
+        const accentColor = normalizeColor(tab.color);
+        if (accentColor) {
+          const accent = element('span', 'clt-bottom-tab-accent');
+          accent.style.background = accentColor;
+          pill.append(accent);
+          if (active) pill.style.borderTopColor = accentColor;
+        }
+        if (tab.kind === 'group') {
+          const grpIcon = element('span', 'clt-cell-tab-icon', '▣');
+          pill.append(grpIcon);
+        } else if (tab.icon) {
+          pill.append(element('span', 'clt-cell-tab-icon', tab.icon));
+        }
+        pill.append(this.bottomTabTitle(tab.label, { sourceKind: 'stack', stackId: stack.id, tabIndex: idx }));
+        if (!active && this.hasStackTabExternalLinks(tab)) {
+          const dot = element('span', 'clt-bottom-port-dot');
+          dot.title = 'External wires connected to this tab';
+          pill.append(dot);
+        }
+        pill.onpointerdown = e => this.startBottomTabDrag(e, { sourceKind: 'stack', stackId: stack.id, tabIndex: idx });
+        pill.oncontextmenu = e => this.bottomBarMenu(e, { stackId: stack.id, tabIndex: idx });
+        scroll.append(pill);
+      });
+
+      bar.append(scroll);
+      const menuBtn = button('Stack options', e => this.bottomBarMenu(e, { stackId: stack.id }), '•••');
+      menuBtn.classList.add('clt-cell-options');
+      bar.append(menuBtn);
+      fragment.append(bar);
+    }
+
+    // Render standalone or Grid-docked intra-node bottom bars (not already rendered as innerNodeTabBar)
+    for (const [nodeId, cfg] of Object.entries(this.controller.nodeTabs ?? {})) {
+      const k = String(nodeId);
+      if (innerNodeIds.has(k) || hidden.has(k)) continue;
+      const node = this.controller.graph?.getNodeById?.(nodeId);
+      if (!node?.pos || !node?.size || node.flags?.collapsed) continue;
+      const rect = [node.pos[0], node.pos[1] + node.size[1], node.size[0], BOTTOM_TAB_BAR_HEIGHT];
+      fragment.append(this.renderNodeBottomBar(nodeId, cfg, rect, { isInner: false }));
+    }
+  }
   dispose() {
+    if (typeof document !== 'undefined') {
+      for (const domNode of document.querySelectorAll?.('.lg-node.clt-has-bottom-tabs') ?? []) {
+        domNode.classList?.remove?.('clt-has-bottom-tabs');
+        for (const sub of domNode.querySelectorAll?.('.clt-section-hidden') ?? []) {
+          sub.classList?.remove?.('clt-section-hidden');
+        }
+      }
+    }
     this.linkEffects.dispose();
     if (this.app.canvas) {
       if (this.origOnDrawBackground !== undefined) {
@@ -2743,8 +3567,9 @@ export class LayoutOverlay {
         else delete this.app.canvas.computeVisibleNodes;
       }
       if (this.origDrawConnections !== undefined) {
-        if (this.hadOwnDrawConnections) this.app.canvas.drawConnections = this.origDrawConnections;
-        else delete this.app.canvas.drawConnections;
+        this.hadOwnDrawConnections
+          ? (this.app.canvas.drawConnections = this.origDrawConnections)
+          : delete this.app.canvas.drawConnections;
       }
       if (this.origRenderLink !== undefined) {
         this.app.canvas.renderLink = this.origRenderLink;
