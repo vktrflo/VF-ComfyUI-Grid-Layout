@@ -293,6 +293,70 @@ try {
   assert.equal(tabPillDropState.activeTab, 2, 'dropping node onto existing tab pill activates that tab');
   assert.equal(tabPillDropState.pipelineNodes.includes(tabPillDropState.expected), true, 'dropping node onto existing tab pill moves node into that tab');
 
+  // 7. Verify inactive-tab link routing, collapsed node width preservation, and removal of custom node/group bypass & Enabled ports
+  const visualsCheck = await page.evaluate(async () => {
+    const app = window.comfyAPI.app.app;
+    const ext = app.extensions.find(e => e.name === 'VF.ComfyUI.GridLayout');
+    const frame = ext.controller.frames[0];
+    const editor = frame.root.children[1].children[0];
+    // Ensure we have a node in Tab 0 and a node in Tab 2, with a link between them
+    const tab0Id = editor.tabs[0]?.nodes?.[0];
+    const tab2Id = editor.tabs[2]?.nodes?.[0];
+    let routedLink = null;
+    if (tab0Id != null && tab2Id != null) {
+      ext.controller.edit(() => {
+        editor.activeTab = 2; // Tab 2 active, Tab 0 inactive
+      });
+      ext.overlay.render(ext.controller.geometry());
+      const hidden = ext.overlay.refreshHidden();
+      routedLink = hidden.targets.get(String(tab0Id)) ?? null;
+    }
+
+    // Collapse the active node in Tab 2 and verify its width matches the cell content width
+    let collapsedDomWidth = 0;
+    let expectedCellContentWidth = 0;
+    let collapsedClassicWidth = 0;
+    if (tab2Id != null) {
+      const node = app.graph.getNodeById(tab2Id);
+      node.flags ??= {};
+      node.flags.collapsed = true;
+      ext.controller.reflow();
+      ext.overlay.render(ext.controller.geometry());
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const placement = ext.controller.geometry()[0].placements.find(p => String(p.nodeId) === String(tab2Id));
+      expectedCellContentWidth = placement?.width ?? 0;
+      collapsedClassicWidth = node._collapsed_width ?? 0;
+      const el = document.querySelector(`.lg-node[data-node-id="${CSS.escape(String(tab2Id))}"]`);
+      collapsedDomWidth = el ? el.getBoundingClientRect().width : 0;
+      delete node.flags.collapsed;
+      ext.controller.reflow();
+    }
+
+    return {
+      routedLink,
+      collapsedDomWidth,
+      expectedCellContentWidth,
+      collapsedClassicWidth,
+      hasFrameBypassBtn: document.querySelectorAll('.clt-frame-bypass').length > 0,
+      nodeBypassBars: document.querySelectorAll('.vf-nb-node-bar').length,
+      groupBypassBars: document.querySelectorAll('.vf-nb-group-bar').length,
+      enabledPorts: document.querySelectorAll('.vf-nb-port').length,
+    };
+  });
+  assert.ok(visualsCheck.routedLink?.inPos && visualsCheck.routedLink?.outPos, 'inactive tab node has routed link anchor on its tab pill');
+  assert.ok(
+    Math.abs(visualsCheck.collapsedDomWidth - visualsCheck.expectedCellContentWidth) <= 2,
+    `collapsed node in Nodes 2.0 maintains full cell width (${visualsCheck.collapsedDomWidth} vs ${visualsCheck.expectedCellContentWidth})`
+  );
+  assert.ok(
+    Math.abs(visualsCheck.collapsedClassicWidth - visualsCheck.expectedCellContentWidth) <= 1,
+    `collapsed node _collapsed_width maintains full cell width (${visualsCheck.collapsedClassicWidth} vs ${visualsCheck.expectedCellContentWidth})`
+  );
+  assert.equal(visualsCheck.hasFrameBypassBtn, true, 'Grid header has native .clt-frame-bypass button');
+  assert.equal(visualsCheck.nodeBypassBars, 0, 'custom bypass icon removed from individual nodes');
+  assert.equal(visualsCheck.groupBypassBars, 0, 'custom bypass icon removed from groups');
+  assert.equal(visualsCheck.enabledPorts, 0, 'custom Enabled input ports removed from UI');
+
   assert.deepEqual(errors, [], 'no browser runtime errors during IDE UI verification');
   console.log('IDE UI Builder browser verification passed!');
 } finally {

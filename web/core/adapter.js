@@ -80,13 +80,49 @@ export class NodeAdapter {
     if (placement.fill) this.appliedHeights.set(this.trackKey(node), placement.height);
     // ComfyUI's setters update the shared layout store used by Nodes 2.0.
     // setSize also invokes custom nodes' resize callbacks in classic mode.
-    if (!node.flags?.collapsed) this.imposedWidths.set(node, placement.width);
-    if (!node.flags?.collapsed && (Math.abs(node.size[0] - placement.width) > 0.1 || Math.abs(node.size[1] - placement.height) > 0.1)) {
+    this.imposedWidths.set(node, placement.width);
+    this.lockCollapsedWidth(node, placement.width);
+    if (node.flags?.collapsed) {
+      if (Array.isArray(node.size) && Math.abs((node.size[0] ?? 0) - placement.width) > 0.1) {
+        const nextSize = [placement.width, node.size[1] ?? 0];
+        if (node.setSize) node.setSize(nextSize);
+        else { node.size = nextSize; node.onResize?.(nextSize); }
+      }
+      if (globalThis.LiteGraph?.vueNodesMode && globalThis.document) {
+        const element = document.querySelector(`.lg-node[data-node-id="${CSS.escape(String(node.id))}"]`);
+        if (element) element.style?.setProperty?.('--node-width', `${placement.width}px`);
+      }
+    } else if (Math.abs(node.size[0] - placement.width) > 0.1 || Math.abs(node.size[1] - placement.height) > 0.1) {
       const size = [placement.width, placement.height];
       if (node.setSize) node.setSize(size);
       else { node.size = size; node.onResize?.(size); }
     }
     node.setDirtyCanvas?.(true, true);
+  }
+  lockCollapsedWidth(node, width) {
+    if (!node || typeof node !== 'object' || !Number.isFinite(width)) return;
+    try {
+      Object.defineProperty(node, '_collapsed_width', {
+        configurable: true,
+        enumerable: true,
+        get: () => this.imposedWidths.get(node) ?? width,
+        set: () => {},
+      });
+    } catch {
+      node._collapsed_width = width;
+    }
+  }
+  releaseDockedWidth(node) {
+    if (!node || typeof node !== 'object') return;
+    this.imposedWidths.delete(node);
+    const desc = Object.getOwnPropertyDescriptor(node, '_collapsed_width');
+    if (desc && typeof desc.get === 'function') {
+      try { delete node._collapsed_width; } catch {}
+    }
+    if (globalThis.LiteGraph?.vueNodesMode && globalThis.document && node.flags?.collapsed) {
+      const element = document.querySelector?.(`.lg-node[data-node-id="${CSS.escape ? CSS.escape(String(node.id)) : node.id}"]`);
+      if (element) element.style?.removeProperty?.('--node-width');
+    }
   }
   // Neither renderer honors flags.hidden, so folding a node down to its title
   // bar is the only supported way to take one out of the visual flow. Both

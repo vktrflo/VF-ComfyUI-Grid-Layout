@@ -195,7 +195,18 @@ export class LayoutController {
     });
   }
   remove(frameId) {
-    this.edit(() => { this.ensureData().frames = this.frames.filter(f => f.id !== frameId); });
+    this.edit(() => {
+      const target = this.frames.find(f => f.id === frameId);
+      if (target) {
+        for (const cell of leaves(target.root)) {
+          for (const id of cell.nodes) {
+            const node = this.graph?.getNodeById(id);
+            if (node) this.adapter.releaseDockedWidth?.(node);
+          }
+        }
+      }
+      this.ensureData().frames = this.frames.filter(f => f.id !== frameId);
+    });
   }
   import(value, pos) {
     const frame = importTemplate(value, pos);
@@ -238,9 +249,16 @@ export class LayoutController {
         else if (frame.autohide === true && !this.pendingAutohide.has(frame.id)) delete frame.autohide;
       }
     }
+    const dockedIds = new Set();
     for (const { placements } of this.geometry()) for (const placement of placements) {
+      dockedIds.add(String(placement.nodeId));
       const node = this.graph.getNodeById(placement.nodeId);
       if (node) this.adapter.apply(node, placement);
+    }
+    for (const node of this.graph?._nodes ?? this.graph?.nodes ?? []) {
+      if (node && !dockedIds.has(String(node.id)) && this.adapter.imposedWidths?.has?.(node)) {
+        this.adapter.releaseDockedWidth?.(node);
+      }
     }
     this.graph?.setDirtyCanvas?.(true, true);
   }

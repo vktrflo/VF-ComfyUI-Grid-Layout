@@ -64,7 +64,7 @@ const STYLE = `
 .clt-autohide[aria-pressed="false"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
 .clt-autohide[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E")}
 .clt-bypass[aria-pressed="true"]{background:rgba(168,85,247,.28);border-color:#a855f7;color:#e9d5ff}
-.lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
+.lg-node.clt-node-hidden,.dom-widget.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:4px;border-radius:4px 4px 0 0}
 .clt-cell-header.clt-cell-header-floating{position:absolute;top:-11px;right:8px;height:20px;padding:0 4px;border-radius:999px;border:1px solid #5d7e89;box-shadow:0 2px 6px rgba(0,0,0,.35);z-index:5}
@@ -432,6 +432,8 @@ export const MENU_ICONS = {
   'Undo Fill cell height (this column)': '↩',
   'Bypass cell': '↱',
   'Unbypass cell': '▶',
+  'Bypass grid': '↱',
+  'Unbypass grid': '▶',
   'Lock frame': '●',
   'Unlock frame': '○',
   'Minimize grid': '−',
@@ -633,14 +635,22 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
 }
 
 export function routeMinimizedEndpoints(hidden, graph, link, startPos, endPos, extras = {}) {
-  if (!link) return [startPos, endPos];
-  const origin = hidden.frames.get(String(link.origin_id));
-  const target = hidden.frames.get(String(link.target_id));
-  if (origin && origin === target) return null;
+  if (!link || !hidden) return [startPos, endPos];
+  const oId = String(link.origin_id);
+  const tId = String(link.target_id);
+  const originFrame = hidden.frames?.get?.(oId);
+  const targetFrame = hidden.frames?.get?.(tId);
+  const originTarget = originFrame
+    ? { key: originFrame, outPos: [originFrame.pos[0] + originFrame.size[0], originFrame.pos[1] + originFrame.size[1] / 2] }
+    : hidden.targets?.get?.(oId);
+  const targetTarget = targetFrame
+    ? { key: targetFrame, inPos: [targetFrame.pos[0], targetFrame.pos[1] + targetFrame.size[1] / 2] }
+    : hidden.targets?.get?.(tId);
+  if (originTarget && targetTarget && originTarget.key === targetTarget.key) return null;
   // Intermediate segments must retain their reroute positions and controls.
   const startsAtReroute = extras.startControl || graph?.getReroute?.(extras.reroute?.parentId);
-  if (origin && !startsAtReroute) startPos = [origin.pos[0] + origin.size[0], origin.pos[1] + origin.size[1] / 2];
-  if (target && !extras.reroute) endPos = [target.pos[0], target.pos[1] + target.size[1] / 2];
+  if (originTarget?.outPos && !startsAtReroute) startPos = [...originTarget.outPos];
+  if (targetTarget?.inPos && !extras.reroute) endPos = [...targetTarget.inPos];
   return [startPos, endPos];
 }
 
@@ -670,6 +680,28 @@ export class LayoutOverlay {
         this.linkEffects.drawNodeBorder(node, ctx);
         return result;
       };
+      if (typeof canvas.computeVisibleNodes === 'function') {
+        this.hadOwnComputeVisibleNodes = Object.hasOwn(canvas, 'computeVisibleNodes');
+        this.origComputeVisibleNodes = canvas.computeVisibleNodes;
+        canvas.computeVisibleNodes = (nodes, out) => {
+          const baseCompute = (!this.hadOwnComputeVisibleNodes && Object.getPrototypeOf(canvas)?.computeVisibleNodes) || this.origComputeVisibleNodes;
+          const res = baseCompute?.call(canvas, nodes, out);
+          if (this.hidden?.ids?.size) {
+            if (Array.isArray(res)) {
+              for (let i = res.length - 1; i >= 0; i--) {
+                if (res[i] && this.hidden.ids.has(String(res[i].id))) res.splice(i, 1);
+              }
+            }
+            const vn = canvas.visible_nodes;
+            if (Array.isArray(vn) && vn !== res) {
+              for (let i = vn.length - 1; i >= 0; i--) {
+                if (vn[i] && this.hidden.ids.has(String(vn[i].id))) vn.splice(i, 1);
+              }
+            }
+          }
+          return res;
+        };
+      }
       if (canvas.drawConnections) {
         this.hadOwnDrawConnections = Object.hasOwn(canvas, 'drawConnections');
         this.origDrawConnections = canvas.drawConnections;
@@ -686,14 +718,6 @@ export class LayoutOverlay {
             const targetFrame = this.hidden.appModeFrames.get(String(link.target_id));
             if (originFrame && originFrame === targetFrame) return;
           }
-          if (link && this.hidden?.ids?.size) {
-            const oId = String(link.origin_id);
-            const tId = String(link.target_id);
-            if ((this.hidden.ids.has(oId) && !this.hidden.frames.has(oId)) ||
-                (this.hidden.ids.has(tId) && !this.hidden.frames.has(tId))) {
-              return;
-            }
-          }
           const extras = rest[5];
           const endpoints = routeMinimizedEndpoints(this.hidden, this.controller.graph, link, startPos, endPos, extras);
           if (!endpoints) return;
@@ -702,7 +726,7 @@ export class LayoutOverlay {
         };
       }
     }
-    this.hidden = { ids: new Set(), frames: new Map() };
+    this.hidden = { ids: new Set(), frames: new Map(), targets: new Map() };
     this.menu = null; this.drag = null; this.nativeDrag = null; this.nativeNode = null; this.hover = null; this.dropPreview = null;
     this.ghostNodeId = null; this.ghostHandled = new Set();
     const options = { capture: true, signal: this.abort.signal };
@@ -1384,6 +1408,9 @@ export class LayoutOverlay {
         if (f) f.fill = true;
       })]);
     }
+    if (this.frameHasNodes(frame)) {
+      actions.push([this.isFrameBypassed(frame) ? 'Unbypass grid' : 'Bypass grid', () => this.toggleFrameBypass(frame.id)]);
+    }
     const targetCell = includeToggles
       ? ((cellId && findCell(frame.root, cellId)) || this.controller.selectedCell?.(frame) || leaves(frame.root)[0])
       : null;
@@ -1728,7 +1755,26 @@ export class LayoutOverlay {
   }
   frameHasNodes(frame) {
     const graph = this.controller.graph;
-    return leaves(frame.root).some(cell => cell.nodes.some(id => graph?.getNodeById(id)));
+    return Boolean(frame && leaves(frame.root).some(cell => cell.nodes.some(id => graph?.getNodeById(id))));
+  }
+  isFrameBypassed(frame) {
+    const graph = this.controller.graph;
+    if (!frame?.root) return false;
+    const nodes = leaves(frame.root).flatMap(cell => cell.nodes.map(id => graph?.getNodeById(id))).filter(Boolean);
+    return nodes.length > 0 && nodes.every(node => node.mode === 4);
+  }
+  toggleFrameBypass(frameId) {
+    this.safe(() => this.controller.edit(() => {
+      const frame = this.controller.frames.find(f => f.id === frameId);
+      if (!frame?.root) return;
+      const graph = this.controller.graph;
+      const nodes = leaves(frame.root).flatMap(cell => cell.nodes.map(id => graph?.getNodeById(id))).filter(Boolean);
+      if (!nodes.length) return;
+      const nextMode = nodes.every(node => node.mode === 4) ? 0 : 4;
+      for (const node of nodes) node.mode = nextMode;
+    }));
+    this.signature = null;
+    this.app.canvas?.setDirty(true, true);
   }
   isFrameAutohidden(frame, selectedIds, dragged) {
     if (!frame || frame.autohide !== true) return false;
@@ -1800,7 +1846,7 @@ export class LayoutOverlay {
   // Node draws and link draws consult this per item, so it is rebuilt once
   // per animation frame (and right after minimize/tab/collapse toggles), not per lookup.
   refreshHidden() {
-    const ids = new Set(), frames = new Map(), appModeFrames = new Map();
+    const ids = new Set(), frames = new Map(), appModeFrames = new Map(), targets = new Map();
     for (const frame of this.controller.frames ?? []) {
       const isAppMode = frame.appMode === true;
       const maxCellId = frame.maximizedCellId ? String(frame.maximizedCellId) : null;
@@ -1814,30 +1860,115 @@ export class LayoutOverlay {
           }
         }
         if (frame.minimized === true) continue;
-        if (hasMaxCell && cell.id !== maxCellId) {
-          for (const n of cell.nodes) ids.add(String(n));
+        if (frame.collapsed === true) {
+          if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
+            const activeIdx = activeTabIndex(cell);
+            const activeSet = new Set((cell.tabs[activeIdx]?.nodes ?? []).map(String));
+            for (const n of cell.nodes) {
+              if (!activeSet.has(String(n))) {
+                const k = String(n);
+                ids.add(k);
+                targets.set(k, {
+                  key: `frame:${frame.id}`,
+                  inPos: [frame.pos[0], frame.pos[1] + 18],
+                  outPos: [frame.pos[0] + frame.size[0], frame.pos[1] + 18],
+                });
+              }
+            }
+          }
           continue;
         }
+        if (hasMaxCell && cell.id !== maxCellId) {
+          for (const n of cell.nodes) {
+            const k = String(n);
+            ids.add(k);
+            targets.set(k, {
+              key: `max:${frame.id}`,
+              inPos: [frame.pos[0], frame.pos[1] + 18],
+              outPos: [frame.pos[0] + frame.size[0], frame.pos[1] + 18],
+            });
+          }
+          continue;
+        }
+        const cellEl = this.plane?.querySelector?.(`.clt-cell[data-cell-id="${cell.id}"]`);
+        const cx = parseFloat(cellEl?.style?.left);
+        const cy = parseFloat(cellEl?.style?.top);
+        const cw = parseFloat(cellEl?.style?.width);
+        const ch = parseFloat(cellEl?.style?.height);
+        const hasCellRect = Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(cw) && Number.isFinite(ch) && cw > 0 && ch > 0;
         if (cell.collapsed === true) {
-          for (const n of cell.nodes) ids.add(String(n));
+          const inPos = hasCellRect ? [cx, cy + ch / 2] : [frame.pos[0], frame.pos[1] + frame.size[1] / 2];
+          const outPos = hasCellRect ? [cx + cw, cy + ch / 2] : [frame.pos[0] + frame.size[0], frame.pos[1] + frame.size[1] / 2];
+          for (const n of cell.nodes) {
+            const k = String(n);
+            ids.add(k);
+            targets.set(k, { key: `cell:${cell.id}`, inPos, outPos });
+          }
           continue;
         }
         if (Array.isArray(cell.tabs) && cell.tabs.length > 0) {
           const activeIdx = activeTabIndex(cell);
           const activeSet = new Set((cell.tabs[activeIdx]?.nodes ?? []).map(String));
+          cell.tabs.forEach((tab, tabIdx) => {
+            if (tabIdx === activeIdx) return;
+            let inPos, outPos;
+            const tabEl = cellEl?.querySelector?.(`.clt-cell-tab[data-tab-index="${tabIdx}"]`);
+            if (hasCellRect && tabEl && tabEl.offsetWidth > 0) {
+              const tx = cx + tabEl.offsetLeft;
+              const ty = cy + tabEl.offsetTop;
+              const tw = tabEl.offsetWidth;
+              const th = tabEl.offsetHeight || (CELL_TITLE - 4);
+              inPos = [tx, ty + th / 2];
+              outPos = [tx + tw, ty + th / 2];
+            } else if (hasCellRect) {
+              const slotW = Math.min(86, Math.max(40, (cw - 80) / Math.max(1, cell.tabs.length)));
+              const tx = cx + 8 + tabIdx * slotW;
+              const ty = cy + CELL_TITLE / 2;
+              inPos = [tx, ty];
+              outPos = [tx + Math.max(24, slotW - 4), ty];
+            } else {
+              const slotW = 86;
+              const tx = frame.pos[0] + PAD + 8 + tabIdx * slotW;
+              const ty = frame.pos[1] + 36 + PAD + CELL_TITLE / 2;
+              inPos = [tx, ty];
+              outPos = [tx + 76, ty];
+            }
+            for (const n of tab.nodes ?? []) {
+              const k = String(n);
+              if (activeSet.has(k)) continue;
+              ids.add(k);
+              targets.set(k, { key: `tab:${cell.id}:${tabIdx}`, inPos, outPos });
+            }
+          });
           for (const n of cell.nodes) {
-            if (!activeSet.has(String(n))) ids.add(String(n));
+            const k = String(n);
+            if (!activeSet.has(k)) {
+              ids.add(k);
+              if (!targets.has(k)) {
+                const inPos = hasCellRect ? [cx, cy + CELL_TITLE / 2] : [frame.pos[0], frame.pos[1] + 48];
+                const outPos = hasCellRect ? [cx + cw, cy + CELL_TITLE / 2] : [frame.pos[0] + frame.size[0], frame.pos[1] + 48];
+                targets.set(k, { key: `cell:${cell.id}`, inPos, outPos });
+              }
+            }
           }
         }
       }
     }
-    if (this.nativeNode?.id != null) ids.delete(String(this.nativeNode.id));
-    for (const d of this.draggedNodes()) {
-      if (d?.id != null) ids.delete(String(d.id));
+    if (this.nativeNode?.id != null) {
+      ids.delete(String(this.nativeNode.id));
+      targets.delete(String(this.nativeNode.id));
     }
-    this.hidden = { ids, frames, appModeFrames };
+    for (const d of this.draggedNodes()) {
+      if (d?.id != null) {
+        ids.delete(String(d.id));
+        targets.delete(String(d.id));
+      }
+    }
+    const prevIds = this.hidden?.ids;
+    const hiddenChanged = !prevIds || prevIds.size !== ids.size || [...ids].some(id => !prevIds.has(id));
+    this.hidden = { ids, frames, appModeFrames, targets };
     if (typeof document !== 'undefined') {
-      for (const el of document.querySelectorAll?.('.lg-node, .vf-nb-node-bar') ?? []) {
+      for (const el of document.querySelectorAll?.('.lg-node') ?? []) {
         const id = el.dataset?.nodeId || el.getAttribute?.('data-node-id');
         if (id && ids.has(String(id))) {
           el.classList?.add?.('clt-node-hidden');
@@ -1845,6 +1976,26 @@ export class LayoutOverlay {
           el.classList?.remove?.('clt-node-hidden');
         }
       }
+      const graph = this.controller.graph;
+      for (const node of graph?._nodes ?? graph?.nodes ?? []) {
+        if (!node?.widgets?.length) continue;
+        const isHidden = ids.has(String(node.id));
+        for (const w of node.widgets) {
+          const domEl = w?.element ?? w?.inputEl;
+          if (!domEl) continue;
+          const wrapper = domEl.closest?.('.dom-widget') ?? domEl;
+          if (isHidden) {
+            wrapper.classList?.add?.('clt-node-hidden');
+            if (wrapper.style) wrapper.style.display = 'none';
+          } else if (wrapper.classList?.contains?.('clt-node-hidden')) {
+            wrapper.classList.remove('clt-node-hidden');
+            if (wrapper.style?.display === 'none') wrapper.style.display = '';
+          }
+        }
+      }
+    }
+    if (hiddenChanged) {
+      this.app?.canvas?.setDirty?.(true, true);
     }
     const graph = this.controller.graph;
     if (graph && typeof graph.getNodeOnPos === 'function' && !graph._cltWrappedGetNodeOnPos && !graph.getNodeOnPos._cltWrappedGetNodeOnPos) {
@@ -2144,6 +2295,7 @@ export class LayoutOverlay {
           // Nodes 2.0 DOM measurement). Keep the attached stack coherent.
           if (!this.drag && !this.nativeDrag && !this.isGhostActive() && this.controller.frames.length) this.controller.reflow();
           this.signature = signature; this.renderedData = data; this.render(layouts);
+          this.refreshHidden();
         }
         this.previewHeader();
         this.previewBorder();
@@ -2165,6 +2317,13 @@ export class LayoutOverlay {
           el.classList.add('clt-node-hidden');
         } else {
           el.classList.remove('clt-node-hidden');
+        }
+        if (id) {
+          const node = this.controller.graph?.getNodeById?.(id);
+          const imposed = node && this.controller.adapter?.imposedWidths?.get?.(node);
+          if (node?.flags?.collapsed && Number.isFinite(imposed)) {
+            el.style?.setProperty?.('--node-width', `${imposed}px`);
+          }
         }
       }
     }
@@ -2220,6 +2379,16 @@ export class LayoutOverlay {
       header.append(lock);
 
       const empty = !this.frameHasNodes(frame);
+      const frameBypassed = this.isFrameBypassed(frame);
+      const frameBypassBtn = button(frameBypassed ? 'Unbypass grid' : 'Bypass grid', () => this.toggleFrameBypass(frame.id), '↱');
+      frameBypassBtn.classList.add('clt-bypass', 'clt-frame-bypass');
+      frameBypassBtn.setAttribute('aria-pressed', String(frameBypassed));
+      if (empty) {
+        frameBypassBtn.disabled = true;
+        frameBypassBtn.title = 'Add a node to the grid to use bypass';
+      }
+      header.append(frameBypassBtn);
+
       const autohide = frame.autohide === true && !empty;
       const autohideBtn = button(autohide ? 'Disable autohide' : 'Autohide grid', () => this.toggleAutohide(frame.id), autohide ? '🙈' : '👁');
       autohideBtn.classList.add('clt-autohide');
@@ -2565,6 +2734,10 @@ export class LayoutOverlay {
       }
       if (this.origDrawNode !== undefined) {
         this.app.canvas.drawNode = this.origDrawNode;
+      }
+      if (this.origComputeVisibleNodes !== undefined) {
+        if (this.hadOwnComputeVisibleNodes) this.app.canvas.computeVisibleNodes = this.origComputeVisibleNodes;
+        else delete this.app.canvas.computeVisibleNodes;
       }
       if (this.origDrawConnections !== undefined) {
         if (this.hadOwnDrawConnections) this.app.canvas.drawConnections = this.origDrawConnections;
