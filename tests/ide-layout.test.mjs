@@ -720,4 +720,110 @@ test('toggleFrameBypass toggles node.mode across all cells in the grid frame', a
   assert.equal(overlay.isFrameBypassed(frame), false);
 });
 
+test('Classic mode DOM widgets (.dom-widget) and computeVisibleNodes hide inactive tab nodes without bleedthrough', async () => {
+  const { LayoutOverlay } = await import('../web/core/overlay.js');
+  const prevDoc = globalThis.document;
+  const prevWin = globalThis.window;
+  const prevRAF = globalThis.requestAnimationFrame;
+  const prevCAF = globalThis.cancelAnimationFrame;
+  try {
+    globalThis.window = { addEventListener() {} };
+    globalThis.requestAnimationFrame = () => 1;
+    globalThis.cancelAnimationFrame = () => {};
+    const domWidget1 = {
+      style: { display: '' },
+      classList: {
+        _set: new Set(),
+        add(c) { this._set.add(c); },
+        remove(c) { this._set.delete(c); },
+        contains(c) { return this._set.has(c); },
+      },
+    };
+    const textareaEl1 = {
+      closest(sel) { return sel === '.dom-widget' ? domWidget1 : null; },
+    };
+    const domWidget2 = {
+      style: { display: '' },
+      classList: {
+        _set: new Set(),
+        add(c) { this._set.add(c); },
+        remove(c) { this._set.delete(c); },
+        contains(c) { return this._set.has(c); },
+      },
+    };
+    const textareaEl2 = {
+      closest(sel) { return sel === '.dom-widget' ? domWidget2 : null; },
+    };
+    globalThis.document = {
+      head: { append() {} },
+      addEventListener() {},
+      createElement() {
+        return {
+          style: {},
+          classList: { add() {}, remove() {}, toggle() {} },
+          append() {},
+          addEventListener() {},
+          remove() {},
+        };
+      },
+      querySelectorAll() { return []; },
+    };
+    globalThis.getComputedStyle = () => ({ position: 'relative' });
+
+    const frame = engine.createFrame([100, 100]);
+    delete frame.autohide;
+    frame.root.tabs = [
+      { id: 't0', label: 'Prompt Tab', nodes: [1] },
+      { id: 't1', label: 'Image Tab', nodes: [2] },
+    ];
+    frame.root.activeTab = 1; // Image Tab active; Prompt Tab (node 1 with textarea DOM widget) is inactive
+    engine.syncCellTabs(frame.root);
+
+    const n1 = { id: 1, widgets: [{ name: 'text', element: textareaEl1 }] };
+    const n2 = { id: 2, widgets: [{ name: 'text', element: textareaEl2 }] };
+    const graph = {
+      extra: { [engine.KEY]: { version: engine.VERSION, frames: [frame] } },
+      _nodes: [n1, n2],
+      getNodeById(id) { return [n1, n2].find(n => String(n.id) === String(id)) ?? null; },
+    };
+    const canvas = {
+      canvas: { parentElement: { style: {}, append() {} } },
+      graph,
+      ds: { scale: 1, offset: [0, 0] },
+      visible_nodes: [n1, n2],
+      computeVisibleNodes(nodes) {
+        this.visible_nodes = [...(nodes ?? [n1, n2])];
+        return this.visible_nodes;
+      },
+      setDirty() {},
+    };
+    const app = { canvas, graph, configuringGraph: false };
+    const controller = new LayoutController(app, { defaultColumns: 1 });
+    const overlay = new LayoutOverlay(controller);
+
+    overlay.refreshHidden();
+    assert.equal(domWidget1.classList.contains('clt-node-hidden'), true, 'inactive tab DOM widget receives .clt-node-hidden');
+    assert.equal(domWidget1.style.display, 'none', 'inactive tab DOM widget has style.display = none');
+    assert.equal(domWidget2.classList.contains('clt-node-hidden'), false, 'active tab DOM widget stays visible');
+
+    const visible = canvas.computeVisibleNodes([n1, n2]);
+    assert.deepEqual(visible.map(n => n.id), [2], 'computeVisibleNodes filters out hidden inactive-tab node 1 in Classic mode');
+
+    // Switch back to Tab 0 -> node 1 DOM widget is unhidden and node 2 DOM widget is hidden
+    frame.root.activeTab = 0;
+    overlay.refreshHidden();
+    assert.equal(domWidget1.classList.contains('clt-node-hidden'), false, 'switching to Tab 0 unhides node 1 DOM widget');
+    assert.equal(domWidget1.style.display, '', 'switching to Tab 0 clears display:none on node 1 DOM widget');
+    assert.equal(domWidget2.classList.contains('clt-node-hidden'), true, 'switching to Tab 0 hides node 2 DOM widget');
+
+    overlay.dispose();
+  } finally {
+    globalThis.document = prevDoc;
+    globalThis.window = prevWin;
+    globalThis.requestAnimationFrame = prevRAF;
+    globalThis.cancelAnimationFrame = prevCAF;
+  }
+});
+
+
 

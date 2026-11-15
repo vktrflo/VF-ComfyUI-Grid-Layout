@@ -64,7 +64,7 @@ const STYLE = `
 .clt-autohide[aria-pressed="false"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
 .clt-autohide[aria-pressed="true"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.88 9.88a3 3 0 1 0 4.24 4.24'/%3E%3Cpath d='M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68'/%3E%3Cpath d='M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61'/%3E%3Cline x1='2' x2='22' y1='2' y2='22'/%3E%3C/svg%3E")}
 .clt-bypass[aria-pressed="true"]{background:rgba(168,85,247,.28);border-color:#a855f7;color:#e9d5ff}
-.lg-node.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
+.lg-node.clt-node-hidden,.dom-widget.clt-node-hidden{display:none !important;visibility:hidden !important;pointer-events:none !important}
 .clt-title-input{flex:1;min-width:0;width:100%;box-sizing:border-box;font:inherit;color:var(--fg-color,#e4e4e7);background:var(--comfy-input-bg,#111b20);border:1px solid #70d8be;border-radius:3px;padding:2px 4px;cursor:text;outline:none}
 .clt-cell-header{height:25px;display:flex;align-items:center;padding:0 6px;background:var(--comfy-menu-bg,#20282c);pointer-events:auto;user-select:none;gap:4px;border-radius:4px 4px 0 0}
 .clt-cell-header.clt-cell-header-floating{position:absolute;top:-11px;right:8px;height:20px;padding:0 4px;border-radius:999px;border:1px solid #5d7e89;box-shadow:0 2px 6px rgba(0,0,0,.35);z-index:5}
@@ -680,6 +680,28 @@ export class LayoutOverlay {
         this.linkEffects.drawNodeBorder(node, ctx);
         return result;
       };
+      if (typeof canvas.computeVisibleNodes === 'function') {
+        this.hadOwnComputeVisibleNodes = Object.hasOwn(canvas, 'computeVisibleNodes');
+        this.origComputeVisibleNodes = canvas.computeVisibleNodes;
+        canvas.computeVisibleNodes = (nodes, out) => {
+          const baseCompute = (!this.hadOwnComputeVisibleNodes && Object.getPrototypeOf(canvas)?.computeVisibleNodes) || this.origComputeVisibleNodes;
+          const res = baseCompute?.call(canvas, nodes, out);
+          if (this.hidden?.ids?.size) {
+            if (Array.isArray(res)) {
+              for (let i = res.length - 1; i >= 0; i--) {
+                if (res[i] && this.hidden.ids.has(String(res[i].id))) res.splice(i, 1);
+              }
+            }
+            const vn = canvas.visible_nodes;
+            if (Array.isArray(vn) && vn !== res) {
+              for (let i = vn.length - 1; i >= 0; i--) {
+                if (vn[i] && this.hidden.ids.has(String(vn[i].id))) vn.splice(i, 1);
+              }
+            }
+          }
+          return res;
+        };
+      }
       if (canvas.drawConnections) {
         this.hadOwnDrawConnections = Object.hasOwn(canvas, 'drawConnections');
         this.origDrawConnections = canvas.drawConnections;
@@ -1942,6 +1964,8 @@ export class LayoutOverlay {
         targets.delete(String(d.id));
       }
     }
+    const prevIds = this.hidden?.ids;
+    const hiddenChanged = !prevIds || prevIds.size !== ids.size || [...ids].some(id => !prevIds.has(id));
     this.hidden = { ids, frames, appModeFrames, targets };
     if (typeof document !== 'undefined') {
       for (const el of document.querySelectorAll?.('.lg-node') ?? []) {
@@ -1952,6 +1976,26 @@ export class LayoutOverlay {
           el.classList?.remove?.('clt-node-hidden');
         }
       }
+      const graph = this.controller.graph;
+      for (const node of graph?._nodes ?? graph?.nodes ?? []) {
+        if (!node?.widgets?.length) continue;
+        const isHidden = ids.has(String(node.id));
+        for (const w of node.widgets) {
+          const domEl = w?.element ?? w?.inputEl;
+          if (!domEl) continue;
+          const wrapper = domEl.closest?.('.dom-widget') ?? domEl;
+          if (isHidden) {
+            wrapper.classList?.add?.('clt-node-hidden');
+            if (wrapper.style) wrapper.style.display = 'none';
+          } else if (wrapper.classList?.contains?.('clt-node-hidden')) {
+            wrapper.classList.remove('clt-node-hidden');
+            if (wrapper.style?.display === 'none') wrapper.style.display = '';
+          }
+        }
+      }
+    }
+    if (hiddenChanged) {
+      this.app?.canvas?.setDirty?.(true, true);
     }
     const graph = this.controller.graph;
     if (graph && typeof graph.getNodeOnPos === 'function' && !graph._cltWrappedGetNodeOnPos && !graph.getNodeOnPos._cltWrappedGetNodeOnPos) {
@@ -2690,6 +2734,10 @@ export class LayoutOverlay {
       }
       if (this.origDrawNode !== undefined) {
         this.app.canvas.drawNode = this.origDrawNode;
+      }
+      if (this.origComputeVisibleNodes !== undefined) {
+        if (this.hadOwnComputeVisibleNodes) this.app.canvas.computeVisibleNodes = this.origComputeVisibleNodes;
+        else delete this.app.canvas.computeVisibleNodes;
       }
       if (this.origDrawConnections !== undefined) {
         if (this.hadOwnDrawConnections) this.app.canvas.drawConnections = this.origDrawConnections;
