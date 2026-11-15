@@ -899,6 +899,16 @@ test('Locked frame allows switching tabs via startTabDrag without starting a tab
     assert.equal(overlay.hidden.ids.has('1'), true, 'node in newly inactive tab is hidden');
     assert.equal(overlay.hidden.ids.has('2'), false, 'node in newly active tab is visible');
 
+    // Dragging a node out of a locked frame must keep the node docked in the locked frame and snap it back on reflow
+    const before = controller.snapshot();
+    n2.pos = [800, 800]; // simulate dragging node 2 far outside the locked grid
+    assert.equal(overlay.draggedNodes().length, 0, 'locked frame nodes are excluded from draggedNodes preview');
+    controller.finishNativeDrag(before, [850, 850]);
+    const afterDragFrame = controller.frames.find(f => f.id === frame.id);
+    assert.deepEqual(afterDragFrame.root.tabs[1].nodes, [2], 'node 2 remains in its tab inside the locked frame');
+    assert.deepEqual(afterDragFrame.root.nodes, [1, 2], 'locked frame cell retains its nodes when dragged outside');
+    assert.ok(n2.pos[0] < 400 && n2.pos[1] < 400, 'node 2 snaps back into the locked frame cell on reflow');
+
     overlay.dispose();
   } finally {
     globalThis.document = prevDoc;

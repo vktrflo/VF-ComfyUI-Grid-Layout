@@ -605,16 +605,31 @@ export function gridCell(frame, cellId, rows, columns, metrics) {
 
 export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity, metrics) {
   const target = frames.find(f => f.id === frameId);
+  if (target?.lock === true) return;
   const cell = target && findCell(target.root, cellId);
   if (frameId != null && (!cell || cell.children)) throw new Error('Drop into an unsplit cell.');
   const pad = target?.appMode === true ? 6 : PAD;
   const framePad = target?.appMode === true ? 4 : PAD;
   const gap = target?.appMode === true ? 4 : GAP;
   const initialInnerWidth = target && metrics ? Math.max(contentMinimumWidth(target.root, metrics, pad, gap), target.size[0] - framePad * 2) : 0;
-  const ids = [...new Set(nodeIds)];
+  const lockedNodeIds = new Set();
+  for (const frame of frames) {
+    if (frame?.lock !== true) continue;
+    for (const leaf of leaves(frame.root)) {
+      for (const n of leaf.nodes ?? []) lockedNodeIds.add(String(n));
+      for (const tab of leaf.tabs ?? []) {
+        for (const n of tab.nodes ?? []) lockedNodeIds.add(String(n));
+      }
+    }
+  }
+  const ids = [...new Set(nodeIds)].filter(id => !lockedNodeIds.has(String(id)));
+  if (!ids.length) return;
   const moving = new Set(ids.map(String));
-  for (const frame of frames) for (const leaf of leaves(frame.root)) {
-    removeNodeFromCell(leaf, moving);
+  for (const frame of frames) {
+    if (frame?.lock === true) continue;
+    for (const leaf of leaves(frame.root)) {
+      removeNodeFromCell(leaf, moving);
+    }
   }
   if (cell) {
     if (Array.isArray(cell.tabs) && cell.tabs.length) {
@@ -630,6 +645,7 @@ export function dropNodes(frames, frameId, cellId, nodeIds, index = Infinity, me
 
 export function dropNodesIntoTab(frames, frameId, cellId, nodeIds, options = {}) {
   const target = frames.find(f => f.id === frameId);
+  if (target?.lock === true) return null;
   const cell = target && findCell(target.root, cellId);
   if (!target || !cell || cell.children) throw new Error('Drop into an unsplit cell.');
   const metrics = options.metrics;
@@ -637,10 +653,24 @@ export function dropNodesIntoTab(frames, frameId, cellId, nodeIds, options = {})
   const framePad = target.appMode === true ? 4 : PAD;
   const gap = target.appMode === true ? 4 : GAP;
   const initialInnerWidth = metrics ? Math.max(contentMinimumWidth(target.root, metrics, pad, gap), target.size[0] - framePad * 2) : 0;
-  const ids = [...new Set(nodeIds)];
+  const lockedNodeIds = new Set();
+  for (const frame of frames) {
+    if (frame?.lock !== true) continue;
+    for (const leaf of leaves(frame.root)) {
+      for (const n of leaf.nodes ?? []) lockedNodeIds.add(String(n));
+      for (const tab of leaf.tabs ?? []) {
+        for (const n of tab.nodes ?? []) lockedNodeIds.add(String(n));
+      }
+    }
+  }
+  const ids = [...new Set(nodeIds)].filter(id => !lockedNodeIds.has(String(id)));
+  if (!ids.length) return null;
   const moving = new Set(ids.map(String));
-  for (const frame of frames) for (const leaf of leaves(frame.root)) {
-    removeNodeFromCell(leaf, moving);
+  for (const frame of frames) {
+    if (frame?.lock === true) continue;
+    for (const leaf of leaves(frame.root)) {
+      removeNodeFromCell(leaf, moving);
+    }
   }
   if (!Array.isArray(cell.tabs) || !cell.tabs.length) {
     const existing = [...(cell.nodes ?? [])];
@@ -669,6 +699,7 @@ export function dropNodesIntoTab(frames, frameId, cellId, nodeIds, options = {})
 
 export function dropNodesIntoExistingTab(frames, frameId, cellId, nodeIds, tabIndex, metrics) {
   const target = frames.find(f => f.id === frameId);
+  if (target?.lock === true) return null;
   const cell = target && findCell(target.root, cellId);
   if (!target || !cell || cell.children || !Array.isArray(cell.tabs) || !cell.tabs.length) {
     return dropNodes(frames, frameId, cellId, nodeIds, Infinity, metrics);
@@ -677,10 +708,24 @@ export function dropNodesIntoExistingTab(frames, frameId, cellId, nodeIds, tabIn
   const framePad = target.appMode === true ? 4 : PAD;
   const gap = target.appMode === true ? 4 : GAP;
   const initialInnerWidth = metrics ? Math.max(contentMinimumWidth(target.root, metrics, pad, gap), target.size[0] - framePad * 2) : 0;
-  const ids = [...new Set(nodeIds)];
+  const lockedNodeIds = new Set();
+  for (const frame of frames) {
+    if (frame?.lock !== true) continue;
+    for (const leaf of leaves(frame.root)) {
+      for (const n of leaf.nodes ?? []) lockedNodeIds.add(String(n));
+      for (const tab of leaf.tabs ?? []) {
+        for (const n of tab.nodes ?? []) lockedNodeIds.add(String(n));
+      }
+    }
+  }
+  const ids = [...new Set(nodeIds)].filter(id => !lockedNodeIds.has(String(id)));
+  if (!ids.length) return null;
   const moving = new Set(ids.map(String));
-  for (const frame of frames) for (const leaf of leaves(frame.root)) {
-    removeNodeFromCell(leaf, moving);
+  for (const frame of frames) {
+    if (frame?.lock === true) continue;
+    for (const leaf of leaves(frame.root)) {
+      removeNodeFromCell(leaf, moving);
+    }
   }
   const idx = Math.max(0, Math.min(cell.tabs.length - 1, Number(tabIndex) || 0));
   cell.activeTab = idx;
@@ -876,6 +921,7 @@ function findParent(root, childId) {
 export function insertColumnCell(frames, frameId, cellId, side, nodeIds, metrics) {
   if (!['left', 'right'].includes(side)) throw new Error('Choose left or right column insertion.');
   const target = frames.find(f => f.id === frameId);
+  if (target?.lock === true) return null;
   const cell = target && findCell(target.root, cellId);
   if (!target || !cell || cell.children) throw new Error('Drop into an unsplit cell.');
   if (leaves(target.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
@@ -888,10 +934,24 @@ export function insertColumnCell(frames, frameId, cellId, side, nodeIds, metrics
   const isLeftmost = beforeRect ? Math.abs(beforeRect[0] - (target.pos[0] + framePad)) < 1 : side === 'left';
   const initialInnerWidth = metrics ? Math.max(contentMinimumWidth(target.root, metrics, pad, gap), target.size[0] - framePad * 2) : target.size[0] - framePad * 2;
 
-  const ids = [...new Set(nodeIds)];
+  const lockedNodeIds = new Set();
+  for (const frame of frames) {
+    if (frame?.lock !== true) continue;
+    for (const leaf of leaves(frame.root)) {
+      for (const n of leaf.nodes ?? []) lockedNodeIds.add(String(n));
+      for (const tab of leaf.tabs ?? []) {
+        for (const n of tab.nodes ?? []) lockedNodeIds.add(String(n));
+      }
+    }
+  }
+  const ids = [...new Set(nodeIds)].filter(id => !lockedNodeIds.has(String(id)));
+  if (!ids.length) return null;
   const moving = new Set(ids.map(String));
-  for (const frame of frames) for (const leaf of leaves(frame.root)) {
-    removeNodeFromCell(leaf, moving);
+  for (const frame of frames) {
+    if (frame?.lock === true) continue;
+    for (const leaf of leaves(frame.root)) {
+      removeNodeFromCell(leaf, moving);
+    }
   }
 
   const nodeWidth = Math.max(160, ...ids.map(id => {
@@ -973,6 +1033,7 @@ export function insertColumnCell(frames, frameId, cellId, side, nodeIds, metrics
 export function insertRowCell(frames, frameId, cellId, side, nodeIds, metrics) {
   if (!['top', 'bottom'].includes(side)) throw new Error('Choose top or bottom row insertion.');
   const target = frames.find(f => f.id === frameId);
+  if (target?.lock === true) return null;
   const cell = target && findCell(target.root, cellId);
   if (!target || !cell || cell.children) throw new Error('Drop into an unsplit cell.');
   if (leaves(target.root).length >= 256) throw new Error('A layout supports up to 256 cells.');
@@ -982,10 +1043,24 @@ export function insertRowCell(frames, frameId, cellId, side, nodeIds, metrics) {
   const gap = target.appMode === true ? 4 : GAP;
   const initialInnerWidth = metrics ? Math.max(contentMinimumWidth(target.root, metrics, pad, gap), target.size[0] - framePad * 2) : target.size[0] - framePad * 2;
 
-  const ids = [...new Set(nodeIds)];
+  const lockedNodeIds = new Set();
+  for (const frame of frames) {
+    if (frame?.lock !== true) continue;
+    for (const leaf of leaves(frame.root)) {
+      for (const n of leaf.nodes ?? []) lockedNodeIds.add(String(n));
+      for (const tab of leaf.tabs ?? []) {
+        for (const n of tab.nodes ?? []) lockedNodeIds.add(String(n));
+      }
+    }
+  }
+  const ids = [...new Set(nodeIds)].filter(id => !lockedNodeIds.has(String(id)));
+  if (!ids.length) return null;
   const moving = new Set(ids.map(String));
-  for (const frame of frames) for (const leaf of leaves(frame.root)) {
-    removeNodeFromCell(leaf, moving);
+  for (const frame of frames) {
+    if (frame?.lock === true) continue;
+    for (const leaf of leaves(frame.root)) {
+      removeNodeFromCell(leaf, moving);
+    }
   }
 
   const newCell = createCell('');

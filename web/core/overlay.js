@@ -1706,9 +1706,11 @@ export class LayoutOverlay {
       return ghost?.pos && ghost?.size ? [ghost] : [];
     }
     if (!this.nativeDrag) return [];
+    const lockedIds = this.controller.lockedNodeIds?.() ?? new Set();
     const moved = [];
     if (this.nativeDrag.before) {
       for (const [id, previous] of this.nativeDrag.before) {
+        if (lockedIds.has(String(id))) continue;
         const node = this.controller.graph?.getNodeById(id);
         if (!node?.pos || !node?.size) continue;
         if (Math.abs(node.pos[0] - previous.pos[0]) > 1 || Math.abs(node.pos[1] - previous.pos[1]) > 1) {
