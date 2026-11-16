@@ -1566,7 +1566,7 @@ export function layoutFrame(frame, metrics) {
         for (const tab of cell.tabs) {
           const tabNodes = tab.nodes.map(n => metrics.get(n));
           const w = Math.max(160, ...tabNodes.map(n => n.minWidth));
-          const h = Math.max(64, tabNodes.reduce((sum, n) => sum + n.height + n.titleHeight + (n.collapsed ? 0 : (n.bottomBarHeight || 0)), 0) + Math.max(0, tabNodes.length - 1) * gap);
+          const h = Math.max(64, tabNodes.reduce((sum, n) => sum + n.height + n.titleHeight, 0) + Math.max(0, tabNodes.length - 1) * gap);
           maxW = Math.max(maxW, w);
           maxH = Math.max(maxH, h);
         }
@@ -1577,7 +1577,7 @@ export function layoutFrame(frame, metrics) {
       } else {
         cell.nodes = cell.nodes.filter(n => metrics.has(n));
         const nodes = cell.nodes.map(n => metrics.get(n));
-        let contentH = Math.max(64, nodes.reduce((h, n) => h + n.height + n.titleHeight + (n.collapsed ? 0 : (n.bottomBarHeight || 0)), 0) + Math.max(0, nodes.length - 1) * gap);
+        let contentH = Math.max(64, nodes.reduce((h, n) => h + n.height + n.titleHeight, 0) + Math.max(0, nodes.length - 1) * gap);
         if (Number.isFinite(cell.minHeightOverride) && cell.minHeightOverride > 0) {
           contentH = Math.max(contentH, cell.minHeightOverride - cellTitle - pad * 2);
         }
@@ -1654,14 +1654,13 @@ export function layoutFrame(frame, metrics) {
     activeNodes.forEach((nodeId, index) => {
       const metric = metrics.get(nodeId);
       if (!metric) return;
-      const bottomBar = metric.collapsed ? 0 : (metric.bottomBarHeight || 0);
       let height = metric.height;
       const owned = filling && index === last && !metric.collapsed;
-      if (owned) height = Math.max(metric.minHeight, floor - y - metric.titleHeight - bottomBar);
+      if (owned) height = Math.max(metric.minHeight, floor - y - metric.titleHeight);
       const placement = { nodeId, x: rect[0] + pad, y: y + metric.titleHeight, width: rect[2] - pad * 2, height };
       if (owned) placement.fill = true;
       placements.push(placement);
-      y += metric.titleHeight + height + bottomBar + gap;
+      y += metric.titleHeight + height + gap;
     });
 
     // Park inactive tab nodes under the cell header with hidden: true

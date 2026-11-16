@@ -25,19 +25,6 @@ import {
   resolveDropTarget,
   validateFrame,
 } from './layout.js';
-import {
-  BOTTOM_TAB_BAR_HEIGHT,
-  GROUP_TAB_HEADER_HEIGHT,
-  enableNodeBottomTabs,
-  removeNodeBottomTabs,
-  createStackFromSingleGroup,
-  createStackFromSelection,
-  addNodesOrGroupToStack,
-  unpackTabStack,
-  stackNodeIds,
-  validateBottomTabsData,
-  layoutTabStack,
-} from './bottom-tabs.js';
 import { NodeAdapter } from './adapter.js';
 
 // Rollback copy taken on every pointer-down. Unlike a JSON round trip, it
@@ -68,27 +55,11 @@ export class LayoutController {
     this.adapter = new NodeAdapter(app, options);
     this.transaction = null;
     this.pendingAutohide = new Set();
-    this.peekedPortsNodes = new Map();
   }
   get graph() { return this.app.canvas.graph ?? this.app.graph; }
-  get rawData() {
-    const data = this.graph?.extra?.[KEY] ?? this.graph?.extra?.[LEGACY_KEY];
-    return data?.version === VERSION ? data : null;
-  }
   get frames() {
-    const data = this.rawData;
-    return Array.isArray(data?.frames) ? data.frames : [];
-  }
-  get nodeTabs() {
-    const data = this.rawData;
-    return data?.nodeTabs && typeof data.nodeTabs === 'object' && !Array.isArray(data.nodeTabs) ? data.nodeTabs : {};
-  }
-  get tabStacks() {
-    const data = this.rawData;
-    return Array.isArray(data?.tabStacks) ? data.tabStacks : [];
-  }
-  get hasBottomTabs() {
-    return Boolean(this.tabStacks.length > 0 || Object.keys(this.nodeTabs).length > 0);
+    const data = this.graph?.extra?.[KEY] ?? this.graph?.extra?.[LEGACY_KEY];
+    return data?.version === VERSION && Array.isArray(data.frames) ? data.frames : [];
   }
   ensureData() {
     const graph = this.graph;
@@ -96,7 +67,6 @@ export class LayoutController {
     graph.extra ??= {};
     if (graph.extra[KEY]) {
       if (graph.extra[KEY].version !== VERSION) throw new Error('This workflow uses an unsupported grid layout version.');
-      graph.extra[KEY].frames ??= [];
       return graph.extra[KEY];
     }
     if (graph.extra[LEGACY_KEY]) {
@@ -121,7 +91,6 @@ export class LayoutController {
       data: hasKey ? copy(extra[KEY]) : undefined,
       legacyData: hasLegacy ? copy(extra[LEGACY_KEY]) : undefined,
       nodes: this.snapshot(),
-      groups: Array.isArray(graph._groups) ? [...graph._groups] : (Array.isArray(graph.groups) ? [...graph.groups] : null),
     };
     this.app.canvas.emitBeforeChange?.();
     return true;
@@ -144,10 +113,6 @@ export class LayoutController {
         else delete extra[KEY];
         if (this.transaction.hasLegacy) extra[LEGACY_KEY] = this.transaction.legacyData;
         else delete extra[LEGACY_KEY];
-        if (this.transaction.groups) {
-          if (Array.isArray(this.transaction.graph._groups)) this.transaction.graph._groups = [...this.transaction.groups];
-          else if (Array.isArray(this.transaction.graph.groups)) this.transaction.graph.groups = [...this.transaction.groups];
-        }
         for (const [id, state] of this.transaction.nodes) {
           const node = this.transaction.graph.getNodeById(id);
           if (node) {
@@ -254,92 +219,26 @@ export class LayoutController {
   hasNodes(frame) {
     return leaves(frame.root).some(cell => cell.nodes.some(id => this.graph?.getNodeById(id)));
   }
-  measureNode(node) {
-    const cfg = node?.id != null ? this.nodeTabs[String(node.id)] : null;
-    if (cfg) {
-      const overrideTabIndex = this.peekedPortsNodes.get(String(node.id));
-      return this.adapter.measure(node, { nodeTabConfig: cfg, overrideTabIndex });
-    }
-    return this.adapter.measure(node);
-  }
   metrics() {
     const result = new Map();
-    const record = id => {
-      const node = this.graph?.getNodeById?.(id);
-      if (!node || result.has(node.id)) return;
-      const m = this.measureNode(node);
-      result.set(id, m);
-      result.set(node.id, m);
-      result.set(String(node.id), m);
-    };
     for (const frame of this.frames) for (const cell of leaves(frame.root)) {
       const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
-      for (const id of allIds) record(id);
+      for (const id of allIds) {
+        const node = this.graph.getNodeById(id);
+        if (node) {
+          const m = this.adapter.measure(node);
+          result.set(id, m);
+          result.set(node.id, m);
+          result.set(String(node.id), m);
+        }
+      }
     }
-    for (const stack of this.tabStacks) {
-      for (const id of stackNodeIds(stack)) record(id);
-    }
-    for (const id of Object.keys(this.nodeTabs)) record(id);
     return result;
   }
   geometry() {
     for (const frame of this.frames) validateFrame(frame);
     const metrics = this.metrics();
     return this.frames.map(frame => ({ frame, ...layoutFrame(frame, metrics) }));
-  }
-  stackGeometry(precomputedMetrics = null) {
-    const raw = this.rawData;
-    if (raw && !this.app.configuringGraph) validateBottomTabsData(raw, this.graph);
-    const stacks = this.tabStacks;
-    if (!stacks.length) return [];
-    const metrics = precomputedMetrics ?? this.metrics();
-    const nodeTabs = this.nodeTabs;
-    return stacks.map(stack => layoutTabStack(stack, metrics, nodeTabs, this.adapter.classicTitle)).filter(Boolean);
-  }
-  enableNodeTabs(nodeId) {
-    const node = this.graph?.getNodeById?.(nodeId);
-    if (!node) throw new Error('Node not found.');
-    return this.edit(() => enableNodeBottomTabs(this.ensureData(), node));
-  }
-  removeNodeTabs(nodeId) {
-    return this.edit(() => {
-      const prev = removeNodeBottomTabs(this.ensureData(), nodeId);
-      const node = this.graph?.getNodeById?.(nodeId);
-      if (node) this.adapter.releaseTabHeight(node, prev?.originalHeight);
-      return prev;
-    });
-  }
-  tabifySingleGroup(group) {
-    return this.edit(() => createStackFromSingleGroup(this.ensureData(), this.graph, group, this.adapter.classicTitle));
-  }
-  combineIntoBottomStack({ groups = [], nodes = [] } = {}) {
-    return this.edit(() => createStackFromSelection(this.ensureData(), this.graph, { groups, nodes }, this.adapter.classicTitle));
-  }
-  unpackBottomStack(stackId) {
-    return this.edit(() => {
-      const target = this.tabStacks.find(s => s.id === stackId);
-      const ids = target ? stackNodeIds(target) : [];
-      const ok = unpackTabStack(this.ensureData(), this.graph, stackId, this.adapter.classicTitle);
-      for (const id of ids) {
-        const node = this.graph?.getNodeById?.(id);
-        if (node) {
-          this.adapter.releaseDockedWidth?.(node);
-          if (!this.nodeTabs[String(id)]) this.adapter.releaseTabHeight?.(node);
-        }
-      }
-      return ok;
-    });
-  }
-  findStackForNode(nodeId) {
-    const k = String(nodeId);
-    for (const stack of this.tabStacks) {
-      for (let i = 0; i < (stack.tabs?.length ?? 0); i++) {
-        const tab = stack.tabs[i];
-        if (tab.kind === 'node' && String(tab.nodeId) === k) return { stack, tab, tabIndex: i };
-        if (tab.kind === 'group' && (tab.nodes ?? []).some(e => String(e.id) === k)) return { stack, tab, tabIndex: i };
-      }
-    }
-    return null;
   }
   reflow() {
     // An empty autohidden grid could never be revealed, deleted, or dropped
@@ -349,28 +248,12 @@ export class LayoutController {
         if (this.hasNodes(frame)) this.pendingAutohide.delete(frame.id);
         else if (frame.autohide === true && !this.pendingAutohide.has(frame.id)) delete frame.autohide;
       }
-      if (this.rawData) validateBottomTabsData(this.rawData, this.graph);
     }
     const dockedIds = new Set();
     for (const { placements } of this.geometry()) for (const placement of placements) {
       dockedIds.add(String(placement.nodeId));
       const node = this.graph.getNodeById(placement.nodeId);
       if (node) this.adapter.apply(node, placement);
-    }
-    const metrics = this.metrics();
-    for (const { placements } of this.stackGeometry(metrics)) for (const placement of placements) {
-      dockedIds.add(String(placement.nodeId));
-      const node = this.graph.getNodeById(placement.nodeId);
-      if (node) this.adapter.apply(node, placement);
-    }
-    // Standalone nodes with intra-node bottom section tabs
-    for (const id of Object.keys(this.nodeTabs)) {
-      if (dockedIds.has(String(id))) continue;
-      const node = this.graph?.getNodeById?.(id);
-      const m = node && (metrics.get(id) ?? metrics.get(node.id));
-      if (node && m && !node.flags?.collapsed) {
-        this.adapter.applyTabHeight(node, m.height);
-      }
     }
     for (const node of this.graph?._nodes ?? this.graph?.nodes ?? []) {
       if (node && !dockedIds.has(String(node.id)) && this.adapter.imposedWidths?.has?.(node)) {
@@ -393,31 +276,12 @@ export class LayoutController {
   drop(nodeIds, point, target) {
     return this.edit(() => {
       const resolved = target === undefined ? this.target(point) : target;
-      // If nodes are being dropped into a Grid Frame cell/tab/row, detach them from any tabStacks
-      if (resolved?.frame) {
-        const movingSet = new Set(nodeIds.map(String));
-        const raw = this.rawData;
-        if (raw && Array.isArray(raw.tabStacks)) {
-          for (const stack of raw.tabStacks) {
-            stack.tabs = (stack.tabs ?? []).filter(t => {
-              if (t.kind === 'node') return !movingSet.has(String(t.nodeId));
-              if (t.kind === 'group') {
-                t.nodes = (t.nodes ?? []).filter(e => !movingSet.has(String(e.id)));
-                return t.nodes.length > 0;
-              }
-              return false;
-            });
-          }
-          raw.tabStacks = raw.tabStacks.filter(s => s.tabs.length > 0);
-          if (!raw.tabStacks.length) delete raw.tabStacks;
-        }
-      }
       const metrics = this.metrics();
       const nodeTitles = new Map();
       for (const id of nodeIds) {
         const node = this.graph.getNodeById(id);
         if (node) {
-          const metric = { ...this.measureNode(node), width: node.size?.[0] ?? 0 };
+          const metric = { ...this.adapter.measure(node), width: node.size?.[0] ?? 0 };
           metrics.set(id, metric);
           metrics.set(node.id, metric);
           metrics.set(String(id), metric);
@@ -509,40 +373,9 @@ export class LayoutController {
       }
       else if (Math.abs(node.size[0] - previous.size[0]) > 1 || Math.abs(node.size[1] - previous.size[1]) > 1) resized.push(node);
     }
-
-    // Handle drop onto an existing bottom tab bar (adds dragged node(s)/group as bottom tab(s))
-    const bottomHit = options?.bottomBarHit ?? null;
-    if (bottomHit && (moved.length > 0 || options?.draggedGroup)) {
-      const draggedGroup = options?.draggedGroup ?? null;
-      if (bottomHit.stackId) {
-        const sameActiveOnly = !draggedGroup && moved.length === 1 && this.findStackForNode(moved[0].id)?.stack.id === bottomHit.stackId;
-        if (!sameActiveOnly) {
-          this.edit(() => {
-            addNodesOrGroupToStack(this.ensureData(), this.graph, bottomHit.stackId, { nodes: moved, group: draggedGroup }, bottomHit.insertIndex, this.adapter.classicTitle);
-          });
-          return;
-        }
-      } else if (bottomHit.nodeId != null) {
-        const hostNode = this.graph?.getNodeById?.(bottomHit.nodeId);
-        const filteredMoved = moved.filter(n => String(n.id) !== String(bottomHit.nodeId));
-        if (hostNode && (filteredMoved.length > 0 || draggedGroup)) {
-          this.edit(() => {
-            createStackFromSelection(
-              this.ensureData(),
-              this.graph,
-              { groups: draggedGroup ? [draggedGroup] : [], nodes: [hostNode, ...filteredMoved] },
-              this.adapter.classicTitle
-            );
-          });
-          return;
-        }
-      }
-    }
-
     if (moved.length) {
       // Group nodes by destination so multi-selection can cross cell boundaries.
       const destinations = new Map();
-      const stackUpdates = [];
       const movingIds = moved.map(n => n.id);
       const layouts = this.geometry();
       for (const node of moved) {
@@ -553,12 +386,6 @@ export class LayoutController {
           tabHit: moved.length === 1 ? (options?.tabHit ?? null) : null,
           titleHeight: this.adapter.classicTitle,
         });
-        const stackOwner = this.findStackForNode(node.id);
-        if (!pick && stackOwner) {
-          const prev = before.get(node.id);
-          stackUpdates.push({ node, prev, ...stackOwner });
-          continue;
-        }
         const key = pick ? `${pick.kind}:${pick.frame.id}:${pick.cell?.id ?? 'row'}:${pick.position ?? ''}:${pick.tabIndex ?? ''}` : 'outside';
         // The node's own center anchors the insertion order; resolveDropTarget
         // resolved the destination (null = detach).
@@ -566,33 +393,6 @@ export class LayoutController {
         destinations.get(key).nodes.push(node);
       }
       this.edit(() => {
-        if (stackUpdates.length) {
-          const movedStacks = new Set();
-          for (const { node, prev, stack, tab } of stackUpdates) {
-            if (tab.kind === 'node') {
-              stack.pos = [Math.round(node.pos[0]), Math.round(node.pos[1] - this.adapter.classicTitle)];
-              movedStacks.add(stack.id);
-            } else if (tab.kind === 'group') {
-              const allTabNodesMoved = (tab.nodes ?? []).length > 1 && (tab.nodes ?? []).every(e => stackUpdates.some(u => String(u.node.id) === String(e.id)));
-              if (allTabNodesMoved || tab.layoutMode === 'stack') {
-                if (!movedStacks.has(stack.id) && prev) {
-                  const dx = node.pos[0] - prev.pos[0];
-                  const dy = node.pos[1] - prev.pos[1];
-                  stack.pos = [Math.round(stack.pos[0] + dx), Math.round(stack.pos[1] + dy)];
-                  movedStacks.add(stack.id);
-                }
-              } else {
-                const entry = (tab.nodes ?? []).find(e => String(e.id) === String(node.id));
-                if (entry) {
-                  entry.offset = [
-                    Math.max(10, Math.round(node.pos[0] - stack.pos[0])),
-                    Math.max(GROUP_TAB_HEADER_HEIGHT + 10, Math.round((node.pos[1] - this.adapter.classicTitle) - stack.pos[1])),
-                  ];
-                }
-              }
-            }
-          }
-        }
         for (const { target, point, nodes } of destinations.values()) {
           nodes.sort((a, b) => a.pos[1] - b.pos[1]);
           this.drop(nodes.map(n => n.id), point, target);
