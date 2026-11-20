@@ -274,7 +274,7 @@ test('IDE presets (vscode, dual-sidebar, tabbed-dashboard), appMode, and templat
   assert.equal(engine.leaves(frame.root).length, 2);
 });
 
-test('LayoutController.drop routes tab, split-top, split-bottom, and createPreset', () => {
+test('LayoutController.drop routes tab, split-top, and split-bottom', () => {
   const n1 = { id: 1, title: 'Load Checkpoint', pos: [0, 0], size: [220, 100], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
   const n2 = { id: 2, title: 'CLIP Text Encode', pos: [300, 0], size: [240, 120], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
   const n3 = { id: 3, title: 'Preview Image', pos: [600, 0], size: [220, 140], computeSize: () => [200, 80], setSize(s) { this.size = s; } };
@@ -300,11 +300,6 @@ test('LayoutController.drop routes tab, split-top, split-bottom, and createPrese
   controller.drop([3], [150, 300], { kind: 'split-bottom', frame, cell });
   assert.equal(engine.leaves(frame.root).length, 2);
   assert.deepEqual(engine.leaves(frame.root)[1].nodes, [3]);
-
-  // createPreset creates an IDE workspace frame
-  const ideFrame = controller.createPreset([500, 500], 'vscode');
-  assert.equal(ideFrame.label, 'IDE Workspace');
-  assert.equal(engine.leaves(ideFrame.root).length, 3);
 });
 
 test('LayoutOverlay renders tabs, Activity Bar, 5-way Docking Compass Rose, and hides inactive tab nodes', async () => {

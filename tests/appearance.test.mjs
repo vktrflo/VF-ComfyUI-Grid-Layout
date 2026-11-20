@@ -487,7 +487,6 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
     'Lock frame',
     'Minimize grid',
     'Collapse grid',
-    'Export empty template',
     'Remove grid (keep nodes)',
   ]);
   assert.equal(expandedLabels.includes('Autohide grid'), false);

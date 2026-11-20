@@ -93,8 +93,6 @@ app.registerExtension({
         null,
         ...(entry ? [entry] : []),
         { content: '🌀 Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
-        { content: '🌀 Add IDE Workspace (VS Code)', callback: () => overlay.safe(() => controller.createPreset(point, 'vscode')) },
-        { content: '🌀 Import Grid Template…', callback: () => overlay.importAt(point) },
       ];
     };
     active.selectionEntry = selectionEntry;

@@ -50,7 +50,7 @@ Then restart ComfyUI and refresh with **Ctrl+F5** so the browser loads the new v
 - **Fill cell height**: Stretch the bottom node in every cell down to the cell floor, so columns line up.
 - **Lock, collapse, and minimize**: Freeze a frame in place, fold its nodes to their title bars, or shrink it to just its header.
 - **VF Link Effects**: Animated or glowing wires for selected nodes, with dimming for everything unrelated.
-- **Saved with your workflow**: Layouts save and load with the workflow. Export an empty layout to reuse its shape in other workflows.
+- **Saved with your workflow**: Layouts save and load with the workflow.
 
 ## Use
 
@@ -115,7 +115,7 @@ New grids start with autohide on. A grid with autohide on hides its frame, cell 
 - **👁 / 🙈 Autohide**: Shows or hides the grid around your nodes.
 - **− Minimize**: Shrinks the frame to its header and hides its nodes. Wires to the hidden nodes connect to small ports on the header.
 - **▴ / ▾ Collapse**: Folds every node to its title bar, stacked under the header. Expand to restore the layout.
-- **•••**: Frame menu with appearance, fill, shrink, add bottom row, export, and remove.
+- **•••**: Frame menu with appearance, fill, shrink, add bottom row, and remove.
 
 ### More tips
 

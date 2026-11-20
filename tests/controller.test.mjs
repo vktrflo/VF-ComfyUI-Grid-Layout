@@ -138,7 +138,7 @@ test('invalid drag updates roll back even within an already-open history gesture
   assert.throws(() => controller.edit(() => { controller.frames[0].size = [Infinity, 500]; }));
   controller.end();
   assert.equal(JSON.stringify(controller.frames), original);
-  assert.doesNotThrow(() => controller.export(controller.frames[0]));
+  assert.doesNotThrow(() => exportTemplate(controller.frames[0]));
   assert.deepEqual(events, ['before', 'after', 'before', 'after']);
 });
 

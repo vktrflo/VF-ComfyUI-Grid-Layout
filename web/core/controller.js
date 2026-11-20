@@ -15,9 +15,6 @@ import {
   insertColumnCell,
   insertRowCell,
   addBottomRow,
-  applyIdePreset,
-  exportTemplate,
-  importTemplate,
   layoutFrame,
   leaves,
   pickCell,
@@ -127,15 +124,6 @@ export class LayoutController {
   create(pos) {
     return this.edit(() => { const frame = createFrame(pos); this.pendingAutohide.add(frame.id); gridCell(frame, frame.root.id, 1, this.defaultColumns); this.ensureData().frames.push(frame); return frame; });
   }
-  createPreset(pos, preset = 'vscode') {
-    return this.edit(() => {
-      const frame = createFrame(pos);
-      delete frame.autohide;
-      applyIdePreset(frame, preset, this.metrics());
-      this.ensureData().frames.push(frame);
-      return frame;
-    });
-  }
   selectedNodes() {
     const selection = this.app.canvas.selected_nodes ?? {};
     const values = selection instanceof Map ? [...selection.values()] : selection instanceof Set ? [...selection] : Object.values(selection);
@@ -208,13 +196,6 @@ export class LayoutController {
       this.ensureData().frames = this.frames.filter(f => f.id !== frameId);
     });
   }
-  import(value, pos) {
-    const frame = importTemplate(value, pos);
-    this.pendingAutohide.add(frame.id);
-    this.edit(() => this.ensureData().frames.push(frame));
-    return frame;
-  }
-  export(frame) { return exportTemplate(frame); }
   // Ids of deleted nodes can linger in cells, so only live nodes count.
   hasNodes(frame) {
     return leaves(frame.root).some(cell => cell.nodes.some(id => this.graph?.getNodeById(id)));
