@@ -1247,12 +1247,14 @@ function contentMinimumWidth(cell, metrics, pad = PAD, gap = GAP) {
 }
 
 export function shrinkFrame(frame, metrics) {
+  delete frame.fill;
   const pad = frame.appMode === true ? 6 : PAD;
   const framePad = frame.appMode === true ? 4 : PAD;
   const gap = frame.appMode === true ? 4 : GAP;
   function fit(cell) {
     if (!cell.children) {
       delete cell.minHeightOverride;
+      delete cell.fill;
       return contentMinimumWidth(cell, metrics, pad, gap);
     }
     const widths = cell.children.map(fit);

@@ -207,21 +207,21 @@ export class LayoutController {
           if (node) this.adapter.shrinkHeight?.(node);
         }
       }
-      shrinkFrame(frame, this.metrics());
+      shrinkFrame(frame, this.metrics({ ignoreRenderedHeight: true }));
     });
   }
   // Ids of deleted nodes can linger in cells, so only live nodes count.
   hasNodes(frame) {
     return leaves(frame.root).some(cell => cell.nodes.some(id => this.graph?.getNodeById(id)));
   }
-  metrics() {
+  metrics(options) {
     const result = new Map();
     for (const frame of this.frames) for (const cell of leaves(frame.root)) {
       const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
       for (const id of allIds) {
         const node = this.graph.getNodeById(id);
         if (node) {
-          const m = this.adapter.measure(node);
+          const m = this.adapter.measure(node, options);
           result.set(id, m);
           result.set(node.id, m);
           result.set(String(node.id), m);
