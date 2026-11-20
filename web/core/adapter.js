@@ -7,6 +7,7 @@ export class NodeAdapter {
     this.bases = new Map();
     this.appliedHeights = new Map();
     this.renderedHeights = new Map();
+    this.shrunkUntil = new Map();
   }
   // Fill tracking is keyed by node id, not object identity: undo/redo can
   // swap node instances, and the tracked heights must survive that.
@@ -21,7 +22,7 @@ export class NodeAdapter {
     const rect = canvas.getBoundingClientRect();
     return [(event.clientX - rect.left) / ds.scale - ds.offset[0], (event.clientY - rect.top) / ds.scale - ds.offset[1]];
   }
-  measure(node) {
+  measure(node, { ignoreRenderedHeight = false } = {}) {
     const minimum = node.computeSize?.() ?? [node.size[0], node.size[1]];
     // Remember the independent content minimum and honor later increases.
     // Some custom nodes report our imposed width from computeSize; treating
@@ -36,15 +37,18 @@ export class NodeAdapter {
       const element = document.querySelector(`.lg-node[data-node-id="${CSS.escape(String(node.id))}"]`);
       if (element) {
         renderedMinimum = parseFloat(getComputedStyle(element).minWidth) || 0;
-        const isHidden = Boolean(element.classList?.contains?.('clt-node-hidden'));
-        if (!isHidden) {
-          // Nodes 2.0 lets content (image previews, media) grow the element past
-          // node.size. offsetHeight ignores the canvas zoom transform, so it is in
-          // graph units. It includes the title bar, which placements add separately.
-          renderedHeight = Math.max(0, (element.offsetHeight || 0) - this.classicTitle);
-          if (renderedHeight > 0) this.renderedHeights.set(key, renderedHeight);
-        } else {
-          renderedHeight = this.renderedHeights.get(key) ?? 0;
+        const recentlyShrunk = (this.shrunkUntil.get(key) ?? 0) > Date.now();
+        if (!ignoreRenderedHeight && !recentlyShrunk) {
+          const isHidden = Boolean(element.classList?.contains?.('clt-node-hidden'));
+          if (!isHidden) {
+            // Nodes 2.0 lets content (image previews, media) grow the element past
+            // node.size. offsetHeight ignores the canvas zoom transform, so it is in
+            // graph units. It includes the title bar, which placements add separately.
+            renderedHeight = Math.max(0, (element.offsetHeight || 0) - this.classicTitle);
+            if (renderedHeight > 0) this.renderedHeights.set(key, renderedHeight);
+          } else {
+            renderedHeight = this.renderedHeights.get(key) ?? 0;
+          }
         }
       }
     }
@@ -98,6 +102,22 @@ export class NodeAdapter {
       else { node.size = size; node.onResize?.(size); }
     }
     node.setDirtyCanvas?.(true, true);
+  }
+  shrinkHeight(node) {
+    if (!node || node.flags?.collapsed) return;
+    const key = this.trackKey(node);
+    this.bases.delete(key);
+    this.appliedHeights.delete(key);
+    this.renderedHeights.delete(key);
+    this.shrunkUntil.set(key, Date.now() + 150);
+    const minimum = node.computeSize?.() ?? [node.size?.[0] || 0, node.size?.[1] || 0];
+    const minH = Math.max(minimum[1] || 0, node.min_size?.[1] || 0);
+    if (minH > 0 && node.size?.length >= 2) {
+      const nextSize = [node.size[0], minH];
+      if (node.setSize) node.setSize(nextSize);
+      else { node.size = nextSize; node.onResize?.(nextSize); }
+      this.bases.set(key, minH);
+    }
   }
   lockCollapsedWidth(node, width) {
     if (!node || typeof node !== 'object' || !Number.isFinite(width)) return;
