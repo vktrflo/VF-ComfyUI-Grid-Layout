@@ -2,13 +2,16 @@ import { app } from '../../scripts/app.js';
 import { LayoutController } from './core/controller.js';
 import { LayoutOverlay, syncSelectionMenuDom } from './core/overlay.js';
 import { createLinkEffectSettings } from './core/link-effects.js';
-import { setAllLinksHidden } from './core/link-visibility.js';
+import { setAllLinksHidden, createHiddenLinkLabelSetting, installHiddenLinkLabels } from './core/link-visibility.js';
 
 let active;
 
 app.registerExtension({
   name: 'VF.ComfyUI.GridLayout',
-  settings: createLinkEffectSettings(app.ui.settings),
+  settings: [
+    ...createLinkEffectSettings(app.ui.settings),
+    createHiddenLinkLabelSetting(app),
+  ],
   commands: [{
     id: 'VF.GridLayout.CreateFromSelection',
     label: 'Create grid layout from selected nodes',
@@ -31,6 +34,7 @@ app.registerExtension({
     const LiteGraph = globalThis.LiteGraph ?? globalThis.comfyAPI?.litegraph?.LiteGraph;
     const controller = new LayoutController(app, { classicTitle: LiteGraph?.NODE_TITLE_HEIGHT ?? 30 });
     const overlay = new LayoutOverlay(controller);
+    installHiddenLinkLabels(app);
     const openSelectionMenu = event => {
       const ids = controller.selectedNodes().map(node => node.id);
       if (!ids.length) return;

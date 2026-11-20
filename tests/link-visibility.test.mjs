@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setAllLinksHidden, getGraphScope, collectGraphLinkIds } from '../web/core/link-visibility.js';
+import {
+  HIDDEN_LINK_LABEL_SETTING,
+  setAllLinksHidden,
+  getGraphScope,
+  collectGraphLinkIds,
+  formatHiddenLinkLabel,
+  truncateLinkLabel,
+  installHiddenLinkLabels,
+} from '../web/core/link-visibility.js';
 
 test('setAllLinksHidden patches all graph links via native linkPresentation store', () => {
   const patches = [];
@@ -50,4 +58,66 @@ test('setAllLinksHidden patches all graph links via native linkPresentation stor
 test('collectGraphLinkIds supports plain object graph.links maps', () => {
   const graph = { id: 'root', links: { 1: { id: 1 }, 2: null, 3: { id: 3 } } };
   assert.deepEqual(collectGraphLinkIds(graph), [1, 3]);
+});
+
+test('installHiddenLinkLabels formats Type > TargetNode > TargetSlot, truncates until active, and respects setting & manual labels', () => {
+  const targetNode = {
+    id: 2,
+    title: 'KSamplerAdvanced',
+    inputs: [{ name: 'model' }, { name: 'positive_conditioning' }],
+  };
+  const link = { id: 42, type: 'CONDITIONING', origin_id: 1, origin_slot: 0, target_id: 2, target_slot: 1 };
+  const graph = {
+    id: 'root',
+    links: new Map([[42, link]]),
+    getNodeById: id => (id === 2 ? targetNode : null),
+  };
+
+  let settingEnabled = true;
+  const canvas = { graph, selected_nodes: {}, node_over: null, highlighted_links: {} };
+  const app = {
+    canvas,
+    graph,
+    ui: { settings: { getSettingValue: id => (id === HIDDEN_LINK_LABEL_SETTING ? settingEnabled : undefined) } },
+  };
+
+  let stored = { hidden: true };
+  const store = {
+    patch() {},
+    getPresentation: () => stored,
+  };
+
+  assert.equal(formatHiddenLinkLabel(graph, link), 'CONDITIONING > KSamplerAdvanced > positive_conditioning');
+  assert.equal(truncateLinkLabel('CONDITIONING > KSamplerAdvanced > positive_conditioning', 20), 'CONDITIONING > KSam…');
+
+  const uninstall = installHiddenLinkLabels(app, { store, maxChars: 20 });
+
+  // Inactive: truncated with ellipsis
+  assert.equal(store.getPresentation({ rootGraphId: 'root', owningGraphId: 'root' }, 42).label, 'CONDITIONING > KSam…');
+
+  // Active (target node selected): full label
+  canvas.selected_nodes = { 2: targetNode };
+  assert.equal(
+    store.getPresentation({ rootGraphId: 'root', owningGraphId: 'root' }, 42).label,
+    'CONDITIONING > KSamplerAdvanced > positive_conditioning'
+  );
+
+  // Active (origin node hovered): full label
+  canvas.selected_nodes = {};
+  canvas.node_over = { id: 1 };
+  assert.equal(
+    store.getPresentation({ rootGraphId: 'root', owningGraphId: 'root' }, 42).label,
+    'CONDITIONING > KSamplerAdvanced > positive_conditioning'
+  );
+
+  // Manual user rename takes precedence
+  stored = { hidden: true, label: 'Custom Name' };
+  assert.equal(store.getPresentation({ rootGraphId: 'root', owningGraphId: 'root' }, 42).label, 'Custom Name');
+
+  // Setting disabled: returns unmodified presentation
+  stored = { hidden: true };
+  settingEnabled = false;
+  assert.equal(store.getPresentation({ rootGraphId: 'root', owningGraphId: 'root' }, 42).label, undefined);
+
+  uninstall();
 });
