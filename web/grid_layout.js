@@ -2,6 +2,7 @@ import { app } from '../../scripts/app.js';
 import { LayoutController } from './core/controller.js';
 import { LayoutOverlay, syncSelectionMenuDom } from './core/overlay.js';
 import { createLinkEffectSettings } from './core/link-effects.js';
+import { setAllLinksHidden } from './core/link-visibility.js';
 
 let active;
 
@@ -93,6 +94,8 @@ app.registerExtension({
         null,
         ...(entry ? [entry] : []),
         { content: 'Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
+        { content: 'Hide All Links', callback: () => overlay.safe(() => setAllLinksHidden(app, true)) },
+        { content: 'Show All Links', callback: () => overlay.safe(() => setAllLinksHidden(app, false)) },
       ];
     };
     active.selectionEntry = selectionEntry;

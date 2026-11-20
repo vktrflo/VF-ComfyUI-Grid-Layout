@@ -563,7 +563,7 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
       } else if (!entry.querySelector('.vf-brand-link')) {
         entry.prepend(createLogoBadge(doc));
       }
-    } else if (label === 'Add Grid Frame') {
+    } else if (label === 'Add Grid Frame' || label === 'Hide All Links' || label === 'Show All Links') {
       if (!entry.querySelector('.vf-brand-link')) {
         entry.prepend(createLogoBadge(doc));
       }
