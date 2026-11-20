@@ -331,3 +331,19 @@ test('controller.begin handles circular references in graph.extra without stack 
 
 
 
+
+test('controller.shrink shrinks both node heights and frame dimensions to content minimum', () => {
+  const { controller, node } = host();
+  node.size = [360, 420];
+  node.computeSize = () => [220, 90];
+  const frame = controller.createFromNodes([1], 'columns');
+  const cell = frame.root;
+  cell.minHeightOverride = 500;
+  const tallFrameHeight = frame.size[1];
+
+  controller.shrink(frame.id);
+
+  assert.equal(node.size[1], 90, 'node height shrinks to computeSize()[1]');
+  assert.equal(cell.minHeightOverride, undefined, 'cell minHeightOverride is cleared');
+  assert.ok(frame.size[1] < tallFrameHeight, 'frame height shrinks vertically');
+});

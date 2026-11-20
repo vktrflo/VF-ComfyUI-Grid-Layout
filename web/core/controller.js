@@ -196,6 +196,20 @@ export class LayoutController {
       this.ensureData().frames = this.frames.filter(f => f.id !== frameId);
     });
   }
+  shrink(frameId) {
+    this.edit(() => {
+      const frame = this.frames.find(f => f.id === frameId);
+      if (!frame) return;
+      for (const cell of leaves(frame.root)) {
+        const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
+        for (const id of allIds) {
+          const node = this.graph?.getNodeById(id);
+          if (node) this.adapter.shrinkHeight?.(node);
+        }
+      }
+      shrinkFrame(frame, this.metrics());
+    });
+  }
   // Ids of deleted nodes can linger in cells, so only live nodes count.
   hasNodes(frame) {
     return leaves(frame.root).some(cell => cell.nodes.some(id => this.graph?.getNodeById(id)));

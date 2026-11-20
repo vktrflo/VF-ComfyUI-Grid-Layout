@@ -1379,7 +1379,7 @@ export class LayoutOverlay {
           containerImageMode: frame.containerImageMode ?? 'repeat',
         }, values => this.controller.edit(() => applyHeaderConfig(frame, values)));
       }],
-      ['Shrink grid to content', () => this.controller.edit(() => shrinkFrame(this.controller.frames.find(f => f.id === frame.id), this.controller.metrics()))],
+      ['Shrink grid to content', () => this.controller.shrink(frame.id)],
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
       ['Delete Empty Cells', () => this.controller.edit(() => deleteEmptyCells(this.controller.frames.find(f => f.id === frame.id)))],
     ];

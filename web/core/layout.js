@@ -1251,7 +1251,10 @@ export function shrinkFrame(frame, metrics) {
   const framePad = frame.appMode === true ? 4 : PAD;
   const gap = frame.appMode === true ? 4 : GAP;
   function fit(cell) {
-    if (!cell.children) return contentMinimumWidth(cell, metrics, pad, gap);
+    if (!cell.children) {
+      delete cell.minHeightOverride;
+      return contentMinimumWidth(cell, metrics, pad, gap);
+    }
     const widths = cell.children.map(fit);
     if (cell.axis === 'y') return Math.max(...widths);
     const total = widths.reduce((sum, width) => sum + width, 0);

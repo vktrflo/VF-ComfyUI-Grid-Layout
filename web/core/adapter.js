@@ -99,6 +99,21 @@ export class NodeAdapter {
     }
     node.setDirtyCanvas?.(true, true);
   }
+  shrinkHeight(node) {
+    if (!node || node.flags?.collapsed) return;
+    const key = this.trackKey(node);
+    this.bases.delete(key);
+    this.appliedHeights.delete(key);
+    this.renderedHeights.delete(key);
+    const minimum = node.computeSize?.() ?? [node.size?.[0] || 0, node.size?.[1] || 0];
+    const minH = Math.max(minimum[1] || 0, node.min_size?.[1] || 0);
+    if (minH > 0 && Array.isArray(node.size)) {
+      const nextSize = [node.size[0], minH];
+      if (node.setSize) node.setSize(nextSize);
+      else { node.size = nextSize; node.onResize?.(nextSize); }
+      this.bases.set(key, minH);
+    }
+  }
   lockCollapsedWidth(node, width) {
     if (!node || typeof node !== 'object' || !Number.isFinite(width)) return;
     try {
