@@ -37,7 +37,6 @@ import {
   moveCellTab,
   toggleCellCollapse,
   toggleMaximizeCell,
-  applyIdePreset,
 } from './layout.js';
 
 import { LinkEffects } from './link-effects.js';
@@ -438,7 +437,6 @@ export const MENU_ICONS = {
   'Restore grid': '◻',
   'Collapse grid': '▴',
   'Expand grid': '▾',
-  'Export empty template': '→',
   'Remove grid (keep nodes)': '✕',
   'Delete cell (keep nodes)': '✕',
   'Delete Empty Cells': '⊗',
@@ -460,11 +458,6 @@ export const MENU_ICONS = {
   'Expand panel': '▶',
   'Fold nodes in panel': '≡',
   'Unfold nodes in panel': '≡',
-  'Enable App View': '▣',
-  'Disable App View': '▣',
-  'Preset: VS Code IDE': '◫',
-  'Preset: Dual Sidebar Studio': '◫',
-  'Preset: Tabbed Dashboard': '◫',
 };
 export const VF_LOGO_DATA_URI = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="VKTRFLO"><defs><linearGradient id="ring" x1="9" y1="8" x2="119" y2="120" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#52d1a5"/><stop offset="0.34" stop-color="#78d7bd"/><stop offset="0.64" stop-color="#8b5cf6"/><stop offset="1" stop-color="#c084fc"/></linearGradient><filter id="shadow" x="-8" y="-8" width="144" height="144" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.32"/><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000000" flood-opacity="0.5"/></filter></defs><rect x="9" y="9" width="110" height="110" rx="29" fill="none" stroke="url(#ring)" stroke-width="15" filter="url(#shadow)"/></svg>')}`;
 
@@ -563,11 +556,17 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
   }
 
   for (const entry of root.querySelectorAll?.('.litemenu-entry') ?? []) {
-    if ((entry.fullText ?? entry.textContent ?? '').trim() !== SELECTION_ACTION_LABEL) continue;
-    if (inGrid) {
-      entry.remove();
-    } else if (!entry.querySelector('.vf-brand-link')) {
-      entry.prepend(createLogoBadge(doc));
+    const label = (entry.fullText ?? entry.textContent ?? '').trim();
+    if (label === SELECTION_ACTION_LABEL) {
+      if (inGrid) {
+        entry.remove();
+      } else if (!entry.querySelector('.vf-brand-link')) {
+        entry.prepend(createLogoBadge(doc));
+      }
+    } else if (label === 'Add Grid Frame') {
+      if (!entry.querySelector('.vf-brand-link')) {
+        entry.prepend(createLogoBadge(doc));
+      }
     }
   }
 
@@ -1417,39 +1416,12 @@ export class LayoutOverlay {
         actions.push([frame.collapsed === true ? 'Expand grid' : 'Collapse grid', () => this.toggleCollapse(frame.id)]);
       }
     }
-    actions.push(['Export empty template', () => {
-      const blob = new Blob([JSON.stringify(this.controller.export(frame), null, 2)], { type: 'application/json' });
-      const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
-      link.download = `${frame.label.replace(/[^a-z0-9_-]/gi, '-') || 'grid'}.grid.json`; link.click();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    }]);
     actions.push(['Remove grid (keep nodes)', () => this.controller.remove(frame.id)]);
     return actions;
   }
   frameMenu(event, frame, options) {
     const actions = this.frameActions(frame, options);
     if (actions.length) this.showMenu(event, actions);
-  }
-  presetMenu(event, frame) {
-    frame = this.controller.frames.find(f => f.id === frame?.id);
-    if (!frame) return;
-    const actions = [
-      [frame.appMode === true ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id)],
-      ['Preset: VS Code IDE', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'vscode', this.controller.metrics()))],
-      ['Preset: Dual Sidebar Studio', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'dual-sidebar', this.controller.metrics()))],
-      ['Preset: Tabbed Dashboard', () => this.controller.edit(() => applyIdePreset(this.controller.frames.find(f => f.id === frame.id), 'tabbed-dashboard', this.controller.metrics()))],
-    ];
-    this.showMenu(event, actions);
-  }
-  toggleAppMode(frameId) {
-    this.safe(() => this.controller.edit(() => {
-      const frame = this.controller.frames.find(f => f.id === frameId);
-      if (!frame) return;
-      if (frame.appMode === true) delete frame.appMode; else frame.appMode = true;
-    }));
-    this.refreshHidden();
-    this.signature = null;
-    this.app.canvas?.setDirty(true, true);
   }
   areCellNodesFolded(cell) {
     const graph = this.controller.graph;
@@ -2085,16 +2057,6 @@ export class LayoutOverlay {
     delete frame.collapsedNodes;
     delete frame.collapsed;
   }
-  importAt(pos) {
-    const input = document.createElement('input'); input.type = 'file'; input.accept = '.grid.json,.layout.json,.json,application/json';
-    input.onchange = async () => {
-      const file = input.files?.[0]; if (!file) return;
-      if (file.size > 1024 * 1024) return this.message('Grid templates must be smaller than 1 MB.');
-      try { this.controller.import(JSON.parse(await file.text()), pos); }
-      catch (error) { this.message(error.message); }
-    };
-    input.click();
-  }
   startDrag(event, kind, data) {
     if (event.button !== 0) return;
     event.preventDefault(); event.stopPropagation(); this.closeMenu();
@@ -2327,24 +2289,6 @@ export class LayoutOverlay {
 
       const minimized = frame.minimized === true;
       const collapsed = frame.collapsed === true;
-
-      const presetBtn = button('IDE presets', e => this.presetMenu(e, frame), '◫');
-      presetBtn.classList.add('clt-preset-btn');
-      if (minimized || collapsed) {
-        presetBtn.hidden = true;
-        presetBtn.style.display = 'none';
-      }
-      header.append(presetBtn);
-
-      const appMode = frame.appMode === true;
-      const appModeBtn = button(appMode ? 'Disable App View' : 'Enable App View', () => this.toggleAppMode(frame.id), '▣');
-      appModeBtn.classList.add('clt-appmode');
-      appModeBtn.setAttribute('aria-pressed', String(appMode));
-      if (minimized || collapsed) {
-        appModeBtn.hidden = true;
-        appModeBtn.style.display = 'none';
-      }
-      header.append(appModeBtn);
 
       const locked = frame.lock === true;
       const lock = button(locked ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id), locked ? '🔒' : '🔓');
