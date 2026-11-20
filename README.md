@@ -49,7 +49,6 @@ Then restart ComfyUI and refresh with **Ctrl+F5** so the browser loads the new v
 - **Appearance**: Set the title bar color, text color, font size, and opacity, the border style, and a grid background color or image. Apply them to the whole frame or to one cell.
 - **Fill cell height**: Stretch the bottom node in every cell down to the cell floor, so columns line up.
 - **Lock, collapse, and minimize**: Freeze a frame in place, fold its nodes to their title bars, or shrink it to just its header.
-- **Bypass a cell**: Bypass or re-enable all nodes in a cell with one click.
 - **VF Link Effects**: Animated or glowing wires for selected nodes, with dimming for everything unrelated.
 - **Saved with your workflow**: Layouts save and load with the workflow. Export an empty layout to reuse its shape in other workflows.
 
@@ -124,7 +123,6 @@ New grids start with autohide on. A grid with autohide on hides its frame, cell 
 - Drag an attached node to another cell to move it there.
 - Drag the frame header to move the frame and all its nodes together.
 - Frame and row heights fit their content and shrink when you remove nodes. Empty cells keep a small drop area.
-- **↱** on a cell bypasses all nodes in that cell. Click it again to re-enable them.
 - **••• → Remove grid (keep nodes)** removes the frame and leaves your nodes and connections in place.
 - If a node needs more room than its cell, the frame grows instead of clipping the node.
 
