@@ -92,7 +92,7 @@ app.registerExtension({
       return [
         null,
         ...(entry ? [entry] : []),
-        { content: '🌀 Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
+        { content: 'Add Grid Frame', callback: () => overlay.safe(() => controller.create(point)) },
       ];
     };
     active.selectionEntry = selectionEntry;

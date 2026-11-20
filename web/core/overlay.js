@@ -556,11 +556,17 @@ export function syncSelectionMenuDom(root, { doc = globalThis.document, inGrid =
   }
 
   for (const entry of root.querySelectorAll?.('.litemenu-entry') ?? []) {
-    if ((entry.fullText ?? entry.textContent ?? '').trim() !== SELECTION_ACTION_LABEL) continue;
-    if (inGrid) {
-      entry.remove();
-    } else if (!entry.querySelector('.vf-brand-link')) {
-      entry.prepend(createLogoBadge(doc));
+    const label = (entry.fullText ?? entry.textContent ?? '').trim();
+    if (label === SELECTION_ACTION_LABEL) {
+      if (inGrid) {
+        entry.remove();
+      } else if (!entry.querySelector('.vf-brand-link')) {
+        entry.prepend(createLogoBadge(doc));
+      }
+    } else if (label === 'Add Grid Frame') {
+      if (!entry.querySelector('.vf-brand-link')) {
+        entry.prepend(createLogoBadge(doc));
+      }
     }
   }
 
