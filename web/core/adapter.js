@@ -112,7 +112,7 @@ export class NodeAdapter {
     this.shrunkUntil.set(key, Date.now() + 150);
     const minimum = node.computeSize?.() ?? [node.size?.[0] || 0, node.size?.[1] || 0];
     const minH = Math.max(minimum[1] || 0, node.min_size?.[1] || 0);
-    if (minH > 0 && Array.isArray(node.size)) {
+    if (minH > 0 && node.size?.length >= 2) {
       const nextSize = [node.size[0], minH];
       if (node.setSize) node.setSize(nextSize);
       else { node.size = nextSize; node.onResize?.(nextSize); }

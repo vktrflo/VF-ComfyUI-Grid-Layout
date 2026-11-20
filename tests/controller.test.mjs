@@ -334,7 +334,7 @@ test('controller.begin handles circular references in graph.extra without stack 
 
 test('controller.shrink shrinks both node heights and frame dimensions to content minimum', () => {
   const { controller, node } = host();
-  node.size = [360, 420];
+  node.size = new Float64Array([360, 420]);
   node.computeSize = () => [220, 90];
   const frame = controller.createFromNodes([1], 'columns');
   const cell = frame.root;
