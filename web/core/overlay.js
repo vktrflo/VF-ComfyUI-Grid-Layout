@@ -430,8 +430,6 @@ export const MENU_ICONS = {
   'Undo Fill cell height (all columns)': '↩',
   'Fill cell height (this column)': '↕',
   'Undo Fill cell height (this column)': '↩',
-  'Bypass cell': '↱',
-  'Unbypass cell': '▶',
   'Bypass grid': '↱',
   'Unbypass grid': '▶',
   'Lock frame': '●',
@@ -1329,9 +1327,6 @@ export class LayoutOverlay {
     const currentFrame = this.controller.frames.find(f => f.id === frameId);
     const currentCell = currentFrame && findCell(currentFrame.root, cellId);
     const cellFill = this.cellFillAction(currentFrame, currentCell);
-    const cellBypass = this.cellHasNodes(currentCell)
-      ? [this.isCellBypassed(currentCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frameId, cellId)]
-      : null;
     const activeTabIdx = currentCell?.tabs?.length > 1 ? activeTabIndex(currentCell) : -1;
     const actions = [
       ['Add tab', () => edit((frame, cell) => addCellTab(frame, cellId, `Tab ${(cell.tabs?.length ?? 0) + 1}`))],
@@ -1346,7 +1341,6 @@ export class LayoutOverlay {
       ['Split into left / right', () => edit(frame => splitCell(frame, cellId, 'x', this.controller.metrics()))],
       ['Split into top / bottom', () => edit(frame => splitCell(frame, cellId, 'y', this.controller.metrics()))],
       ...(cellFill ? [cellFill] : []),
-      ...(cellBypass ? [cellBypass] : []),
       ['Create grid…', () => this.dialog('Create cell grid', [{ name: 'rows', label: 'Rows', type: 'number', value: 2 }, { name: 'columns', label: 'Columns', type: 'number', value: 2 }], ({ rows, columns }) => edit(frame => gridCell(frame, cellId, rows, columns, this.controller.metrics())))],
       ['Rename cell…', () => this.dialog('Rename cell', [{ name: 'label', label: 'Cell name', optional: true, value: findCell(this.controller.frames.find(f => f.id === frameId).root, cellId).label }], ({ label }) => edit((frame, cell) => { cell.label = label; }))],
       ['Change Appearance…', () => {
@@ -1417,9 +1411,6 @@ export class LayoutOverlay {
     if (includeToggles) {
       const cellFill = this.cellFillAction(frame, targetCell);
       if (cellFill) actions.push(cellFill);
-      if (this.cellHasNodes(targetCell)) {
-        actions.push([this.isCellBypassed(targetCell) ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, targetCell.id)]);
-      }
       actions.push([frame.lock === true ? 'Unlock frame' : 'Lock frame', () => this.toggleLock(frame.id)]);
       actions.push([frame.minimized === true ? 'Restore grid' : 'Minimize grid', () => this.toggleMinimize(frame.id)]);
       if (frame.minimized !== true) {
@@ -1724,12 +1715,6 @@ export class LayoutOverlay {
     const graph = this.controller.graph;
     return Boolean(cell && !cell.children && cell.nodes.some(id => graph?.getNodeById(id)));
   }
-  isCellBypassed(cell) {
-    const graph = this.controller.graph;
-    if (!cell || cell.children) return false;
-    const nodes = cell.nodes.map(id => graph?.getNodeById(id)).filter(Boolean);
-    return nodes.length > 0 && nodes.every(node => node.mode === 4);
-  }
   bypassedNodeIds() {
     const graph = this.controller.graph;
     const ids = [];
@@ -1741,20 +1726,6 @@ export class LayoutOverlay {
       }
     }
     return ids;
-  }
-  toggleCellBypass(frameId, cellId) {
-    this.safe(() => this.controller.edit(() => {
-      const frame = this.controller.frames.find(f => f.id === frameId);
-      const cell = frame && findCell(frame.root, cellId);
-      if (!cell || cell.children) return;
-      const graph = this.controller.graph;
-      const nodes = cell.nodes.map(id => graph?.getNodeById(id)).filter(Boolean);
-      if (!nodes.length) return;
-      const nextMode = nodes.every(node => node.mode === 4) ? 0 : 4;
-      for (const node of nodes) node.mode = nextMode;
-    }));
-    this.signature = null;
-    this.app.canvas?.setDirty(true, true);
   }
   frameHasNodes(frame) {
     const graph = this.controller.graph;
@@ -2665,16 +2636,6 @@ export class LayoutOverlay {
         collapsePanelBtn.classList.add('clt-collapse-cell');
         cellHeader.append(collapsePanelBtn);
 
-        const cellEmpty = !this.cellHasNodes(cell);
-        const cellBypassed = this.isCellBypassed(cell);
-        const cellBypassBtn = button(cellBypassed ? 'Unbypass cell' : 'Bypass cell', () => this.toggleCellBypass(frame.id, cell.id), '↱');
-        cellBypassBtn.classList.add('clt-bypass', 'clt-cell-bypass');
-        cellBypassBtn.setAttribute('aria-pressed', String(cellBypassed));
-        if (cellEmpty) {
-          cellBypassBtn.disabled = true;
-          cellBypassBtn.title = 'Add a node to the cell to use bypass';
-        }
-        cellHeader.append(cellBypassBtn);
         const cellOptionsBtn = button('Cell options', e => this.cellMenu(e, frame.id, cell.id), '•••');
         cellOptionsBtn.classList.add('clt-cell-options');
         cellHeader.append(cellOptionsBtn);

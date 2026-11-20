@@ -474,7 +474,7 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
   fakeOverlay.app = app;
   fakeOverlay.safe = fn => fn();
 
-  // Expanded frame with includeToggles: true includes ••• items, per-column fill, cell bypass, lock, minimize, and collapse, and omits autohide (now in selection toolbox)
+  // Expanded frame with includeToggles: true includes ••• items, per-column fill, lock, minimize, and collapse, and omits autohide (now in selection toolbox)
   const expandedLabels = fakeOverlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
   assert.deepEqual(expandedLabels, [
     'Change Appearance…',
@@ -484,7 +484,6 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
     'Fill cell height (all columns)',
     'Bypass grid',
     'Fill cell height (this column)',
-    'Bypass cell',
     'Lock frame',
     'Minimize grid',
     'Collapse grid',
@@ -901,42 +900,6 @@ test('all frame and cell menu items have emoji icons and render aria-hidden icon
   for (const [label] of capturedActions) {
     assert.ok(MENU_ICONS[label], `expected MENU_ICONS entry for cell action "${label}"`);
   }
-});
-
-test('toggleCellBypass switches node.mode between 4 (bypass) and 0 (active)', async () => {
-  const { LayoutController } = await import('../web/core/controller.js');
-  const n1 = { id: 1, pos: [0, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
-  const n2 = { id: 2, pos: [400, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(s) { this.size = s; } };
-  const graph = {
-    extra: {},
-    _nodes: [n1, n2],
-    getNodeById: id => graph._nodes.find(n => String(n.id) === String(id)) ?? null,
-    setDirtyCanvas() {},
-  };
-  const app = { configuringGraph: false, graph, canvas: { graph, selected_nodes: { 1: n1 }, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
-  const controller = new LayoutController(app);
-  const frame = controller.createFromNodes([1, 2], 'columns');
-  const [cell1, cell2] = engine.leaves(frame.root);
-
-  const overlay = Object.create(LayoutOverlay.prototype);
-  Object.assign(overlay, { controller, app, safe: fn => fn(), menu: null, signature: 'initial' });
-
-  assert.equal(overlay.isCellBypassed(cell1), false);
-  assert.equal(overlay.isCellBypassed(cell2), false);
-
-  overlay.toggleCellBypass(frame.id, cell1.id);
-  assert.equal(n1.mode, 4, 'first column node is bypassed');
-  assert.equal(n2.mode, 0, 'second column node stays active');
-  assert.equal(overlay.isCellBypassed(cell1), true);
-  assert.equal(
-    overlay.frameActions(frame, { includeToggles: true, cellId: cell1.id }).some(([label]) => label === 'Unbypass cell'),
-    true,
-    'menu flips to Unbypass cell when all cell nodes are bypassed'
-  );
-
-  overlay.toggleCellBypass(frame.id, cell1.id);
-  assert.equal(n1.mode, 0, 'unbypassing cell restores node to active mode 0');
-  assert.equal(overlay.isCellBypassed(cell1), false);
 });
 
 test('LayoutOverlay renders .clt-ghost-cell and .clt-ghost-node previews during directional node drag', async () => {
