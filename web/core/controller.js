@@ -4,6 +4,7 @@ import {
   VERSION,
   createFrame,
   createCell,
+  deleteEmptyCells,
   shrinkFrame,
   PAD,
   FRAME_TITLE,
@@ -200,6 +201,25 @@ export class LayoutController {
     this.edit(() => {
       const frame = this.frames.find(f => f.id === frameId);
       if (!frame) return;
+      for (const cell of leaves(frame.root)) {
+        const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
+        for (const id of allIds) {
+          const node = this.graph?.getNodeById(id);
+          if (node) this.adapter.shrinkHeight?.(node);
+        }
+      }
+      shrinkFrame(frame, this.metrics({ ignoreRenderedHeight: true }));
+    });
+  }
+  optimize(frameId) {
+    this.edit(() => {
+      const frame = this.frames.find(f => f.id === frameId);
+      if (!frame) return;
+      const cells = leaves(frame.root);
+      const empty = cells.filter(cell => cell.nodes.length === 0);
+      if (empty.length > 0 && empty.length < cells.length) {
+        deleteEmptyCells(frame);
+      }
       for (const cell of leaves(frame.root)) {
         const allIds = new Set([...(cell.nodes ?? []), ...(cell.tabs?.flatMap(t => t.nodes ?? []) ?? [])]);
         for (const id of allIds) {

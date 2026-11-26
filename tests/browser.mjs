@@ -231,7 +231,7 @@ try {
 
     const beforeShrink = await page.evaluate(() => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]);
     await page.getByRole('button', {name:'Grid options',exact:true}).click();
-    await page.getByRole('menuitem', {name:'Shrink grid to content',exact:true}).click();
+    await page.getByRole('menuitem', {name:'Optimize grid',exact:true}).click();
     assert.ok(await page.evaluate(width => window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0] < width, beforeShrink), 'shrink menu fits controls');
     await page.keyboard.press('Control+z');
     await page.waitForFunction(width => Math.abs(window.comfyAPI.app.app.graph.extra.comfyui_grid_layout.frames[0].size[0]-width)<1, beforeShrink);

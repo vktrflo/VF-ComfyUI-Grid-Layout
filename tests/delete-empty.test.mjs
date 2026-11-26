@@ -84,7 +84,7 @@ test('cell menu exposes Delete Empty Cells and prunes through controller.edit', 
   assert.deepEqual(engine.leaves(frame.root).map(cell => cell.nodes), [[1], [3]]);
 });
 
-test('grid menu exposes Delete Empty Cells and prunes the whole frame', () => {
+test('grid menu replaces Shrink and Delete Empty Cells with Optimize grid and applies both', () => {
   const make = id => ({ id, pos: [id * 300, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(size) { this.size = size; } });
   const nodes = [make(1), make(2), make(3)];
   const graph = {
@@ -96,14 +96,50 @@ test('grid menu exposes Delete Empty Cells and prunes the whole frame', () => {
   const app = { configuringGraph: false, graph, canvas: { graph, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
   const controller = new LayoutController(app);
   const frame = controller.createFromNodes([1, 2, 3], 'columns');
+  frame.size[0] += 300;
+  const widthBefore = frame.size[0];
   const cells = engine.leaves(frame.root);
   cells[2].nodes = [];
 
   const overlay = Object.create(LayoutOverlay.prototype);
   Object.assign(overlay, { controller, app, safe: fn => fn(), menu: null });
-  const entry = overlay.frameActions(frame, { includeToggles: true }).find(([label]) => label === 'Delete Empty Cells');
-  assert.ok(entry, 'expected a Delete Empty Cells entry in the grid menu');
+  const actions = overlay.frameActions(frame, { includeToggles: true });
+  const labels = actions.map(([label]) => label);
+  assert.equal(labels.includes('Shrink grid to content'), false);
+  assert.equal(labels.includes('Delete Empty Cells'), false);
+  const entry = actions.find(([label]) => label === 'Optimize grid');
+  assert.ok(entry, 'expected an Optimize grid entry in the grid menu');
+  assert.ok(MENU_ICONS['Optimize grid'], 'expected a MENU_ICONS entry for Optimize grid');
 
   entry[1]();
   assert.deepEqual(engine.leaves(frame.root).map(cell => cell.nodes), [[1], [2]]);
+  assert.ok(frame.size[0] < widthBefore, 'expected Optimize grid to also shrink the frame to content');
+});
+
+test('Optimize grid still shrinks when there are no empty cells or all cells are empty', () => {
+  const make = id => ({ id, pos: [id * 300, 0], size: [200, 100], mode: 0, computeSize: () => [200, 80], setSize(size) { this.size = size; } });
+  const nodes = [make(1), make(2)];
+  const graph = {
+    extra: {},
+    _nodes: nodes,
+    getNodeById: id => nodes.find(node => String(node.id) === String(id)) ?? null,
+    setDirtyCanvas() {},
+  };
+  const app = { configuringGraph: false, graph, canvas: { graph, ds: { scale: 1, offset: [0, 0] }, setDirty() {} } };
+  const controller = new LayoutController(app);
+  const frame = controller.createFromNodes([1, 2], 'columns');
+  frame.size[0] += 300;
+  const widthBefore = frame.size[0];
+
+  assert.doesNotThrow(() => controller.optimize(frame.id));
+  assert.deepEqual(engine.leaves(frame.root).map(cell => cell.nodes), [[1], [2]]);
+  assert.ok(frame.size[0] < widthBefore, 'expected optimize to shrink when no cells are empty');
+
+  // All cells empty: should not throw or wipe cells, and should still shrink
+  for (const cell of engine.leaves(frame.root)) cell.nodes = [];
+  frame.size[0] += 300;
+  const emptyWidthBefore = frame.size[0];
+  assert.doesNotThrow(() => controller.optimize(frame.id));
+  assert.equal(engine.leaves(frame.root).length, 2);
+  assert.ok(frame.size[0] < emptyWidthBefore, 'expected optimize to shrink even when all cells are empty');
 });

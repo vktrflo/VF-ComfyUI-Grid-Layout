@@ -478,9 +478,8 @@ test('selectedFrame identifies the grid containing a selected node and frameActi
   const expandedLabels = fakeOverlay.frameActions(frame, { includeToggles: true }).map(([label]) => label);
   assert.deepEqual(expandedLabels, [
     'Change Appearance…',
-    'Shrink grid to content',
+    'Optimize grid',
     'Add bottom row',
-    'Delete Empty Cells',
     'Fill cell height (all columns)',
     'Bypass grid',
     'Fill cell height (this column)',
