@@ -81,7 +81,7 @@ try {
  for(const vue of [false,true]) {
  await page.evaluate(async ({vue,workflow})=>{const app=window.comfyAPI.app.app;await app.ui.settings.setSettingValue('Comfy.VueNodes.Enabled',vue);await app.loadGraphData(workflow);app.canvas.ds.scale=.75;app.canvas.ds.offset=[20,15];},{vue,workflow:exampleWorkflow});
  await page.locator('.p-blockui-mask-document').waitFor({state:'hidden'});await page.waitForTimeout(500);
- await page.getByRole('button',{name:'Grid options',exact:true}).click();await page.getByRole('menuitem',{name:'Shrink grid to content',exact:true}).click();await page.waitForTimeout(500);
+ await page.getByRole('button',{name:'Grid options',exact:true}).click();await page.getByRole('menuitem',{name:'Optimize grid',exact:true}).click();await page.waitForTimeout(500);
  const widths=await page.evaluate(()=>{const app=window.comfyAPI.app.app;return app.graph._nodes.map(n=>n.size[0]);});
  if(vue){
  assert.ok(widths.every(w=>w>=225));

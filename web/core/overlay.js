@@ -421,6 +421,7 @@ export const LOGO_PURPLE = '#8b5cf6';
 const SELECTION_ACTION_LABEL = 'Create grid layout from selected nodes';
 export const MENU_ICONS = {
   'Change Appearance…': '◈',
+  'Optimize grid': '⤡',
   'Shrink grid to content': '⤡',
   'Add bottom row': '+',
   'Fill cell height': '↕',
@@ -1379,9 +1380,8 @@ export class LayoutOverlay {
           containerImageMode: frame.containerImageMode ?? 'repeat',
         }, values => this.controller.edit(() => applyHeaderConfig(frame, values)));
       }],
-      ['Shrink grid to content', () => this.controller.shrink(frame.id)],
+      ['Optimize grid', () => this.controller.optimize(frame.id)],
       ['Add bottom row', () => this.controller.edit(() => addBottomRow(this.controller.frames.find(f => f.id === frame.id)))],
-      ['Delete Empty Cells', () => this.controller.edit(() => deleteEmptyCells(this.controller.frames.find(f => f.id === frame.id)))],
     ];
     if (frame.fill === true) {
       actions.push(['Undo Fill cell height (all columns)', () => this.controller.edit(() => {
